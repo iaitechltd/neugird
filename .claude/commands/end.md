@@ -14,4 +14,6 @@ Wrap up this NeuGrid work session. **Do NOT start new feature work** — this is
 
 4. **Verify the build** — the dev server returns 200 on `/`, `/home`, and `/tradex`. Record the result in the handoff.
 
-5. **Summarize** what you recorded and what's queued for next time.
+5. **Push to GitHub** — commit all session changes and push to `origin main` (https://github.com/iaitechltd/neugird, public). Before committing, verify no sensitive files are staged (`.env*`, `.neugrid-store.json` — both gitignored; run a quick secret-pattern scan over newly added files). Use a descriptive commit message summarizing the session. If the gh CLI's active account isn't `iaitechltd`, switch with `gh auth switch --user iaitechltd` first. Record the pushed commit hash in the handoff.
+
+6. **Summarize** what you recorded and what's queued for next time.

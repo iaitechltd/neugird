@@ -305,15 +305,22 @@ export function spendByPayer(payer_id: string): number {
   return listForPayer(payer_id).filter((s) => s.status === "settled").reduce((a, s) => a + s.amount, 0);
 }
 
+/** Whether a settlement's payee is the protocol treasury — the memory-mode
+ *  PAYEE constant, or (solana mode) the on-chain treasury owner address that
+ *  settleViaFacilitator records as `payee: reqs.payTo`. */
+function isTreasuryPayee(payee: string): boolean {
+  return payee === PAYEE || payee === x402PayConfig()?.payTo;
+}
+
 /** Protocol revenue from x402 fees to the treasury (excludes agent-to-agent payments). */
 export function revenue(): { total: number; count: number } {
-  const settled = ledger().filter((s) => s.status === "settled" && s.payee === PAYEE);
+  const settled = ledger().filter((s) => s.status === "settled" && isTreasuryPayee(s.payee));
   return { total: settled.reduce((a, s) => a + s.amount, 0), count: settled.length };
 }
 
 /** Per-resource usage (paid count + revenue to treasury) across the catalogue. */
 export function resourceStats(): { name: string; price: number; description: string; count: number; revenue: number }[] {
-  const led = ledger().filter((s) => s.status === "settled" && s.payee === PAYEE);
+  const led = ledger().filter((s) => s.status === "settled" && isTreasuryPayee(s.payee));
   return Object.entries(RESOURCES).map(([name, meta]) => {
     const rows = led.filter((s) => s.resource === name);
     return { name, price: meta.price, description: meta.description, count: rows.length, revenue: rows.reduce((a, s) => a + s.amount, 0) };
@@ -322,6 +329,6 @@ export function resourceStats(): { name: string; price: number; description: str
 
 /** Agent-to-agent payment volume (settlements whose payee is another agent, not the treasury). */
 export function a2aStats(): { count: number; volume: number } {
-  const rows = ledger().filter((s) => s.status === "settled" && s.payee !== PAYEE);
+  const rows = ledger().filter((s) => s.status === "settled" && !isTreasuryPayee(s.payee));
   return { count: rows.length, volume: rows.reduce((a, s) => a + s.amount, 0) };
 }

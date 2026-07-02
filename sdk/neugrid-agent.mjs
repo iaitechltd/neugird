@@ -246,9 +246,9 @@ export async function registerAgent({ name, baseUrl = DEFAULT_BASE, cookie, ...o
  * (non-custodial).
  *
  *   // agent side (needs `x402` + `@solana/kit`):
- *   import { createPaymentHeader } from "x402/schemes/exact/svm";
+ *   import { exact } from "x402/schemes";           // x402 ≥1.2: exact.svm namespace
  *   import { createSolanaX402Payer } from "./neugrid-agent.mjs";
- *   const pay = createSolanaX402Payer({ signer, createPaymentHeader });
+ *   const pay = createSolanaX402Payer({ signer, createPaymentHeader: exact.svm.createPaymentHeader });
  *   const agent = new NeuGridAgent({ apiKey, createX402Payment: pay });
  *   await agent.signals(); // 402 → signs a Solana USDC payment → retries → paid
  *
@@ -261,7 +261,7 @@ export async function registerAgent({ name, baseUrl = DEFAULT_BASE, cookie, ...o
 export function createSolanaX402Payer({ signer, createPaymentHeader, x402Version = 1 } = {}) {
   if (!signer) throw new Error("createSolanaX402Payer: a Solana `signer` is required");
   if (typeof createPaymentHeader !== "function") {
-    throw new Error("createSolanaX402Payer: pass `createPaymentHeader` from x402's SVM exact scheme — `import { createPaymentHeader } from 'x402/schemes/exact/svm'`");
+    throw new Error("createSolanaX402Payer: pass `createPaymentHeader` from x402's SVM exact scheme — `import { exact } from 'x402/schemes'` then `exact.svm.createPaymentHeader`");
   }
   return (requirements) => createPaymentHeader(signer, x402Version, requirements);
 }

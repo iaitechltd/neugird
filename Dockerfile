@@ -5,7 +5,7 @@
 # ---- deps: full install for the build ----
 FROM node:22-alpine AS deps
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
 RUN npm ci
 
 # ---- build: compile the app (emits .next/standalone) + stage `pg` in isolation ----
@@ -15,12 +15,15 @@ ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
-# `pg` and `@anthropic-ai/sdk` are imported via non-analyzable specifiers (so the
-# app builds without them), so Next's file tracer leaves them out of the standalone
-# bundle. Resolve them + their deps into an isolated tree we overlay onto the
-# runtime node_modules.
+# `pg`, `@anthropic-ai/sdk`, and the Solana rail packages are imported via
+# non-analyzable specifiers (so the app builds without them), so Next's file
+# tracer leaves them out of the standalone bundle. Resolve them + their deps into
+# an isolated tree we overlay onto the runtime node_modules. The Solana set powers
+# chain/sasSolana.ts (SAS credential mints) when NEUGRID_CHAIN_MODE=solana.
 RUN mkdir -p /pgmod && cd /pgmod && npm init -y >/dev/null 2>&1 \
-    && npm install pg@8.22.0 @anthropic-ai/sdk@0.109.1 --omit=dev --no-audit --no-fund
+    && npm install pg@8.22.0 @anthropic-ai/sdk@0.109.1 \
+       sas-lib @solana/kit @solana-program/token-2022 @solana-program/compute-budget \
+       --legacy-peer-deps --omit=dev --no-audit --no-fund
 
 # ---- runtime: only the standalone server + static + public (+ pg) ----
 FROM node:22-alpine AS runner
