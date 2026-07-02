@@ -8,7 +8,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getCurrentUser, SESSION_COOKIE, userExists } from "@/lib/session";
-import { Wallets, Rewards, Pulse } from "@/lib/modules";
+import { Wallets, Rewards, Pulse, Social } from "@/lib/modules";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +27,16 @@ export async function GET() {
     reward: Rewards.ledgerFor(user.id), // earned GRID allocation — vests at TGE
     // V6 — recent Pulse movement (gains AND fades), so /me shows reputation is alive
     rep_events: Pulse.forTarget("user", user.id).slice(0, 6).map((e) => ({ action: e.action_type, weight: e.weight, reason: e.reason, at: e.timestamp })),
+    // reputation curve — cumulative Pulse over time (oldest → now), chartable
+    rep_series: (() => {
+      const evs = Pulse.forTarget("user", user.id).slice().reverse(); // oldest first
+      let run = 0;
+      const s = evs.map((e) => Math.max(0, (run += e.weight)));
+      while (s.length < 2) s.unshift(0);
+      return s;
+    })(),
+    income: Social.incomeFor(user.id), // real money in — settlements + agent earnings
+    follows: Social.followCounts(user.id),
   });
 }
 

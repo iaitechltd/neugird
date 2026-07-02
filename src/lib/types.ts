@@ -1219,6 +1219,15 @@ export interface Message {
   created_at: ISODate;
 }
 
+/* ----------------------------- Social ------------------------------ */
+// User→user follows — a lightweight signal graph. Following someone surfaces
+// their verified activity (builds, launches) in your notifications.
+export interface Follow {
+  follower_id: ID;
+  followee_id: ID;
+  created_at: ISODate;
+}
+
 /* --------------------------- Aggregates ---------------------------- */
 
 /** Convenience shape used by the dashboard / Grid pages. */

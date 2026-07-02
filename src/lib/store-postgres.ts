@@ -184,6 +184,8 @@ const SPECS: Spec[] = [
   { key: "agreements", table: "agreements",
     cols: ["agreement_id", "from_id", "to_id", "amount", "asset", "terms", "success_metric", "status", "source_message_id", "created_at"],
     num: ["amount"], ts: ["created_at"] },
+  { key: "follows", table: "follows",
+    cols: ["follower_id", "followee_id", "created_at"], ts: ["created_at"] },
 ];
 
 /* Non-array singleton state on DB (gridPool / tge / params) — stored one jsonb

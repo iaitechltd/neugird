@@ -643,6 +643,14 @@ create table if not exists agreements (
   source_message_id text,
   created_at        timestamptz not null default now()
 );
+
+-- User→user follow graph (activity of followees surfaces in the bell).
+create table if not exists follows (
+  follower_id text        not null references users(id) on delete cascade,
+  followee_id text        not null references users(id) on delete cascade,
+  created_at  timestamptz not null default now(),
+  primary key (follower_id, followee_id)
+);
 create table if not exists direct_messages (
   message_id      text primary key,
   conversation_id text        not null references conversations(conversation_id) on delete cascade,

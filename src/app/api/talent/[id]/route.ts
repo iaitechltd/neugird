@@ -6,7 +6,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { Users, Jobs, Echo, Genesis, Agents, Attestations, Pulse } from "@/lib/modules";
+import { Users, Jobs, Echo, Genesis, Agents, Attestations, Pulse, Social } from "@/lib/modules";
 import { getCurrentUserId } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +38,9 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
       by_dimension: u.reputation?.by_dimension ?? {},
       grids: u.joined_grids?.length ?? 0,
       created_at: u.created_at,
+      earned_usdc: Social.incomeFor(id).total, // real money in — the résumé's bottom line
+      follows: Social.followCounts(id),
+      is_following: me !== id && Social.isFollowing(me, id),
     },
     track_record: {
       jobs_done: delivered.length,

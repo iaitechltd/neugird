@@ -21,7 +21,7 @@ import {
 import { Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 
-type Profile = { id: string; username: string; wallet: string; bio: string; skills: string[]; pulse: number; reputation: number; by_dimension: Record<string, number>; grids: number; created_at: string };
+type Profile = { id: string; username: string; wallet: string; bio: string; skills: string[]; pulse: number; reputation: number; by_dimension: Record<string, number>; grids: number; created_at: string; earned_usdc?: number; follows?: { followers: number; following: number }; is_following?: boolean };
 type JobRow = { job_id: string; title: string; reward: number; status: string; skills: string[] };
 type BuildRow = { build_id: string; title: string; kind: string; proof?: string; stack: string[]; status: string };
 type PropRow = { proposal_id: string; title: string; status: string; ask: number; category: string };
@@ -48,6 +48,20 @@ export default function TalentProfile() {
   const [rOpen, setROpen] = useState(true);
   const [view, setView] = useState<View | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [following, setFollowing] = useState<boolean | null>(null);
+  const [followers, setFollowers] = useState<number | null>(null);
+  const [followBusy, setFollowBusy] = useState(false);
+
+  async function toggleFollow() {
+    if (followBusy || !view) return;
+    setFollowBusy(true);
+    try {
+      const r = await fetch(`/api/users/${view.profile.id}/follow`, { method: "POST" });
+      const j = await r.json();
+      if (r.ok) { setFollowing(!!j.following); setFollowers(j.followers ?? null); }
+    } catch { /* leave state as-is */ }
+    setFollowBusy(false);
+  }
 
   useEffect(() => {
     if (!id) return;
@@ -106,10 +120,16 @@ export default function TalentProfile() {
             {p.bio && <p className="mt-2.5 text-[11px] leading-relaxed text-ink-dim">{p.bio}</p>}
             <div className="mt-3 divide-y divide-line">
               <DataRow k="Reputation" v={<Mark plain>{p.reputation}</Mark>} accent="neon" />
-              <DataRow k="Pulse" v={<Mark plain>{p.pulse}</Mark>} />
+              <DataRow k="Earned" v={<Mark plain accent="cyan">${Math.round(p.earned_usdc ?? 0).toLocaleString()}</Mark>} />
               <DataRow k="Jobs delivered" v={tr.jobs_done} />
+              <DataRow k="Followers" v={<Mark plain>{followers ?? p.follows?.followers ?? 0}</Mark>} />
               <DataRow k="Grids" v={p.grids} />
             </div>
+            {!view.is_me && (
+              <button onClick={toggleFollow} disabled={followBusy} className={`ng-btn ng-btn--block ng-btn--sm mt-3 disabled:opacity-40 ${(following ?? p.is_following) ? "" : "ng-btn-primary"}`}>
+                <IconUser className="h-3.5 w-3.5" /> {(following ?? p.is_following) ? "Following ✓" : "Follow"}
+              </button>
+            )}
           </div>
 
           {p.skills.length > 0 && (

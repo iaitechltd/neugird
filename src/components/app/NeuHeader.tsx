@@ -127,8 +127,8 @@ function SearchOverlay({ onClose }: { onClose: () => void }) {
 
 /* ------------------------------ notifications ------------------------------ */
 
-type Note = { kind: "message" | "review" | "applicants" | "governance" | "fill" | "position" | "market"; text: string; sub?: string; href: string };
-const NOTE_ICON: Record<Note["kind"], (p: { className?: string }) => React.JSX.Element> = { message: IconMessage, review: IconCheck, applicants: IconUser, governance: IconShield, fill: IconChart, position: IconActivity, market: IconChart };
+type Note = { kind: "message" | "review" | "applicants" | "governance" | "fill" | "position" | "market" | "social"; text: string; sub?: string; href: string };
+const NOTE_ICON: Record<Note["kind"], (p: { className?: string }) => React.JSX.Element> = { message: IconMessage, review: IconCheck, applicants: IconUser, governance: IconShield, fill: IconChart, position: IconActivity, market: IconChart, social: IconUser };
 
 function BellDropdown({ notes, onClose }: { notes: Note[]; onClose: () => void }) {
   const router = useRouter();

@@ -7,12 +7,12 @@
 
 import { NextResponse } from "next/server";
 import { db } from "@/lib/store";
-import { Messaging, Governance, Markets } from "@/lib/modules";
+import { Messaging, Governance, Markets, Social } from "@/lib/modules";
 import { getCurrentUserId } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-type Note = { kind: "message" | "review" | "applicants" | "governance" | "fill" | "position" | "market"; text: string; sub?: string; href: string };
+type Note = { kind: "message" | "review" | "applicants" | "governance" | "fill" | "position" | "market" | "social"; text: string; sub?: string; href: string };
 
 const RECENT_MS = 48 * 3600 * 1000; // TradeX event window — old fills/closes age out of the bell
 const recent = (iso?: string) => !!iso && Date.now() - Date.parse(iso) <= RECENT_MS;
@@ -67,7 +67,19 @@ export async function GET() {
     }
   }
 
-  // 7 · open protocol votes (informational)
+  // 7 · social — new followers, and what the people YOU follow shipped
+  const uname = (id: string) => db.users.find((u) => u.id === id)?.username ?? id;
+  for (const f of Social.followersOf(uid).filter((f) => recent(f.created_at)).slice(0, 3)) {
+    notes.push({ kind: "social", text: `${uname(f.follower_id)} followed you`, sub: "your verified activity now reaches their bell", href: `/talent/${f.follower_id}` });
+  }
+  const following = new Set(Social.followingOf(uid));
+  if (following.size) {
+    for (const b of db.builds.filter((b) => following.has(b.owner_id) && recent(b.created_at)).slice(0, 3)) {
+      notes.push({ kind: "social", text: `${uname(b.owner_id)} shipped a build`, sub: b.title.slice(0, 60), href: `/talent/${b.owner_id}` });
+    }
+  }
+
+  // 8 · open protocol votes (informational)
   const openGov = Governance.listProposals().filter((p) => p.status === "open").length;
   if (openGov > 0) notes.push({ kind: "governance", text: `${openGov} protocol proposal${openGov === 1 ? "" : "s"} open for voting`, href: "/governance" });
 

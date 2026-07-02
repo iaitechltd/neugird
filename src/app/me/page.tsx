@@ -12,6 +12,7 @@ import {
 import { Decrypt, CountUp } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import OrbPanel from "@/components/app/OrbPanel";
+import { Area, Bars, Radar } from "@/components/app/charts";
 import type { Agent, Build, Grid, Product } from "@/lib/types";
 
 const Verified = () => <IconCheck className="h-3.5 w-3.5 shrink-0 text-neon" />;
@@ -33,7 +34,7 @@ export default function MePage() {
   const [toast, setToast] = useState<string | null>(null);
   function notify(msg: string) { setToast(msg); window.clearTimeout((notify as unknown as { t?: number }).t); (notify as unknown as { t?: number }).t = window.setTimeout(() => setToast(null), 2400); }
 
-  const [me, setMe] = useState<{ username?: string; pulse?: number; reputation?: { total?: number; by_dimension?: Record<string, number> } | null; joined_grids?: string[]; skills?: string[]; balances?: { usdc: number; grid: number }; reward?: { accrued: number; sybil_adjusted: number; sybil_factor: number; claimed: number; rate: number; breakdown: { dimension: string; units: number; events: number }[]; vests_at_tge: boolean; tge?: { executed: boolean; at: string }; vesting?: { total: number; released: number; claimable: number; vested_pct: number; unlock_pct: number; cliff_days: number; duration_days: number; start_at: string } | null } | null; rep_events?: { action: string; weight: number; reason: string; at: string }[] } | null>(null);
+  const [me, setMe] = useState<{ username?: string; pulse?: number; reputation?: { total?: number; by_dimension?: Record<string, number> } | null; joined_grids?: string[]; skills?: string[]; balances?: { usdc: number; grid: number }; reward?: { accrued: number; sybil_adjusted: number; sybil_factor: number; claimed: number; rate: number; breakdown: { dimension: string; units: number; events: number }[]; vests_at_tge: boolean; tge?: { executed: boolean; at: string }; vesting?: { total: number; released: number; claimable: number; vested_pct: number; unlock_pct: number; cliff_days: number; duration_days: number; start_at: string } | null } | null; rep_events?: { action: string; weight: number; reason: string; at: string }[]; rep_series?: number[]; income?: { total: number; direct: number; agents_total: number; series: number[]; recent: { kind: string; amount: number; at: string }[] }; follows?: { followers: number; following: number } } | null>(null);
   const [builds, setBuilds] = useState<Build[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -105,7 +106,8 @@ export default function MePage() {
   const myProductIds = new Set(builds.filter((b) => b.product_id).map((b) => b.product_id));
   const myProducts = products.filter((p) => myProductIds.has(p.product_id));
   const agentEarn = agents.reduce((s, a) => s + (a.earnings ?? 0), 0);
-  const stats: [string, number][] = [["Reputation", rep], ["Builds", builds.length], ["Agents", agents.length], ["Products", myProducts.length], ["Grids", myGrids.length]];
+  const income = me?.income;
+  const stats: [string, number, string?][] = [["Reputation", rep], ["Earned", Math.round(income?.total ?? 0), "$"], ["Builds", builds.length], ["Agents", agents.length], ["GRID Alloc", Math.round(me?.reward?.sybil_adjusted ?? 0)]];
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
@@ -156,21 +158,49 @@ export default function MePage() {
                 {me?.skills && me.skills.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{me.skills.map((s) => <Tag key={s}>{s}</Tag>)}</div>}
                 <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-[12px] text-ink-dim">
                   <span className="flex items-center gap-1.5"><IconBolt className="h-3.5 w-3.5 text-neon/70" />Reputation <Mark plain>{rep}</Mark></span>
+                  <span className="flex items-center gap-1.5"><IconCoins className="h-3.5 w-3.5 text-neon/70" />Earned <Mark plain accent="cyan">${Math.round(income?.total ?? agentEarn).toLocaleString()}</Mark></span>
                   <span className="flex items-center gap-1.5"><IconRocket className="h-3.5 w-3.5 text-neon/70" />{builds.length} builds</span>
-                  <span className="flex items-center gap-1.5"><IconBot className="h-3.5 w-3.5 text-neon/70" />{agents.length} agents · {agentEarn.toLocaleString()} earned</span>
+                  <span className="flex items-center gap-1.5"><IconUser className="h-3.5 w-3.5 text-neon/70" /><Mark plain>{me?.follows?.followers ?? 0}</Mark> followers · <Mark plain>{me?.follows?.following ?? 0}</Mark> following</span>
                 </div>
               </div>
             </div>
           </Bracket>
 
-          {/* stat cards */}
+          {/* stat cards — 3 by default, 4/5 as the side panels collapse */}
           <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
-            {stats.slice(0, 3 + closed).map(([k, v]) => (
+            {stats.slice(0, 3 + closed).map(([k, v, unit]) => (
               <div key={k} className="ng-card p-4 text-center">
-                <div className="ng-stat__v"><CountUp key={v} value={v} /></div>
+                <div className="ng-stat__v">{unit === "$" && <span className="text-cyan">$</span>}<CountUp key={v} value={v} /></div>
                 <div className="ng-stat__k">{k}</div>
               </div>
             ))}
+          </div>
+
+          {/* signal band — the numbers as CURVES, not text */}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="ng-card p-3.5">
+              <div className="flex items-baseline justify-between">
+                <span className="ng-label !text-ink-dim">Reputation curve</span>
+                <span className="text-[11px] text-neon tnum">{rep} <span className="text-ink-faint">now</span></span>
+              </div>
+              <div className="mt-2">
+                <Area data={me?.rep_series && me.rep_series.length > 1 ? me.rep_series : [0, rep]} gid="me-rep" h={92} />
+              </div>
+              <p className="mt-1 text-[9.5px] text-ink-faint">Cumulative Pulse from every verified event — grows on delivery, fades on ghosting and inactivity.</p>
+            </div>
+            <div className="ng-card p-3.5">
+              <div className="flex items-baseline justify-between">
+                <span className="ng-label !text-ink-dim">Income</span>
+                <span className="text-[11px] text-cyan tnum">${Math.round(income?.total ?? 0).toLocaleString()} <span className="text-ink-faint">lifetime</span></span>
+              </div>
+              <div className="mt-2">
+                <Bars data={income?.series && income.series.length > 1 ? income.series : [0, 0]} h={92} color="#22d3ee" />
+              </div>
+              <div className="mt-1 flex items-center justify-between text-[9.5px] text-ink-faint">
+                <span>direct ${Math.round(income?.direct ?? 0).toLocaleString()} · agents ${Math.round(income?.agents_total ?? 0).toLocaleString()}</span>
+                {income?.recent?.[0] && <span>last: {income.recent[0].kind.replace(/_/g, " ")} +${Math.round(income.recent[0].amount)}</span>}
+              </div>
+            </div>
           </div>
 
           {/* proof of build — track record */}
@@ -230,13 +260,18 @@ export default function MePage() {
             <div className="ng-card p-3.5">
               <div className="flex items-baseline justify-between"><span className="ng-stat__v !text-2xl">{rep}</span><span className="text-[11px] text-ink-dim">total Pulse</span></div>
               {Object.keys(repDims).length ? (
-                <div className="mt-3 space-y-2">
-                  {Object.entries(repDims).map(([k, v]) => (
-                    <div key={k}>
-                      <div className="mb-0.5 flex items-center justify-between text-[11px]"><span className="capitalize text-ink-dim">{k}</span><Mark plain className="!text-[11px]">{Math.round(v as number)}</Mark></div>
-                      <ProgressBar percent={Math.round(((v as number) / repMax) * 100)} />
-                    </div>
-                  ))}
+                <div className="mt-1 flex flex-col items-center">
+                  {/* the shape of the builder — dimensions as a radar, not a text list */}
+                  <Radar
+                    axes={["builder", "creator", "backer", "reviewer", "agent"].filter((d, i) => repDims[d] != null || i < 3)}
+                    values={["builder", "creator", "backer", "reviewer", "agent"].filter((d, i) => repDims[d] != null || i < 3).map((d) => Math.round((((repDims[d] as number) ?? 0) / repMax) * 100))}
+                    size={168}
+                  />
+                  <div className="flex w-full flex-wrap justify-center gap-x-4 gap-y-0.5 text-[10px] text-ink-dim">
+                    {Object.entries(repDims).map(([k, v]) => (
+                      <span key={k} className="capitalize">{k} <span className="text-neon tnum">{Math.round(v as number)}</span></span>
+                    ))}
+                  </div>
                 </div>
               ) : <p className="mt-2 text-[11px] text-ink-dim">Earn reputation by shipping verified work.</p>}
               {/* V6 — recent movement: reputation grows AND fades, with reasons */}

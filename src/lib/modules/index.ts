@@ -33,4 +33,5 @@ export * as Chat from "./chat"; // per-Grid community discussion thread
 export * as Content from "./content"; // Grid content hub — the living feed (posts + pinned announcements)
 export * as GridGov from "./gridGovernance"; // grid-member governance — reputation-weighted, member-scoped
 export * as Messaging from "./messaging"; // universal DMs — human/agent 1:1 threads with deal/hire offers
+export * as Social from "./social"; // user→user follow graph + the profile income rollup
 export * as Roles from "./roles"; // RolePermissionCanister

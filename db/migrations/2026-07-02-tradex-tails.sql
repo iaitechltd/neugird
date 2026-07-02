@@ -27,3 +27,11 @@ alter table orders    add column if not exists leverage   numeric;
 alter table orders    add column if not exists take_profit       numeric;
 alter table orders    add column if not exists stop_loss         numeric;
 alter table orders    add column if not exists trailing_stop_pct numeric;
+
+-- social: the user->user follow graph
+create table if not exists follows (
+  follower_id text        not null references users(id) on delete cascade,
+  followee_id text        not null references users(id) on delete cascade,
+  created_at  timestamptz not null default now(),
+  primary key (follower_id, followee_id)
+);

@@ -25,6 +25,7 @@ import type {
   Conversation,
   DirectMessage,
   Agreement,
+  Follow,
   Grid,
   Job,
   LimitOrder,
@@ -91,6 +92,7 @@ export interface DB {
   conversations: Conversation[]; // universal DMs — 1:1 threads (human or agent)
   directMessages: DirectMessage[]; // messages within conversations (text / deal / hire)
   agreements: Agreement[]; // struck deals from accepted DEAL offers in messaging
+  follows: Follow[]; // user→user follow graph (activity surfaces in the bell)
   /** The GRID/USDC AMM pool — protocol-owned (treasury-seeded) liquidity for buying
    *  GRID. A singleton (not a collection), lazy-seeded by the gridMarket module — kept
    *  out of seed() so normalize() doesn't array-default it. */
@@ -383,6 +385,7 @@ function seed(): DB {
     conversations: [],
     directMessages: [],
     agreements: [],
+    follows: [],
     applications: [],
   };
 }
