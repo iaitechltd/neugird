@@ -16,7 +16,7 @@ import { CountUp, Decrypt } from "@/components/app/typefx";
 import GenesisProposeWizard from "@/components/app/GenesisProposeWizard";
 import type { Milestone, Proposal } from "@/lib/types";
 
-type View = { proposal: Proposal; raised: number; backers: number; spawned_grid_slug: string | null; milestones: Milestone[]; i_backed: boolean };
+type View = { proposal: Proposal; raised: number; backers: number; spawned_grid_slug: string | null; milestones: Milestone[]; i_backed: boolean; founder?: { username: string; reputation: number } };
 type Me = { id: string; reputation: number; can_propose: boolean; min: number };
 const M_ACCENT: Record<string, "neon" | "cyan" | "amber"> = { pending: "amber", submitted: "cyan", released: "neon", rejected: "amber", approving: "cyan", approved: "neon" };
 
@@ -110,7 +110,7 @@ export default function GenesisBoard() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <Link href={`/genesis/${p.proposal_id}`} className="text-base font-bold text-neon transition hover:text-glow">{p.title}</Link>
-                      <div className="mt-0.5 text-[10px] text-ink-faint">{p.category} · by {isAuthor ? "you" : p.author_id}</div>
+                      <div className="mt-0.5 text-[10px] text-ink-faint">{p.category} · by <span className="text-ink-dim">{isAuthor ? "you" : v.founder?.username ?? p.author_id}</span>{v.founder ? <span> · rep {v.founder.reputation}</span> : null}</div>
                     </div>
                     <Mark plain accent={p.status === "funded" ? "neon" : "cyan"} className="!text-[10px] shrink-0">{p.status}</Mark>
                   </div>
