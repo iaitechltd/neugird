@@ -405,6 +405,21 @@ export async function claudeReviseBuild(
 
 export interface ChatTurn { from_agent: boolean; text: string }
 export interface ChatContext { counterparty_name: string; counterparty_is_owner: boolean; history: ChatTurn[] }
+/** One chat turn out of the brain. `directive` = the owner asked for work and the
+ *  reply IS the deliverable (private work: no pay/reputation, but the skill sticks). */
+export interface AgentChatTurn { mode: "chat" | "directive"; reply: string; topic: string | null }
+
+// NOTE: structured-outputs json_schema rejects minLength/minItems etc — keep it bare.
+const CHAT_SCHEMA = {
+  type: "object",
+  properties: {
+    mode: { type: "string", enum: ["chat", "directive"], description: "directive ONLY when the reply fully executes work the OWNER asked for" },
+    reply: { type: "string", description: "the in-persona message to send (for a directive: the complete deliverable itself)" },
+    topic: { type: ["string", "null"], description: "for directives: a 1-3 word skill domain (e.g. 'copywriting'); null for chat" },
+  },
+  required: ["mode", "reply", "topic"],
+  additionalProperties: false,
+} as const;
 
 const MAX_TURNS = 24; // bound the prompt to the recent thread
 
@@ -435,13 +450,17 @@ function chatSystem(agent: Agent, ctx: ChatContext): string {
     `YOUR PERSONA:\n${persona}`,
     `YOUR LIVE STATE (ground truth — never invent or embellish numbers):\n${stateCard(agent)}`,
     `WHAT YOU CAN ACTUALLY DO ON NEUGRID: when your Autonomous Work is armed you hunt, claim and deliver open Jobs that match your skills; you can apply to CampaignX promotional postings; you can be hired by others via a hire offer in this chat (your owner takes a revenue split); verified deliveries grow your reputation and skill mastery.`,
-    `WHAT YOU CANNOT DO (be honest about it): you can't take free-form to-do orders directly in chat yet — real work reaches you through the Jobs marketplace. IMPORTANT anti-self-dealing rule: you may NEVER take jobs posted by your own owner, so never suggest your owner post a job for you. If your owner wants you working, they should arm your Autonomous Work (with a skills filter) so you hunt OTHER people's matching postings. Anyone who is not your owner can hire you directly with a hire offer in this chat.`,
-    `You are talking to ${ctx.counterparty_name}${ctx.counterparty_is_owner ? " — YOUR OWNER" : ""}. Reply in character, concise (1–3 sentences unless asked for more), concrete, grounded in your real state.`,
+    ctx.counterparty_is_owner
+      ? `OWNER DIRECTIVES: this is YOUR OWNER. When they ask you for work you can complete as text — drafts, copy, plans, analysis, research summaries, code snippets, reviews — you DO IT, fully, right here in your reply (mode:"directive", topic = the skill domain). This is private work: it earns no pay and no reputation, but you keep the skill. Do NOT half-answer or defer; deliver. What a directive can NEVER do: marketplace or money actions — you still may never take/apply to your owner's own postings (anti-self-dealing), and you cannot post jobs, trade, transfer funds or change platform state from chat; say so if asked, and point to the right surface (arm Autonomous Work to hunt other people's paid jobs; TradeX Agent Mode for trading mandates).`
+      : `THIS PERSON IS NOT YOUR OWNER: chat only (mode:"chat") — you do NOT execute free work for strangers; that's what paid hire offers in this chat are for (verified delivery grows your track record). Anti-self-dealing still holds: never suggest your owner post a job for you.`,
+    `You are talking to ${ctx.counterparty_name}${ctx.counterparty_is_owner ? " — YOUR OWNER" : ""}. Reply in character, grounded in your real state. Chat replies stay concise (1–3 sentences); directive deliverables are as long as the work needs.`,
   ].join("\n\n");
 }
 
-/** Real Claude chat reply, in persona + grounded in live state. Null on any failure. */
-export async function claudeAgentReply(agent: Agent, ctx: ChatContext): Promise<string | null> {
+/** Real Claude chat turn, in persona + grounded in live state. Owner requests for
+ *  doable text work come back as mode:"directive" with the deliverable as the reply.
+ *  Null on any failure. */
+export async function claudeAgentReply(agent: Agent, ctx: ChatContext): Promise<AgentChatTurn | null> {
   const client = await loadClient();
   if (!client) return null;
   const turns = ctx.history.slice(-MAX_TURNS);
@@ -458,13 +477,22 @@ export async function claudeAgentReply(agent: Agent, ctx: ChatContext): Promise<
   if (!messages.length || messages[messages.length - 1].role !== "user") return null;
   const res = await client.messages.create({
     model: process.env.NEUGRID_BRAIN_MODEL || DEFAULT_MODEL,
-    max_tokens: 400,
+    max_tokens: 1500, // directives carry a full deliverable, not just banter
     thinking: { type: "disabled" },
+    output_config: { format: { type: "json_schema", schema: CHAT_SCHEMA } },
     system: chatSystem(agent, ctx),
     messages,
   });
-  const text = (res.content ?? []).find((b) => b.type === "text" && b.text)?.text?.trim();
-  return text ? text.slice(0, 2000) : null;
+  const text = (res.content ?? []).find((b) => b.type === "text" && b.text)?.text;
+  if (!text) return null;
+  let parsed: { mode?: unknown; reply?: unknown; topic?: unknown };
+  try { parsed = JSON.parse(text); } catch { return null; }
+  const reply = typeof parsed.reply === "string" ? parsed.reply.trim().slice(0, 6000) : "";
+  if (!reply) return null;
+  // a "directive" from a non-owner can only be model error — never honor it
+  const mode = parsed.mode === "directive" && ctx.counterparty_is_owner ? "directive" : "chat";
+  const topic = typeof parsed.topic === "string" && parsed.topic.trim() ? parsed.topic.trim().slice(0, 40) : null;
+  return { mode, reply, topic };
 }
 
 /** Real Claude pick. Returns a BrainChoice (job_id may be null = hold) or null on any failure. */

@@ -11,9 +11,9 @@
  */
 
 import type { Agent, Job } from "../types";
-import { claudeChooseJob, claudeAgentReply, claudeSynthesizeBuild, claudeReviseBuild, claudeDraftProposal, claudeEchoAsk, type ChatContext, type SynthesizedBuild, type SynthFile, type ProposalDraft, type EchoAskMode } from "./claude";
+import { claudeChooseJob, claudeAgentReply, claudeSynthesizeBuild, claudeReviseBuild, claudeDraftProposal, claudeEchoAsk, type AgentChatTurn, type ChatContext, type SynthesizedBuild, type SynthFile, type ProposalDraft, type EchoAskMode } from "./claude";
 
-export type { ChatContext, ChatTurn, SynthesizedBuild, SynthFile, ProposalDraft, EchoAskMode } from "./claude";
+export type { AgentChatTurn, ChatContext, ChatTurn, SynthesizedBuild, SynthFile, ProposalDraft, EchoAskMode } from "./claude";
 
 export interface BrainChoice {
   /** A candidate Job's exact id, or null when the brain actively chooses to HOLD. */
@@ -127,11 +127,12 @@ export async function draftProposal(build: {
 }
 
 /**
- * Ask the configured model brain to write the agent's chat reply — in persona,
- * grounded in its live state. `null` → no brain / call failed → the caller sends
- * a deterministic fallback reply instead. Never throws.
+ * Ask the configured model brain for the agent's chat turn — in persona, grounded
+ * in its live state. An OWNER's doable ask comes back as mode:"directive" with the
+ * deliverable as the reply. `null` → no brain / call failed → the caller sends a
+ * deterministic fallback reply instead. Never throws.
  */
-export async function replyAsAgent(agent: Agent, ctx: ChatContext): Promise<string | null> {
+export async function replyAsAgent(agent: Agent, ctx: ChatContext): Promise<AgentChatTurn | null> {
   if (!ctx.history.length) return null;
   switch (activeBrain()) {
     case "claude":

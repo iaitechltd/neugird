@@ -963,7 +963,7 @@ export interface LearnedSkill {
 /** One autonomous action the work runtime took (or declined). */
 export interface AgentWorkAction {
   at: ISODate;
-  kind: "claimed" | "applied" | "delivered" | "hold" | "completed" | "stopped";
+  kind: "claimed" | "applied" | "delivered" | "hold" | "completed" | "stopped" | "directive";
   job_id?: ID;
   job_title?: string;
   reward?: number;

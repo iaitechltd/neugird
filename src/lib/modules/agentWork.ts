@@ -304,14 +304,35 @@ export async function chatReply(agent_id: string, conversation_id: string): Prom
     from_agent: m.from_id === agent_id,
     text: m.kind === "text" ? m.body : `[${m.kind} offer · ${m.offer?.amount ?? 0} ${m.offer?.asset ?? "USDC"} · ${m.offer?.status ?? "pending"}] ${m.offer?.terms ?? ""}`,
   }));
-  const brainText = await Brain.replyAsAgent(agent, {
+  const turn = await Brain.replyAsAgent(agent, {
     counterparty_name: th.counterparty.name,
     counterparty_is_owner: isOwner,
     history,
   });
-  const body = brainText ?? fallbackChat(agent, isOwner);
+  const body = turn?.reply ?? fallbackChat(agent, isOwner);
   const r = Messaging.send(conversation_id, agent_id, { body });
+  // Owner directive executed in-chat: private work — no pay, no reputation — but
+  // the skill sticks (Hermes-style) and the work log records what happened.
+  if (!r.error && turn?.mode === "directive" && isOwner) {
+    const topic = turn.topic ?? "owner directive";
+    learnDirective(agent, topic, String(last.body ?? ""));
+    pushLog(agent, { kind: "directive", rationale: `owner directive — ${topic}`, ok: true });
+  }
   return { replied: !r.error };
+}
+
+/** Skill growth from an owner directive (no Job involved — from_job stays unset). */
+function learnDirective(agent: Agent, domain: string, instruction: string): void {
+  const existing = lib(agent).find((s) => s.domain.toLowerCase() === domain.toLowerCase());
+  if (existing) { existing.uses += 1; existing.updated_at = nowISO(); return; }
+  lib(agent).unshift({
+    skill_id: newId("skill"),
+    title: `How to: ${instruction || domain}`.slice(0, 80),
+    domain,
+    recipe: `Reusable approach for "${domain}" work (learned on an owner directive): scope the ask, apply prior ${domain} skills, deliver the complete artifact in one pass.`,
+    uses: 1, created_at: nowISO(),
+  });
+  if (lib(agent).length > SKILLS_MAX) agent.skill_library = lib(agent).slice(0, SKILLS_MAX);
 }
 
 /* -------------------------------- views ---------------------------------- */
