@@ -99,7 +99,10 @@ function closeAt(p: Position, mark: number, reason: NonNullable<Position["close_
   return pnl;
 }
 
-export function openPosition(market_id: string, user_id: string, side: PositionSide, collateral: number, leverage: number): { position?: Position; error?: string } {
+/** Optional triggers attached when a position opens (entry-time TP/SL/trail). */
+export interface EntryTriggers { take_profit?: number; stop_loss?: number; trailing_stop_pct?: number }
+
+export function openPosition(market_id: string, user_id: string, side: PositionSide, collateral: number, leverage: number, triggers?: EntryTriggers): { position?: Position; error?: string } {
   const m = marketById(market_id);
   if (!m) return { error: "no_market" };
   if (m.status !== "active") return { error: "market_paused" };
@@ -116,6 +119,13 @@ export function openPosition(market_id: string, user_id: string, side: PositionS
     position_id: newId("pos"), market_id, user_id, side, size, leverage: lev, entry_price: entry,
     margin: collateral, liquidation_price: liq, status: "open", opened_at: nowISO(), last_funding_at: nowISO(),
   };
+  // entry-time triggers (validated to the profitable/protective side of entry)
+  if (triggers?.take_profit && triggers.take_profit > 0) pos.take_profit = triggers.take_profit;
+  if (triggers?.stop_loss && triggers.stop_loss > 0) pos.stop_loss = triggers.stop_loss;
+  if (triggers?.trailing_stop_pct && triggers.trailing_stop_pct > 0) {
+    pos.trailing_stop_pct = Math.min(50, triggers.trailing_stop_pct);
+    pos.trail_anchor = entry;
+  }
   store().push(pos);
   return { position: pos };
 }
@@ -188,29 +198,35 @@ function fillPerpEntries(market_id: string, mark: number): void {
     if (o.status !== "open" || o.kind !== "perp_entry" || o.market_id !== market_id) continue;
     const hit = o.pside === "long" ? mark <= o.price : mark >= o.price;
     if (!hit) continue;
-    const r = openPosition(market_id, o.user_id, o.pside ?? "long", o.collateral ?? 0, o.leverage ?? 1);
+    const r = openPosition(market_id, o.user_id, o.pside ?? "long", o.collateral ?? 0, o.leverage ?? 1, {
+      take_profit: o.take_profit, stop_loss: o.stop_loss, trailing_stop_pct: o.trailing_stop_pct,
+    });
     o.status = r.error ? "cancelled" : "filled";
     o.filled_at = nowISO();
   }
 }
 
-/** Rest a perp limit entry (or open immediately if the mark already satisfies it). */
-export function placeLimitEntry(market_id: string, user_id: string, side: PositionSide, collateral: number, leverage: number, price: number): { order?: LimitOrder; position?: Position; error?: string } {
+/** Rest a perp limit entry (or open immediately if the mark already satisfies it).
+ *  Entry-time triggers ride along and attach the moment the position opens. */
+export function placeLimitEntry(market_id: string, user_id: string, side: PositionSide, collateral: number, leverage: number, price: number, triggers?: EntryTriggers): { order?: LimitOrder; position?: Position; error?: string } {
   const m = marketById(market_id);
   if (!m) return { error: "no_market" };
   if (m.stage !== "futures") return { error: "futures_only" };
   if (!(price > 0) || !(collateral > 0)) return { error: "bad_input" };
   const mark = markPrice(market_id);
   if (side === "long" ? mark <= price : mark >= price) {
-    const r = openPosition(market_id, user_id, side, collateral, leverage);
+    const r = openPosition(market_id, user_id, side, collateral, leverage, triggers);
     if (r.error) return { error: r.error };
     return { position: r.position };
   }
-  const order = {
+  const order: LimitOrder = {
     order_id: newId("ord"), market_id, user_id,
     side: side === "long" ? ("buy" as const) : ("sell" as const),
     price, qty: 0, filled: 0, status: "open" as const, created_at: nowISO(),
     kind: "perp_entry" as const, pside: side, collateral, leverage: Math.max(1, Math.min(MAX_LEVERAGE, Math.floor(leverage || 1))),
+    ...(triggers?.take_profit && triggers.take_profit > 0 ? { take_profit: triggers.take_profit } : {}),
+    ...(triggers?.stop_loss && triggers.stop_loss > 0 ? { stop_loss: triggers.stop_loss } : {}),
+    ...(triggers?.trailing_stop_pct && triggers.trailing_stop_pct > 0 ? { trailing_stop_pct: Math.min(50, triggers.trailing_stop_pct) } : {}),
   };
   (db.orders ??= []).push(order);
   return { order };

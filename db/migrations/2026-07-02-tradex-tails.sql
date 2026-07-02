@@ -22,3 +22,8 @@ alter table orders    add column if not exists kind       text;
 alter table orders    add column if not exists pside      text;
 alter table orders    add column if not exists collateral numeric;
 alter table orders    add column if not exists leverage   numeric;
+
+-- entry-time triggers carried on resting perp entries
+alter table orders    add column if not exists take_profit       numeric;
+alter table orders    add column if not exists stop_loss         numeric;
+alter table orders    add column if not exists trailing_stop_pct numeric;

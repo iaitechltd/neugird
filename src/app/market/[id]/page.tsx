@@ -335,6 +335,9 @@ export default function MarketTerminal() {
   const [amount, setAmount] = useState("");
   const [limitPrice, setLimitPrice] = useState("");
   const [lev, setLev] = useState(5);
+  const [tpIn, setTpIn] = useState("");
+  const [slIn, setSlIn] = useState("");
+  const [trailIn, setTrailIn] = useState("");
   const [tf, setTf] = useState("1H");
   const [tab, setTab] = useState("");
   const [bookOpen, setBookOpen] = useState(false);
@@ -732,14 +735,20 @@ export default function MarketTerminal() {
                     <div className="mt-1.5 grid grid-cols-4 gap-1">{[25, 50, 75, 100].map((q) => <button key={q} onClick={() => setAmount(String(+((d.wallet.usdc) * (q / 100)).toFixed(2)))} className="rounded border border-line py-1 text-[10px] text-ink-dim transition hover:border-neon/40 hover:text-neon">{q}%</button>)}</div>
                     <div className="mt-2 flex items-center justify-between text-[10px] text-ink-faint"><span>Limit entry $ (optional)</span><span>blank = open at mark</span></div>
                     <input value={limitPrice} onChange={(e) => setLimitPrice(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder={`mark $${(m.price ?? 0).toFixed(4)}`} className="ng-input mt-1 !py-1.5 text-[12px]" />
+                    <div className="mt-2 text-[10px] text-ink-faint">Take-profit / Stop-loss / Trail (optional — attach at entry)</div>
+                    <div className="mt-1 grid grid-cols-3 gap-1">
+                      <input value={tpIn} onChange={(e) => setTpIn(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="TP $" className="ng-input !py-1.5 text-[11px]" />
+                      <input value={slIn} onChange={(e) => setSlIn(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="SL $" className="ng-input !py-1.5 text-[11px]" />
+                      <input value={trailIn} onChange={(e) => setTrailIn(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="Trail %" className="ng-input !py-1.5 text-[11px]" />
+                    </div>
                     <div className="mt-2 divide-y divide-line text-[11px]">
                       <div className="ng-row !py-1"><span className="ng-row__k">Position size</span><span className="ng-row__v font-normal">{compact(perpSize)} {m.base_symbol}</span></div>
                       <div className="ng-row !py-1"><span className="ng-row__k">Notional</span><span className="ng-row__v font-normal">{money(collateral * lev)}</span></div>
                       <div className="ng-row !py-1"><span className="ng-row__k">Est. liq (long)</span><span className="ng-row__v font-normal text-amber">${(((m.price ?? 0) * (1 - 1 / lev + 0.005)) || 0).toFixed(4)}</span></div>
                     </div>
                     <div className="mt-2 grid grid-cols-2 gap-1.5">
-                      <button onClick={() => { const lp = Number(limitPrice); act(`/api/markets/${id}/perp`, { action: "open", side: "long", collateral, leverage: lev, ...(lp > 0 ? { limit_price: lp } : {}) }, lp > 0 ? "Long entry resting" : "Long opened"); setAmount(""); setLimitPrice(""); }} disabled={busy || !(collateral > 0)} className="ng-btn ng-btn-primary disabled:opacity-40">{Number(limitPrice) > 0 ? "Limit Long" : "Open Long"}</button>
-                      <button onClick={() => { const lp = Number(limitPrice); act(`/api/markets/${id}/perp`, { action: "open", side: "short", collateral, leverage: lev, ...(lp > 0 ? { limit_price: lp } : {}) }, lp > 0 ? "Short entry resting" : "Short opened"); setAmount(""); setLimitPrice(""); }} disabled={busy || !(collateral > 0)} className="ng-btn ng-btn-danger disabled:opacity-40">{Number(limitPrice) > 0 ? "Limit Short" : "Open Short"}</button>
+                      <button onClick={() => { const lp = Number(limitPrice); act(`/api/markets/${id}/perp`, { action: "open", side: "long", collateral, leverage: lev, ...(lp > 0 ? { limit_price: lp } : {}), ...(Number(tpIn) > 0 ? { take_profit: Number(tpIn) } : {}), ...(Number(slIn) > 0 ? { stop_loss: Number(slIn) } : {}), ...(Number(trailIn) > 0 ? { trailing_pct: Number(trailIn) } : {}) }, lp > 0 ? "Long entry resting" : "Long opened"); setAmount(""); setLimitPrice(""); setTpIn(""); setSlIn(""); setTrailIn(""); }} disabled={busy || !(collateral > 0)} className="ng-btn ng-btn-primary disabled:opacity-40">{Number(limitPrice) > 0 ? "Limit Long" : "Open Long"}</button>
+                      <button onClick={() => { const lp = Number(limitPrice); act(`/api/markets/${id}/perp`, { action: "open", side: "short", collateral, leverage: lev, ...(lp > 0 ? { limit_price: lp } : {}), ...(Number(tpIn) > 0 ? { take_profit: Number(tpIn) } : {}), ...(Number(slIn) > 0 ? { stop_loss: Number(slIn) } : {}), ...(Number(trailIn) > 0 ? { trailing_pct: Number(trailIn) } : {}) }, lp > 0 ? "Short entry resting" : "Short opened"); setAmount(""); setLimitPrice(""); setTpIn(""); setSlIn(""); setTrailIn(""); }} disabled={busy || !(collateral > 0)} className="ng-btn ng-btn-danger disabled:opacity-40">{Number(limitPrice) > 0 ? "Limit Short" : "Open Short"}</button>
                     </div>
                     <p className="mt-2 text-[9.5px] text-ink-faint">Mark = spot AMM · margin in USDC · auto-liquidation past the liq price · max {d.maxLeverage}× · a limit entry opens when the mark reaches your price (long at-or-below, short at-or-above).</p>
                   </div>

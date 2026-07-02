@@ -33,13 +33,19 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const collateral = Number(body?.collateral);
   const leverage = Number(body?.leverage) || 1;
   if (!(collateral > 0)) return NextResponse.json({ error: "positive collateral required" }, { status: 400 });
+  // optional entry-time triggers (attached at open; carried on resting entries)
+  const triggers = {
+    take_profit: Number(body?.take_profit) > 0 ? Number(body.take_profit) : undefined,
+    stop_loss: Number(body?.stop_loss) > 0 ? Number(body.stop_loss) : undefined,
+    trailing_stop_pct: Number(body?.trailing_pct) > 0 ? Number(body.trailing_pct) : undefined,
+  };
   const limitPrice = Number(body?.limit_price);
   if (limitPrice > 0) {
-    const r = Perps.placeLimitEntry(id, uid, side, collateral, leverage, limitPrice);
+    const r = Perps.placeLimitEntry(id, uid, side, collateral, leverage, limitPrice, triggers);
     if (r.error) return NextResponse.json({ error: r.error }, { status: 400 });
     return NextResponse.json(r, { status: 201 });
   }
-  const r = Perps.openPosition(id, uid, side, collateral, leverage);
+  const r = Perps.openPosition(id, uid, side, collateral, leverage, triggers);
   if (r.error) return NextResponse.json({ error: r.error }, { status: 400 });
   return NextResponse.json(r, { status: 201 });
 }

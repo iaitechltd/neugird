@@ -496,7 +496,10 @@ create table if not exists orders (
   kind       text,       -- spot (default) | perp_entry (opens a position on cross)
   pside      text,       -- perp entry side: long | short
   collateral numeric,    -- perp entry margin (USDC), debited at trigger
-  leverage   numeric     -- perp entry leverage
+  leverage   numeric,    -- perp entry leverage
+  take_profit       numeric, -- entry-time triggers, applied when the position opens
+  stop_loss         numeric,
+  trailing_stop_pct numeric
 );
 
 -- Per-Grid community chat (surfaced on the market terminal + the Grid page).

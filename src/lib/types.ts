@@ -834,6 +834,10 @@ export interface LimitOrder {
   pside?: PositionSide;
   collateral?: number;
   leverage?: number;
+  /** Triggers attached at entry — applied to the position the moment it opens. */
+  take_profit?: number;
+  stop_loss?: number;
+  trailing_stop_pct?: number;
 }
 
 /* ----------------------- Agent Mode (mandates) --------------------- */
