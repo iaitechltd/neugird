@@ -194,6 +194,24 @@ export async function runWorkTick(agent_id: string): Promise<{ action?: AgentWor
     return { action: pushLog(agent, { kind: "completed", rationale: `delivered ${w.jobs_done}/${w.max_jobs}`, ok: true }), done: true };
   }
 
+  // 0) An accepted HIRE (offer auto-resolve) is a contractual commitment with the
+  //    hirer's money already in escrow — it outranks everything else.
+  const hired = db.jobs.find((j) => j.assignee_id === agent.agent_id && j.assignee_type === "agent" && j.status === "assigned" && j.context === "talent_contract");
+  if (hired) {
+    const applied = skillsFor(agent, hired).length;
+    const res = Agents.agentSubmit(agent.agent_id, hired.job_id, Agents.synthesizeDeliverable(agent, hired));
+    if (res.error) return { action: pushLog(agent, { kind: "hold", job_id: hired.job_id, job_title: hired.title, rationale: `blocked: ${res.error}`, ok: false }) };
+    const touched = learnFrom(agent, hired);
+    if (!agent.task_history.includes(hired.job_id)) agent.task_history.push(hired.job_id);
+    w.jobs_done += 1;
+    return {
+      action: pushLog(agent, {
+        kind: "delivered", job_id: hired.job_id, job_title: hired.title, reward: hired.reward_amount,
+        rationale: `accepted hire — delivered to the hirer for review${touched ? " · learned/reinforced a skill" : ""}`, skills_applied: applied, ok: true,
+      }),
+    };
+  }
+
   // 1) A campaign posting we applied to and WON is real assigned work — deliver it first.
   const won = wonCampaignJob(agent);
   if (won) {
