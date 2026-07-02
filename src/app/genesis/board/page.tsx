@@ -117,7 +117,7 @@ export default function GenesisBoard() {
                   <p className="mt-2 text-[12px] leading-relaxed text-ink-dim">{p.summary}</p>
 
                   <div className="mt-3">
-                    <div className="mb-1 flex items-center justify-between text-[11px] text-ink-dim"><span>{v.raised} / {p.ask_amount} Pulse</span><span>{v.backers} backers · {pct}%</span></div>
+                    <div className="mb-1 flex items-center justify-between text-[11px] text-ink-dim"><span>${v.raised.toLocaleString()} / ${p.ask_amount.toLocaleString()} USDC</span><span>{v.backers} backers · {pct}%</span></div>
                     <ProgressBar percent={pct} />
                   </div>
 

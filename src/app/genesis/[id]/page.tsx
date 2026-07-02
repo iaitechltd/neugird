@@ -21,7 +21,10 @@ import { Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import type { Milestone, Proposal } from "@/lib/types";
 
-type Backer = { backer_id: string; amount: number; created_at: string };
+type Backer = { backer_id: string; name?: string; amount: number; created_at: string };
+type Founder = { id: string; username: string; reputation: number; credentials: number; builds: number; jobs_done: number; skills: string[] };
+type BuildInfo = { build_id: string; title: string; stack: string[]; version: number; files: number; has_preview: boolean; deployed_slug: string | null; product_id: string | null; proof: string | null };
+type TeamRow = { subgrid_id: string; name: string; purpose: string; members: { id: string; name: string }[]; agents: { id: string; name: string }[] };
 type View = {
   proposal: Proposal;
   raised: number;
@@ -32,18 +35,28 @@ type View = {
   i_backed: boolean;
   is_author: boolean;
   backer_list: Backer[];
-  me: { id: string; reputation: number; can_propose: boolean; min: number };
+  me: { id: string; reputation: number; can_propose: boolean; min: number; usdc?: number };
+  founder?: Founder;
+  build?: BuildInfo | null;
+  origin_grid?: { grid_id: string; slug: string; name: string; members: number } | null;
+  team?: TeamRow[];
 };
 
 const M_ACCENT: Record<string, "neon" | "cyan" | "amber"> = { pending: "amber", submitted: "cyan", released: "neon", rejected: "amber" };
 
 /** Hoisted (stable identity) so a parent re-render can't remount it and wipe a half-typed amount. */
-function FundForm({ busy, onSubmit }: { busy: boolean; onSubmit: (e: React.FormEvent<HTMLFormElement>) => void }) {
+function FundForm({ busy, balance, onSubmit }: { busy: boolean; balance?: number; onSubmit: (e: React.FormEvent<HTMLFormElement>) => void }) {
   return (
-    <form onSubmit={onSubmit} className="flex gap-2">
-      <input name="amt" type="number" min={1} placeholder="Amount (Pulse)" className="ng-input !py-1.5 text-sm" />
-      <button type="submit" disabled={busy} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-50"><IconBolt className="h-3.5 w-3.5" /> Back</button>
-    </form>
+    <div>
+      <form onSubmit={onSubmit} className="flex gap-2">
+        <input name="amt" type="number" min={1} placeholder="Amount (USDC)" className="ng-input !py-1.5 text-sm" />
+        <button type="submit" disabled={busy} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-50"><IconBolt className="h-3.5 w-3.5" /> Back this project</button>
+      </form>
+      <div className="mt-1 flex items-center justify-between text-[10px] text-ink-faint">
+        <span>USDC leaves your wallet into milestone escrow</span>
+        {balance != null && <span>bal ${balance.toLocaleString()}</span>}
+      </div>
+    </div>
   );
 }
 
@@ -76,7 +89,11 @@ export default function ProposalDetail() {
     try {
       const r = await fetch(url, { method: "POST", headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
       const d = await r.json().catch(() => null);
-      if (!r.ok) throw new Error();
+      if (!r.ok) {
+        notify(d?.error === "insufficient_usdc" ? "Not enough USDC in your wallet" : d?.error === "self_backing" ? "You can't back your own raise" : "Something went wrong");
+        setBusy(false);
+        return;
+      }
       notify(d?.spawned_grid_id ? "Fully funded — project Grid spawned ✓" : d?.minted?.length ? `${msg} · soulbound credential minted` : msg);
       window.dispatchEvent(new Event("neugrid:refresh-me"));
       await reload();
@@ -138,13 +155,32 @@ export default function ProposalDetail() {
           <div className="ng-panel p-4">
             <div className="flex items-center gap-3">
               <MatrixAvatar seed={p.proposal_id} size={44} shape="square" />
-              <div className="min-w-0"><div className="truncate text-sm font-bold text-neon">{p.title}</div><div className="text-[10px] text-ink-dim">{p.category} · by {view.is_author ? "you" : p.author_id}</div></div>
+              <div className="min-w-0"><div className="truncate text-sm font-bold text-neon">{p.title}</div><div className="text-[10px] text-ink-dim">{p.category} · by {view.is_author ? "you" : view.founder?.username ?? p.author_id}</div></div>
             </div>
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
               <Mark plain accent={p.status === "funded" ? "neon" : "cyan"} className="!text-[10px]">{p.status}</Mark>
               {mvp && <Mark plain accent="cyan" className="!text-[10px]"><IconBolt className="h-3 w-3" />Echo MVP</Mark>}
             </div>
           </div>
+
+          {/* FOUNDER — who is asking, verifiable (the anti-pitch-deck) */}
+          {view.founder && (
+            <div className="ng-card p-3.5">
+              <div className="ng-label mb-2 flex items-center gap-2 !text-ink-dim"><span className="text-neon"><IconUser className="h-4 w-4" /></span>Founder</div>
+              <Link href={`/talent/${view.founder.id}`} className="flex items-center gap-2.5 transition hover:opacity-90">
+                <MatrixAvatar seed={view.founder.username} size={36} shape="circle" />
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-bold text-neon">{view.founder.username}{view.is_author && <span className="ml-1 text-[10px] text-ink-faint">(you)</span>}</div>
+                  <div className="text-[10px] text-ink-dim">rep <span className="text-neon tnum">{view.founder.reputation}</span> · {view.founder.credentials} credentials</div>
+                </div>
+              </Link>
+              <div className="mt-2.5 divide-y divide-line text-[11px]">
+                <div className="ng-row !py-1"><span className="ng-row__k">Proof-of-builds</span><Mark plain className="!text-[11px]">{view.founder.builds}</Mark></div>
+                <div className="ng-row !py-1"><span className="ng-row__k">Jobs delivered</span><Mark plain className="!text-[11px]">{view.founder.jobs_done}</Mark></div>
+              </div>
+              <Link href={`/talent/${view.founder.id}`} className="mt-2 flex items-center gap-1 text-[11px] text-ink-dim transition hover:text-neon">Verify the full track record <IconArrowRight className="h-3 w-3" /></Link>
+            </div>
+          )}
 
           <div className="ng-card p-3.5">
             <div className="ng-label mb-2 flex items-center gap-2 !text-ink-dim"><span className="text-neon"><IconCoins className="h-4 w-4" /></span>Funding</div>
@@ -155,8 +191,8 @@ export default function ProposalDetail() {
 
           <div className="ng-card p-3.5">
             <div className="ng-label mb-2 flex items-center gap-2 !text-ink-dim"><span className="text-neon"><IconBolt className="h-4 w-4" /></span>Action</div>
-            {isOpen && !view.is_author && <FundForm busy={busy} onSubmit={fund} />}
-            {isOpen && view.is_author && <p className="text-[11px] text-ink-dim">Your raise is open — share it to attract backers.</p>}
+            {isOpen && !view.is_author && <FundForm busy={busy} balance={view.me.usdc} onSubmit={fund} />}
+            {isOpen && view.is_author && <p className="text-[11px] text-ink-dim">Your raise is open — share it to attract backers. (You can&rsquo;t back your own raise — self-funding is blocked.)</p>}
             {!isOpen && view.spawned_grid_slug && <Link href={`/grid/${view.spawned_grid_slug}`} className="ng-btn ng-btn-primary ng-btn--block"><IconNetwork className="h-3.5 w-3.5" /> Open Project Grid</Link>}
             {!isOpen && !view.spawned_grid_slug && <p className="text-[11px] text-ink-dim">This raise is {p.status}.</p>}
           </div>
@@ -174,7 +210,7 @@ export default function ProposalDetail() {
             </div>
             <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-[11px] text-ink-dim">
               <span>Category: <span className="text-ink">{p.category}</span></span>
-              <span>By: <span className="text-ink">{view.is_author ? "you" : p.author_id}</span></span>
+              <span>By: <Link href={`/talent/${p.author_id}`} className="text-neon transition hover:text-glow">{view.is_author ? "you" : view.founder?.username ?? p.author_id}</Link>{view.founder ? <span className="text-ink-faint"> · rep {view.founder.reputation}</span> : null}</span>
               <span>Opened: <Mark plain>{new Date(p.created_at).toLocaleDateString()}</Mark></span>
             </div>
             <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1.5 text-[11px]">
@@ -186,7 +222,7 @@ export default function ProposalDetail() {
             {/* funding progress — the headline */}
             <div className="mt-5">
               <div className="mb-1.5 flex items-end justify-between">
-                <div><span className="ng-stat__v !text-2xl text-neon text-glow tnum">{view.raised.toLocaleString()}</span><span className="text-sm text-ink-dim"> / {p.ask_amount.toLocaleString()} Pulse</span></div>
+                <div><span className="ng-stat__v !text-2xl text-neon text-glow tnum">${view.raised.toLocaleString()}</span><span className="text-sm text-ink-dim"> / ${p.ask_amount.toLocaleString()} USDC</span></div>
                 <div className="text-right text-[11px] text-ink-dim">{view.backers} backers · {pct}%</div>
               </div>
               <ProgressBar percent={pct} />
@@ -195,13 +231,39 @@ export default function ProposalDetail() {
             </div>
           </Bracket>
 
+          {/* THE PRODUCT — try the actual software before you back it */}
+          {view.build && (view.build.has_preview || view.build.deployed_slug) && (
+            <section>
+              <div className="ng-label mb-3 flex items-center gap-2 !text-base !tracking-normal !text-neon"><IconRocket className="h-4 w-4" />Live demo — try it</div>
+              <div className="ng-card overflow-hidden">
+                {view.build.has_preview && (
+                  <iframe
+                    src={`/api/echo/builds/${view.build.build_id}/preview`}
+                    sandbox="allow-scripts"
+                    className="h-[380px] w-full border-b border-line bg-black/40"
+                    title={`${view.build.title} — live demo`}
+                  />
+                )}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 p-3 text-[11px]">
+                  <span className="text-ink-dim">{view.build.title} <span className="text-ink-faint">v{view.build.version} · {view.build.files} files</span></span>
+                  <span className="flex flex-wrap gap-1.5">{view.build.stack.slice(0, 5).map((s) => <Tag key={s}>{s}</Tag>)}</span>
+                  <span className="ml-auto flex items-center gap-3">
+                    {view.build.deployed_slug && <a href={`/d/${view.build.deployed_slug}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-neon transition hover:text-glow"><IconRocket className="h-3 w-3" />Open live app</a>}
+                    {view.build.product_id && <Link href={`/gridx/${view.build.product_id}`} className="flex items-center gap-1 text-cyan transition hover:opacity-80"><IconLayers className="h-3 w-3" />On GridX</Link>}
+                  </span>
+                </div>
+              </div>
+              <p className="mt-1.5 text-[10px] text-ink-faint">Sandboxed render of the real MVP the founder sealed — the same files the proof hash covers.</p>
+            </section>
+          )}
+
           {/* proof-of-build MVP — real */}
           {mvp && (
             <section>
               <div className="ng-label mb-3 flex items-center gap-2 !text-base !tracking-normal !text-neon"><IconShield className="h-4 w-4" />Proof-of-build MVP</div>
               <div className="ng-card p-3.5">
                 <div className="divide-y divide-line text-[11px]">
-                  <div className="ng-row !py-1.5"><span className="ng-row__k">Attestation</span><span className="ng-row__v"><Mark plain>{mvp.proof_of_build}</Mark></span></div>
+                  <div className="ng-row !py-1.5"><span className="ng-row__k">Attestation</span><span className="ng-row__v"><Mark plain>{view.build?.proof ?? mvp.proof_of_build}</Mark></span></div>
                   <div className="ng-row !py-1.5"><span className="ng-row__k">Artifact</span><span className="ng-row__v">{mvp.artifact_id}</span></div>
                   <div className="ng-row !py-1.5"><span className="ng-row__k">Kind</span><span className="ng-row__v">{mvp.kind}</span></div>
                   <div className="ng-row !py-1.5"><span className="ng-row__k">Built with Echo</span><span className="ng-row__v !text-neon">{mvp.built_with_echo ? "Yes" : "No"}</span></div>
@@ -285,18 +347,50 @@ export default function ProposalDetail() {
                 <div className="space-y-2">
                   {view.backer_list.map((b, i) => (
                     <div key={i} className="flex items-center justify-between gap-2">
-                      <span className="flex min-w-0 items-center gap-2"><MatrixAvatar seed={b.backer_id} size={20} shape="circle" /><span className="truncate text-[11px] text-ink-dim">{b.backer_id === view.me.id ? "you" : b.backer_id}</span></span>
-                      <span className="shrink-0 text-[11px] text-neon tnum">{b.amount.toLocaleString()}</span>
+                      <span className="flex min-w-0 items-center gap-2"><MatrixAvatar seed={b.name ?? b.backer_id} size={20} shape="circle" /><span className="truncate text-[11px] text-ink-dim">{b.backer_id === view.me.id ? "you" : b.name ?? b.backer_id}</span></span>
+                      <span className="shrink-0 text-[11px] text-neon tnum">${b.amount.toLocaleString()}</span>
                     </div>
                   ))}
                 </div>
               )}
           </div>
 
-          {view.spawned_grid_slug && (
+          {(view.origin_grid || view.spawned_grid_slug) && (
             <div className="ng-card p-3.5">
               <div className="ng-label mb-2 flex items-center gap-2 !text-ink-dim"><span className="text-neon"><IconNetwork className="h-4 w-4" /></span>Project Grid</div>
-              <Link href={`/grid/${view.spawned_grid_slug}`} className="flex items-center justify-between text-[12px] text-ink transition hover:text-neon">Spawned from this raise <IconArrowRight className="h-3 w-3 text-neon" /></Link>
+              {view.origin_grid ? (
+                <Link href={`/grid/${view.origin_grid.slug}`} className="flex items-center justify-between text-[12px] text-ink transition hover:text-neon">
+                  <span className="min-w-0 truncate">{view.origin_grid.name} <span className="text-ink-faint">· {view.origin_grid.members} members</span></span>
+                  <IconArrowRight className="h-3 w-3 shrink-0 text-neon" />
+                </Link>
+              ) : (
+                <Link href={`/grid/${view.spawned_grid_slug}`} className="flex items-center justify-between text-[12px] text-ink transition hover:text-neon">Spawned from this raise <IconArrowRight className="h-3 w-3 text-neon" /></Link>
+              )}
+              {view.spawned_grid_slug && view.origin_grid && view.origin_grid.slug !== view.spawned_grid_slug && (
+                <Link href={`/grid/${view.spawned_grid_slug}`} className="mt-1.5 flex items-center justify-between text-[11px] text-ink-dim transition hover:text-neon">Spawned project Grid <IconArrowRight className="h-3 w-3 text-neon" /></Link>
+              )}
+            </div>
+          )}
+
+          {/* TEAM — the humans + agents actually building this */}
+          {(view.team?.length ?? 0) > 0 && (
+            <div className="ng-card p-3.5">
+              <div className="ng-label mb-2 flex items-center gap-2 !text-ink-dim"><span className="text-neon"><IconLayers className="h-4 w-4" /></span>Team &amp; Agents</div>
+              <div className="space-y-3">
+                {view.team!.map((t) => (
+                  <div key={t.subgrid_id}>
+                    <Link href={`/subgrid/${t.subgrid_id}`} className="flex items-center justify-between text-[12px] text-ink transition hover:text-neon">
+                      <span className="truncate">{t.name}</span><IconArrowRight className="h-3 w-3 shrink-0 text-neon" />
+                    </Link>
+                    {t.purpose && <p className="mt-0.5 text-[10px] text-ink-faint">{t.purpose}</p>}
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {t.members.map((m) => <span key={m.id} className="flex items-center gap-1 rounded border border-line px-1.5 py-0.5 text-[10px] text-ink-dim"><MatrixAvatar seed={m.name} size={14} shape="circle" />{m.name}</span>)}
+                      {t.agents.map((a) => <span key={a.id} className="flex items-center gap-1 rounded border border-cyan/25 px-1.5 py-0.5 text-[10px] text-cyan"><MatrixAvatar seed={a.id} size={14} shape="circle" />{a.name} · agent</span>)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2.5 text-[9.5px] leading-relaxed text-ink-faint">Hybrid human + agent teams — every member&rsquo;s work is verifiable on their profile.</p>
             </div>
           )}
 

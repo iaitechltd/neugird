@@ -14,9 +14,14 @@ import { newId, nowISO } from "../id";
 import * as Pulse from "./pulse";
 import * as GridRegistry from "./gridRegistry";
 import * as Echo from "./echo";
+import * as Wallets from "./wallets";
 import type { Backing, Milestone, MilestoneDraft, Proposal, ProposalStatus, Treasury } from "../types";
 
 export const PROPOSE_REPUTATION_MIN = 100;
+
+/** Escrow sink for open-raise backings — funds sit here until the raise fills
+ *  (→ the project treasury) or the raise fails (→ refund path). */
+export const GENESIS_ESCROW = "neugrid:genesis-escrow";
 
 export function reputationOf(user_id: string): number {
   const u = db.users.find((u) => u.id === user_id);
@@ -88,6 +93,11 @@ export function fundProposal(proposal_id: string, backer_id: string, amount: num
   if (!p) return { error: "not_found" };
   if (p.status !== "open") return { error: "not_open" };
   if (!(amount > 0)) return { error: "bad_amount" };
+  if (backer_id === p.author_id) return { error: "self_backing" }; // enforced here, not just hidden in the UI
+  // REAL money: a backing debits the backer's USDC into the Genesis escrow —
+  // it becomes the project treasury on a full raise, milestone-gated thereafter.
+  if (!Wallets.debitUsdc(backer_id, amount)) return { error: "insufficient_usdc" };
+  Wallets.creditUsdc(GENESIS_ESCROW, amount);
 
   db.backings.push({ backing_id: newId("back"), round_id: proposal_id, grid_id: "", backer_id, amount, created_at: nowISO() });
   const raised = raisedFor(proposal_id);
@@ -191,6 +201,16 @@ export function voteMilestone(milestone_id: string, voter_id: string, support: b
     const tre = db.treasuries.find((t) => t.treasury_id === m.treasury_id);
     if (tre) { tre.total_released += m.amount; tre.balance = Math.max(0, tre.balance - m.amount); }
     const grid = db.grids.find((g) => g.grid_id === m.grid_id);
+    // the tranche is real money: escrowed backer USDC pays out to the founder
+    // (legacy pre-escrow treasuries have nothing in the sink — they stay accounting-only)
+    if (grid && Wallets.debitUsdc(GENESIS_ESCROW, m.amount)) {
+      Wallets.creditUsdc(grid.owner_id, m.amount);
+      db.settlements.push({
+        settlement_id: newId("setl"), payer_id: GENESIS_ESCROW, payee: grid.owner_id,
+        resource: `milestone_release:${m.milestone_id}`, amount: m.amount, asset: "USDC",
+        network: "neugrid", scheme: "exact", proof: `genesis:${m.milestone_id}`, status: "settled", created_at: nowISO(),
+      });
+    }
     if (grid) {
       Pulse.recordEvent({ target_type: "user", target_id: grid.owner_id, action_type: "milestone_approved", weight: 30, reason: `Milestone "${m.title}" released by backer vote`, verification_source: "backers", dimension: "builder" });
       Pulse.recordEvent({ target_type: "grid", target_id: grid.grid_id, action_type: "milestone_approved", weight: 20, reason: `Milestone "${m.title}" released`, verification_source: "backers" });
@@ -214,6 +234,42 @@ export function proposalView(id: string) {
   const p = getProposal(id);
   if (!p) return undefined;
   const grid = db.grids.find((g) => g.spawned_from?.proposal_id === id);
+
+  // FOUNDER — the verification surface backers decide on (who is asking for money)
+  const author = db.users.find((u) => u.id === p.author_id);
+  const founder = {
+    id: p.author_id,
+    username: author?.username ?? p.author_id,
+    reputation: reputationOf(p.author_id),
+    credentials: db.attestations.filter((a) => a.subject_id === p.author_id && a.status === "active").length,
+    builds: db.builds.filter((b) => b.owner_id === p.author_id).length,
+    jobs_done: db.jobs.filter((j) => j.assignee_id === p.author_id && j.status === "paid").length,
+    skills: author?.skills ?? [],
+  };
+
+  // BUILD / DEMO — resolve the actual Echo build behind mvp_ref (live preview + deployment)
+  const build = p.mvp_ref
+    ? db.builds.find((b) => b.artifact.artifact_id === p.mvp_ref!.artifact_id || b.build_id === p.mvp_ref!.artifact_id)
+    : undefined;
+  const buildView = build
+    ? {
+        build_id: build.build_id, title: build.title, stack: build.stack, version: build.version ?? 1,
+        files: build.artifact.files?.length ?? 0,
+        has_preview: !!build.artifact.files?.some((f) => f.path === "preview/index.html"),
+        deployed_slug: build.deployment?.slug ?? null, // live at /d/<slug>
+        product_id: build.product_id ?? null, // listed on GridX
+        proof: build.artifact.proof_of_build ?? p.mvp_ref?.proof_of_build ?? null,
+      }
+    : null;
+
+  // TEAM — the origin/spawned Grid's SubGrids: humans + agents building this
+  const relatedGrid = grid ?? (build?.grid_id ? db.grids.find((g) => g.grid_id === build.grid_id) : undefined);
+  const team = (relatedGrid ? db.subgrids.filter((s) => s.parent_grid_id === relatedGrid.grid_id) : []).map((s) => ({
+    subgrid_id: s.subgrid_id, name: s.name, purpose: s.purpose ?? "",
+    members: (s.members ?? []).map((uid) => ({ id: uid, name: db.users.find((u) => u.id === uid)?.username ?? uid })),
+    agents: (s.agent_members ?? []).map((aid) => ({ id: aid, name: db.agents.find((a) => a.agent_id === aid)?.name ?? aid })),
+  }));
+
   return {
     proposal: p,
     raised: raisedFor(id),
@@ -221,5 +277,9 @@ export function proposalView(id: string) {
     spawned_grid_id: grid?.grid_id ?? null,
     spawned_grid_slug: grid?.slug ?? null,
     milestones: grid ? listMilestones(grid.grid_id) : [],
+    founder,
+    build: buildView,
+    origin_grid: relatedGrid ? { grid_id: relatedGrid.grid_id, slug: relatedGrid.slug, name: relatedGrid.name, members: relatedGrid.member_count } : null,
+    team,
   };
 }

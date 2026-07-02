@@ -6,7 +6,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { Genesis } from "@/lib/modules";
+import { Genesis, Users, Wallets } from "@/lib/modules";
 import { getCurrentUserId } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,7 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
     milestones: view.milestones.map((m) => ({ ...m, my_vote: Genesis.myMilestoneVote(m.milestone_id, uid) })),
     i_backed: Genesis.hasBacked(id, uid),
     is_author: view.proposal.author_id === uid,
-    backer_list: Genesis.backersFor(id).map((b) => ({ backer_id: b.backer_id, amount: b.amount, created_at: b.created_at })),
-    me: { id: uid, reputation: Genesis.reputationOf(uid), can_propose: Genesis.canPropose(uid), min: Genesis.PROPOSE_REPUTATION_MIN },
+    backer_list: Genesis.backersFor(id).map((b) => ({ backer_id: b.backer_id, name: Users.getUser(b.backer_id)?.username ?? b.backer_id, amount: b.amount, created_at: b.created_at })),
+    me: { id: uid, reputation: Genesis.reputationOf(uid), can_propose: Genesis.canPropose(uid), min: Genesis.PROPOSE_REPUTATION_MIN, usdc: Math.round(Wallets.balances(uid).usdc) },
   });
 }
