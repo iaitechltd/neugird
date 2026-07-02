@@ -13,7 +13,8 @@ export async function GET(request: Request) {
     const grid = GridRegistry.getGrid(m.grid_id);
     const prog = Markets.stageProgress(m);
     const stats = Markets.tradeStats(m.market_id); // real rolling-24h
-    return { ...m, grid_name: grid?.name ?? m.base_symbol, grid_slug: grid?.slug ?? "", marketcap: prog.marketcap, cap_target: prog.capTarget, cap_pct: prog.capPct, change: stats.change, vol24h: stats.volume };
+    const series = Markets.candles(m.market_id, "1D", 30).map((c) => c.c); // real 30D closes (card sparkline)
+    return { ...m, grid_name: grid?.name ?? m.base_symbol, grid_slug: grid?.slug ?? "", marketcap: prog.marketcap, cap_target: prog.capTarget, cap_pct: prog.capPct, change: stats.change, vol24h: stats.volume, series };
   });
   return NextResponse.json({ markets });
 }

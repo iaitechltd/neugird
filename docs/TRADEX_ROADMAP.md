@@ -121,15 +121,15 @@ Show / do:
 
 ## P3 — Economy & token
 
-- ❌ **GRID acquisition** — GRID is faucet-only. Define how users get GRID (earn via Pulse→reward, buy, or a GRID market) + the platform-token TGE (the two-layer token model in `neugrid-mechanism.md`).
+- ✅ **GRID acquisition** — BUILT (2026-06-30): earn via the Rewards ledger (Pulse→allocation→TGE vesting) + buy on the `gridMarket` GRID/USDC AMM (treasury-seeded, "Acquire GRID" on `/me`). The faucet stays dev-only.
 - 🟡 **Wallets / deposit-withdraw** — currently a dev faucet (everyone starts funded). Add real balance on/off-ramp (ties to Stage B).
 
 ---
 
 ## P3 — Stage B (real chain) & infra
 
-- 🟡 **On-chain settlement** — USDC/GRID are accounting units; wire real Solana settlement via the scaffolded `src/lib/chain` adapters (x402/USDC + SAS) — see `memory/crypto-rails.md`. Needs the deploy env.
-- 🟡 **Postgres** — swap the store via `src/lib/store-postgres.ts` (`positions`/`orders`/`wallets`/`listingStakes` already in the schema + SPECS). See `memory/neugrid-infra.md`.
+- 🟡 **On-chain settlement** — the chain rails are now DEVNET-VALIDATED end-to-end (2026-07-02: x402 paid round-trip + SAS mint/revoke; prod runs devnet chain mode). TradeX trade/perp settlement itself is still the in-platform ledger; mainnet is gated on compliance counsel — see `memory/crypto-rails.md`.
+- ✅ **Postgres** — DONE (2026-07-02): prod (Cloud Run) hydrates from Cloud SQL and snapshots back; the full demo store was migrated + round-trip verified. See `memory/neugrid-infra.md`.
 
 ---
 

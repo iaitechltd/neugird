@@ -16,35 +16,22 @@ import { Area, Gauge } from "@/components/app/charts";
 import { Decrypt } from "@/components/app/typefx";
 import type { Market, MarketStage } from "@/lib/types";
 
-type Mkt = Market & { grid_name: string; grid_slug: string; marketcap?: number; cap_target?: number; cap_pct?: number; vol24h?: number };
+type Mkt = Market & { grid_name: string; grid_slug: string; marketcap?: number; cap_target?: number; cap_pct?: number; vol24h?: number; series?: number[] };
 const STAGES: (MarketStage | "all")[] = ["all", "alpha", "spot", "futures"];
 
 const money = (n: number) => (n >= 1e6 ? `$${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${Math.round(n)}`);
 
-/* Deterministic neon price series from the market id — SSR-safe (no Date/random). */
-function genSeries(seed: string, n = 18): number[] {
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < seed.length; i++) { h ^= seed.charCodeAt(i); h = Math.imul(h, 16777619); }
-  const out: number[] = [];
-  let v = 40 + (h % 30);
-  for (let i = 0; i < n; i++) {
-    h ^= h << 13; h ^= h >>> 17; h ^= h << 5; h >>>= 0;
-    v = Math.max(6, v + ((h % 1000) / 1000 - 0.4) * 9);
-    out.push(Math.round(v * 100) / 100);
-  }
-  return out;
-}
-
 /* A tokenized market card — identity, ROI, price spark, and the Ascension Arc
- * (real progress toward the next stage's market-cap target). */
+ * (real progress toward the next stage's market-cap target). The spark + ROI are
+ * the market's REAL 30D candle closes (flat line when it has no trade history). */
 function MarketCard({ m }: { m: Mkt }) {
-  const s = genSeries(m.market_id);
+  const s = m.series && m.series.length > 1 ? m.series : [m.price ?? 0, m.price ?? 0];
   const roi = s[0] ? ((s[s.length - 1] - s[0]) / s[0]) * 100 : 0;
   const up = roi >= 0;
   const color = up ? "#00ff00" : "#ff4d5e";
   const ascended = m.stage === "futures";
   return (
-    <Link href={`/market/${m.market_id}`} className="ng-card group mb-3 flex break-inside-avoid flex-col p-4 transition hover:!border-neon/40">
+    <Link href={`/market/${m.market_id}`} className="ng-card group flex flex-col p-4 transition hover:!border-neon/40">
       {/* identity + status */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
@@ -140,10 +127,12 @@ export default function MarketsPage() {
             })}
           </div>
 
-          {markets === null && <div className="columns-2 gap-3 lg:[column-count:var(--cols)]" style={{ "--cols": 3 + closed } as React.CSSProperties}>{[0, 1, 2, 3].map((i) => <div key={i} className="ng-card mb-3 h-72 animate-pulse opacity-40" />)}</div>}
+          {markets === null && <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>{[0, 1, 2, 3].map((i) => <div key={i} className="ng-card h-72 animate-pulse opacity-40" />)}</div>}
           {markets && filtered.length === 0 && <Panel><div className="p-8 text-center text-sm text-ink-dim">No markets yet — a project graduates here after it delivers and launches on Alpha.</div></Panel>}
           {filtered.length > 0 && (
-            <div className="columns-2 gap-3 lg:[column-count:var(--cols)]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
+            // grid, not masonry: exact per-row counts (3 → 4 → 5 as panels close); multicol
+            // balancing leaves columns empty with few markets, stretching cards to 2-up
+            <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
               {filtered.map((m) => <MarketCard key={m.market_id} m={m} />)}
             </div>
           )}
