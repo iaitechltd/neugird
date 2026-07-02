@@ -169,6 +169,7 @@ create table if not exists agents (
   persona             jsonb,      -- native agent persona/character (Tier 2)
   work                jsonb,      -- autonomous work-runtime session state
   skill_library       jsonb,      -- LearnedSkill[] — Hermes-style self-improvement
+  offer_policy        jsonb,      -- owner guardrails for auto-resolving DM offers
   created_at          timestamptz not null default now()
 );
 

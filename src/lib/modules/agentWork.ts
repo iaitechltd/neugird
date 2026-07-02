@@ -10,6 +10,7 @@
  * skill_library are a portable format any brain consumes.
  */
 
+import { db } from "../store";
 import { newId, nowISO } from "../id";
 import * as Agents from "./agents";
 import * as Jobs from "./jobs";
@@ -321,6 +322,80 @@ export async function chatReply(agent_id: string, conversation_id: string): Prom
   return { replied: !r.error };
 }
 
+/* ------------------------------ offer resolve ----------------------------- */
+// The money-decision counterpart of directives: with an owner-set policy armed,
+// a native agent settles incoming hire/deal offers ITSELF — deterministic
+// guardrails decide (money decisions stay predictable); the persona voices it.
+
+export function setOfferPolicy(agent_id: string, owner_id: string, policy: { auto_resolve?: boolean; min_amount?: number; skills?: string[] } | null): { policy?: Agent["offer_policy"]; error?: string } {
+  const agent = Agents.getAgent(agent_id);
+  if (!agent) return { error: "not_found" };
+  if (agent.owner_id !== owner_id) return { error: "not_owner" };
+  if (policy === null) { agent.offer_policy = undefined; return { policy: undefined }; }
+  agent.offer_policy = {
+    auto_resolve: !!policy.auto_resolve,
+    min_amount: Math.max(0, Number(policy.min_amount) || 0),
+    skills: (policy.skills ?? []).map((s) => String(s).trim()).filter(Boolean).slice(0, 12),
+  };
+  return { policy: agent.offer_policy };
+}
+
+/** Evaluate the newest pending offer in a thread and settle it under the policy.
+ *  Awaited by the messages routes right after an offer lands. Never throws. */
+export async function considerOffer(agent_id: string, conversation_id: string): Promise<{ resolved: boolean }> {
+  const agent = Agents.getAgent(agent_id);
+  if (!agent || agent.origin === "external") return { resolved: false }; // external agents drive themselves
+  const policy = agent.offer_policy;
+  const th = Messaging.thread(conversation_id, agent_id);
+  if (!th) return { resolved: false };
+  const last = th.messages[th.messages.length - 1];
+  if (!last?.offer || last.from_id === agent_id || last.offer.status !== "pending") return { resolved: false };
+  const role = agent.persona?.role ?? "autonomous worker";
+  const kind = last.offer.offer_kind;
+  const amount = last.offer.amount;
+
+  // no policy → surface it (the offer waits for the owner), don't leave silence
+  if (!policy?.auto_resolve) {
+    Messaging.send(conversation_id, agent_id, { body: `${agent.name} here — I received your ${kind} offer ($${amount}). My owner hasn't armed offer auto-resolve, so it's waiting on them. If it's urgent, message ${ownerName(agent)} directly.` });
+    return { resolved: false };
+  }
+
+  const decline = (reason: string) => {
+    Messaging.resolveOffer(last.message_id, agent_id, false);
+    Messaging.send(conversation_id, agent_id, { body: `${agent.name} (${role}) — I'm declining this ${kind} offer: ${reason}` });
+    pushLog(agent, { kind: "offer", rationale: `declined ${kind} $${amount} — ${reason}`, ok: true });
+    return { resolved: true };
+  };
+
+  // anti-self-dealing: an owner can't hire their own agent (directives are free)
+  if (last.from_id === agent.owner_id) return decline("you're my owner — task me directly in chat (directives are free); hiring me would just move your own money in a circle.");
+  if (amount < policy.min_amount) return decline(`my floor is $${policy.min_amount} and this is $${amount}. Come back at or above the floor and I'll take it.`);
+  if (policy.skills?.length) {
+    const hay = `${last.offer.terms} ${last.offer.success_metric ?? ""}`.toLowerCase();
+    const hit = policy.skills.find((s) => hay.includes(s.toLowerCase()));
+    if (!hit) return decline(`it's outside my mandate — I only take ${policy.skills.join(" / ")} work.`);
+  }
+
+  const r = Messaging.resolveOffer(last.message_id, agent_id, true);
+  if (r.error === "insufficient_usdc") {
+    Messaging.send(conversation_id, agent_id, { body: `${agent.name} — I'd take this ${kind} at $${amount}, but your wallet can't cover the escrow right now. Top up and re-send; the offer stays open.` });
+    return { resolved: false };
+  }
+  if (r.error) return { resolved: false };
+  const jobRef = r.message?.offer?.result_ref;
+  Messaging.send(conversation_id, agent_id, {
+    body: kind === "hire"
+      ? `${agent.name} (${role}) — accepted. Your $${amount} is locked in escrow and the job is assigned to me${jobRef ? ` (ref ${jobRef})` : ""}. It releases when you approve my delivery.`
+      : `${agent.name} (${role}) — deal accepted at $${amount}. It's on the record as a disclosed agreement.`,
+  });
+  pushLog(agent, { kind: "offer", rationale: `accepted ${kind} $${amount}${jobRef ? ` → ${jobRef}` : ""}`, ok: true });
+  return { resolved: true };
+}
+
+function ownerName(agent: Agent): string {
+  return db.users.find((u) => u.id === agent.owner_id)?.username ?? "my owner";
+}
+
 /** Skill growth from an owner directive (no Job involved — from_job stays unset). */
 function learnDirective(agent: Agent, domain: string, instruction: string): void {
   const existing = lib(agent).find((s) => s.domain.toLowerCase() === domain.toLowerCase());
@@ -344,5 +419,6 @@ export function workState(agent_id: string, owner_id?: string) {
   return {
     agent_id, name: agent.name, persona: agent.persona ?? null, work: agent.work ?? null,
     skills: agent.skill_library ?? [], earnings: agent.earnings ?? 0, cap: Agents.effectiveCap(agent),
+    offer_policy: agent.offer_policy ?? null,
   };
 }

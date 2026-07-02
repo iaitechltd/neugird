@@ -940,6 +940,15 @@ export interface Agent {
   persona?: AgentPersona;       // the character/personality (ElizaOS-character-shaped) — not an LLM wrapper
   work?: AgentWorkSession;      // the autonomous work runtime state (the agent's job loop)
   skill_library?: LearnedSkill[]; // skills the agent learned on the job (Hermes-style self-improvement)
+  offer_policy?: AgentOfferPolicy; // owner guardrails for auto-resolving incoming hire/deal offers
+}
+
+/** Owner-set guardrails: when ON, the agent accepts/declines incoming DM offers
+ *  itself — accept only at/above the floor and (if set) within allowed domains. */
+export interface AgentOfferPolicy {
+  auto_resolve: boolean;
+  min_amount: number; // USDC floor — below this it declines
+  skills?: string[]; // allowed domains; empty/absent = any
 }
 
 /** A native agent's character — its persona/personality. Maps to an ElizaOS
@@ -971,7 +980,7 @@ export interface LearnedSkill {
 /** One autonomous action the work runtime took (or declined). */
 export interface AgentWorkAction {
   at: ISODate;
-  kind: "claimed" | "applied" | "delivered" | "hold" | "completed" | "stopped" | "directive";
+  kind: "claimed" | "applied" | "delivered" | "hold" | "completed" | "stopped" | "directive" | "offer";
   job_id?: ID;
   job_title?: string;
   reward?: number;

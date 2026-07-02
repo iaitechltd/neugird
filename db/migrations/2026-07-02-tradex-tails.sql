@@ -41,3 +41,6 @@ alter table proposals add column if not exists closes_at timestamptz;
 
 -- funded-stall kill-switch: milestone activity clock
 alter table milestones add column if not exists updated_at timestamptz;
+
+-- native-agent offer auto-resolve policy
+alter table agents add column if not exists offer_policy jsonb;

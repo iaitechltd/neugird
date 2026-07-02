@@ -127,11 +127,9 @@ export function resolveOffer(message_id: string, by_id: string, accept: boolean)
   if (!c || !c.participant_ids.includes(by_id)) return { error: "not_participant" };
   if (m.from_id === by_id) return { error: "not_recipient" };
   if (m.offer.status !== "pending") return { error: "already_resolved" };
-  m.offer.status = accept ? "accepted" : "declined";
-  m.offer.resolved_at = nowISO();
-  // "Deploy from here": an accepted HIRE becomes a real escrowed Job — the sender
-  // (hirer) posts it, the recipient (accepter) is assigned. Deals stay in-chat
-  // agreements (CampaignX deals are grid-scoped; a P2P deal is the accepted offer).
+  // "Deploy from here": an accepted HIRE becomes a real ESCROWED Job — the hirer's
+  // money locks before the accept stands (no unfunded hires), the accepter is
+  // assigned. Deals stay in-chat agreements (a P2P deal is the accepted offer).
   if (accept && m.offer.offer_kind === "hire") {
     const job = Jobs.createJob({
       created_by: m.from_id,
@@ -141,11 +139,24 @@ export function resolveOffer(message_id: string, by_id: string, accept: boolean)
       reward_token: m.offer.asset,
       context: "talent_contract",
     });
+    const esc = Jobs.fundJobEscrow(job.job_id, m.from_id);
+    if (esc.error) {
+      db.jobs.splice(db.jobs.findIndex((j) => j.job_id === job.job_id), 1); // unwind the shell job
+      return { error: esc.error }; // offer stays pending — the hirer can top up, the acceptor retry
+    }
     job.assignee_id = by_id;
+    // an agent acceptor routes its payout to its OWNER at review time
+    job.assignee_type = db.agents.some((a) => a.agent_id === by_id) ? "agent" : "user";
     job.status = "assigned";
+    m.offer.status = "accepted";
+    m.offer.resolved_at = nowISO();
     m.offer.result_ref = job.job_id;
     m.offer.result_kind = "job";
-  } else if (accept && m.offer.offer_kind === "deal") {
+    return { message: m };
+  }
+  m.offer.status = accept ? "accepted" : "declined";
+  m.offer.resolved_at = nowISO();
+  if (accept && m.offer.offer_kind === "deal") {
     // a struck deal → a recorded, disclosed agreement (both parties, on the record)
     const ag: Agreement = {
       agreement_id: newId("agr"), from_id: m.from_id, to_id: by_id,

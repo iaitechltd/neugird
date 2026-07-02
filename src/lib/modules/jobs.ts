@@ -100,6 +100,20 @@ export function createJob(input: CreateJobInput): Job {
   return job;
 }
 
+/** Lock a job's reward in escrow from `funder_id` (accepted hire offers use this —
+ *  the same debit → JOB_ESCROW → receipt shape as postFundedJob/selectApplicant). */
+export function fundJobEscrow(job_id: string, funder_id: string): { escrow_id?: string; error?: string } {
+  const job = getJob(job_id);
+  if (!job) return { error: "not_found" };
+  if (job.escrow_id) return { escrow_id: job.escrow_id }; // already funded
+  if (!(job.reward_amount > 0)) return { error: "invalid_reward" };
+  if (!Wallets.debitUsdc(funder_id, job.reward_amount)) return { error: "insufficient_usdc" };
+  Wallets.creditUsdc(JOB_ESCROW, job.reward_amount);
+  job.escrow_id = newId("esc");
+  recordReceipt(funder_id, JOB_ESCROW, `job_escrow:${job.job_id}`, job.reward_amount);
+  return { escrow_id: job.escrow_id };
+}
+
 /** Post a USDC-funded Job: escrow the reward from `funder_id` up front, then
  *  create the Job (reward_token "USDC"). The reward releases to the worker on
  *  approval, or refunds on rejection. Used by agents posting paid work. */

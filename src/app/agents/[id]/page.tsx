@@ -16,7 +16,7 @@ import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import OrbPanel from "@/components/app/OrbPanel";
 import type { Agent, AgentPersona, AgentWorkSession, Job, LearnedSkill } from "@/lib/types";
 
-type WorkView = { persona: AgentPersona | null; work: AgentWorkSession | null; skills: LearnedSkill[]; earnings: number; cap: number };
+type WorkView = { persona: AgentPersona | null; work: AgentWorkSession | null; skills: LearnedSkill[]; earnings: number; cap: number; offer_policy?: { auto_resolve: boolean; min_amount: number; skills?: string[] } | null };
 
 type Cred = { attestation_id: string; schema: string; title: string; fields: Record<string, string | number>; status: string };
 type View = { agent: Agent; owner: { id: string; username: string } | null; jobs: Job[]; credentials: Cred[]; x402_spend: number };
@@ -58,6 +58,7 @@ export default function AgentDetail() {
   const [editPersona, setEditPersona] = useState(false);
   const [pForm, setPForm] = useState({ role: "", bio: "", personality: "", goals: "", style: "", knowledge: "" });
   const [armForm, setArmForm] = useState({ skills: "", max_jobs: 5, max_reward: 0 });
+  const [policyForm, setPolicyForm] = useState({ auto_resolve: false, min_amount: "", skills: "" });
   const [busy, setBusy] = useState(false);
 
   const refreshWork = useCallback(() => {
@@ -68,6 +69,7 @@ export default function AgentDetail() {
       const p = d.persona ?? {};
       setPForm({ role: p.role ?? "", bio: p.bio ?? "", personality: p.personality ?? "", goals: p.goals ?? "", style: p.style ?? "", knowledge: (p.knowledge ?? []).join(", ") });
       setArmForm((f) => ({ ...f, max_reward: f.max_reward || Math.round(d.cap) }));
+      if (d.offer_policy) setPolicyForm({ auto_resolve: d.offer_policy.auto_resolve, min_amount: String(d.offer_policy.min_amount || ""), skills: (d.offer_policy.skills ?? []).join(", ") });
     }).catch(() => {});
   }, [id]);
   useEffect(() => { if (view && view.agent.origin !== "external") refreshWork(); }, [view, refreshWork]);
@@ -80,6 +82,12 @@ export default function AgentDetail() {
       if (!r.ok) { notify((d as { error?: string }).error || "Failed"); return null; }
       return d as Record<string, unknown>;
     } finally { setBusy(false); }
+  }
+  async function savePolicy(next?: Partial<typeof policyForm>) {
+    const f = { ...policyForm, ...next };
+    setPolicyForm(f);
+    const d = await workPost("persona", { offer_policy: { auto_resolve: f.auto_resolve, min_amount: Number(f.min_amount) || 0, skills: f.skills.split(",").map((s) => s.trim()).filter(Boolean) } });
+    if (d) { notify(f.auto_resolve ? "Offer auto-resolve armed" : "Offer policy saved (off)"); refreshWork(); }
   }
   async function savePersona() {
     const d = await workPost("persona", { ...pForm, knowledge: pForm.knowledge.split(",").map((s) => s.trim()).filter(Boolean) });
@@ -187,6 +195,19 @@ export default function AgentDetail() {
                     <button disabled={busy} onClick={savePersona} className="ng-btn ng-btn-primary ng-btn--sm ng-btn--block">Save persona</button>
                   </div>
                 )}
+              </Sec>
+
+              <Sec icon={<IconTarget className="h-3.5 w-3.5" />} title="Offer Policy" action={
+                <button onClick={() => savePolicy({ auto_resolve: !policyForm.auto_resolve })} role="switch" aria-checked={policyForm.auto_resolve} className={`relative h-5 w-9 shrink-0 rounded-full transition ${policyForm.auto_resolve ? "bg-neon" : "bg-line"}`}>
+                  <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-bg transition-all ${policyForm.auto_resolve ? "left-[18px]" : "left-0.5"}`} />
+                </button>
+              }>
+                <p className="mb-2 text-[10px] leading-relaxed text-ink-faint">Armed, the agent settles incoming hire/deal offers itself: accepts at or above the floor (within the allowed domains), declines the rest in persona. Accepted hires escrow the hirer&rsquo;s USDC instantly.</p>
+                <div className="flex gap-2">
+                  <input value={policyForm.min_amount} onChange={(e) => setPolicyForm((f) => ({ ...f, min_amount: e.target.value.replace(/[^0-9.]/g, "") }))} inputMode="decimal" placeholder="Floor $" className="ng-input w-24 !py-1.5 text-[11px]" />
+                  <input value={policyForm.skills} onChange={(e) => setPolicyForm((f) => ({ ...f, skills: e.target.value }))} placeholder="Allowed domains (comma) — blank = any" className="ng-input !py-1.5 text-[11px]" />
+                  <button disabled={busy} onClick={() => savePolicy()} className="ng-btn ng-btn--sm shrink-0 !py-1.5 text-[10px] disabled:opacity-40">Save</button>
+                </div>
               </Sec>
 
               <Sec icon={<IconBolt className="h-3.5 w-3.5" />} title="Autonomous Work" action={<span className="flex items-center gap-2">{work.work?.active ? <span className="flex items-center gap-1.5 text-[10px] text-neon"><span className="ng-led" />running</span> : <span className="text-[10px] text-ink-faint">idle</span>}<button onClick={refreshWork} title="refresh" className="text-ink-faint transition hover:text-neon"><IconRefresh className="h-3 w-3" /></button></span>}>

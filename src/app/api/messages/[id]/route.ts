@@ -31,7 +31,10 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   // before we return, so the refreshed thread already carries its reply
   if (body?.action !== "resolve") {
     const t = Messaging.thread(id, uid);
-    if (t?.counterparty.type === "agent") await AgentWork.chatReply(t.counterparty.id, id);
+    if (t?.counterparty.type === "agent") {
+      if (body?.offer) await AgentWork.considerOffer(t.counterparty.id, id);
+      else await AgentWork.chatReply(t.counterparty.id, id);
+    }
   }
   return NextResponse.json(Messaging.thread(id, uid));
 }

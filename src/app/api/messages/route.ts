@@ -31,7 +31,11 @@ export async function POST(request: Request) {
     ? Messaging.sendTo(uid, to_id, { kind: body?.kind, body: body?.body, offer: body?.offer, context })
     : Messaging.open(uid, to_id, context);
   if (r.error) return NextResponse.json({ error: r.error }, { status: STATUS[r.error] ?? 400 });
-  // a native agent answers its own DMs (in persona, brain-driven) before we return
-  if (hasContent && Agents.getAgent(to_id)) await AgentWork.chatReply(to_id, r.conversation!.conversation_id);
+  // a native agent answers its own DMs (in persona, brain-driven) before we return;
+  // an incoming OFFER is settled by the agent itself under its owner's policy
+  if (hasContent && Agents.getAgent(to_id)) {
+    if (body?.offer) await AgentWork.considerOffer(to_id, r.conversation!.conversation_id);
+    else await AgentWork.chatReply(to_id, r.conversation!.conversation_id);
+  }
   return NextResponse.json({ conversation_id: r.conversation!.conversation_id }, { status: 201 });
 }
