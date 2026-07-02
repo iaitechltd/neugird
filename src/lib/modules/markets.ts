@@ -429,15 +429,51 @@ export function candles(market_id: string, tf = "1H", n = 60): OHLC[] {
 
 /* --- Limit orders (fill if marketable, else rest) + synthetic order book --- */
 
+/** Max base qty executable before the AMM's marginal price crosses `limit`
+ *  (constant product: price p = quote/base ⇒ at p=limit, base' = √(k/limit)). */
+function qtyWithinLimit(m: Market, side: "buy" | "sell", limit: number): number {
+  const base = m.base_reserve ?? 0, quote = m.quote_reserve ?? 0;
+  const k = base * quote;
+  if (!(k > 0) || !(limit > 0)) return 0;
+  const baseAtLimit = Math.sqrt(k / limit);
+  return side === "buy" ? Math.max(0, base - baseAtLimit) : Math.max(0, baseAtLimit - base);
+}
+
+/** GROSS USDC that buys exactly `take` base off the curve — the average price sits
+ *  below the marginal limit, so converting at the limit price would overpay and
+ *  push the price PAST the limit. The USDC fee is netted out of the curve flow by
+ *  executeSwap, so gross it up — EXCEPT for GRID-fee payers, whose full notional
+ *  hits the curve (a GRID payer who falls back to USDC mid-swap lands marginally
+ *  UNDER the limit, the safe side). */
+function quoteInForBase(m: Market, user_id: string, take: number): number {
+  const base = m.base_reserve ?? 0, quote = m.quote_reserve ?? 0;
+  const k = base * quote;
+  if (!(k > 0) || !(take > 0) || take >= base) return 0;
+  const net = k / (base - take) - quote;
+  const paysGrid = !!Wallets.get(user_id).pay_fees_in_grid;
+  return paysGrid ? net : net / (1 - Params.get("tradex_fee_bps") / 10000);
+}
+
+const FILL_DUST = 1e-6; // remainders below this count as fully filled
+
 function fillCrossedOrders(market_id: string): void {
   const m = getMarket(market_id);
   if (!m) return;
   for (const o of (db.orders ??= [])) {
     if (o.status !== "open" || o.market_id !== market_id) continue;
+    if (o.kind === "perp_entry") continue; // swept by Perps.settle, not the spot book
     const marketable = o.side === "buy" ? o.price >= priceOf(m) : o.price <= priceOf(m);
     if (!marketable) continue;
-    const r = o.side === "buy" ? executeSwap(m, o.user_id, "buy", o.qty * o.price) : executeSwap(m, o.user_id, "sell", o.qty);
-    if (!r.error) { o.status = "filled"; o.filled = o.qty; o.filled_at = nowISO(); }
+    // PARTIAL fill: execute only what keeps the marginal price within the limit;
+    // the remainder keeps resting for the next cross.
+    const remaining = o.qty - o.filled;
+    const take = Math.min(remaining, qtyWithinLimit(m, o.side, o.price));
+    if (!(take > FILL_DUST)) continue;
+    const r = o.side === "buy" ? executeSwap(m, o.user_id, "buy", quoteInForBase(m, o.user_id, take)) : executeSwap(m, o.user_id, "sell", take);
+    if (r.error) continue; // e.g. insufficient funds — leave it resting
+    o.filled += o.side === "buy" ? (r.filled ?? take) : take;
+    if (o.qty - o.filled <= FILL_DUST) { o.status = "filled"; o.filled = o.qty; }
+    o.filled_at = nowISO(); // last (partial) execution moment
   }
 }
 
@@ -446,15 +482,22 @@ export function placeLimit(market_id: string, user_id: string, side: "buy" | "se
   if (!m) return { error: "no_market" };
   if (!(price > 0) || !(qty > 0)) return { error: "bad_input" };
   const marketable = side === "buy" ? price >= priceOf(m) : price <= priceOf(m);
+  let filledNow = 0;
   if (marketable) {
-    const r = side === "buy" ? executeSwap(m, user_id, "buy", qty * price) : executeSwap(m, user_id, "sell", qty);
-    if (r.error) return { error: r.error };
-    Perps.settle(market_id);
-    return { filled: r.filled };
+    // limit semantics even when immediate: execute only up to the limit price,
+    // rest the remainder (true marketable-limit, not a market order in disguise)
+    const take = Math.min(qty, qtyWithinLimit(m, side, price));
+    if (take > 1e-6) {
+      const r = side === "buy" ? executeSwap(m, user_id, "buy", quoteInForBase(m, user_id, take)) : executeSwap(m, user_id, "sell", take);
+      if (r.error) return { error: r.error };
+      filledNow = side === "buy" ? (r.filled ?? take) : take;
+      Perps.settle(market_id);
+    }
+    if (qty - filledNow <= 1e-6) return { filled: filledNow };
   }
-  const order: LimitOrder = { order_id: newId("ord"), market_id, user_id, side, price, qty, filled: 0, status: "open", created_at: nowISO() };
+  const order: LimitOrder = { order_id: newId("ord"), market_id, user_id, side, price, qty, filled: filledNow, status: "open", created_at: nowISO(), ...(filledNow > 0 ? { filled_at: nowISO() } : {}) };
   (db.orders ??= []).push(order);
-  return { order };
+  return { order, ...(filledNow > 0 ? { filled: filledNow } : {}) };
 }
 
 export function cancelOrder(order_id: string, user_id: string): { order?: LimitOrder; error?: string } {

@@ -801,7 +801,10 @@ export interface Position {
   /** Conditional close triggers (price). Both set ⇒ OCO (first to hit closes it). */
   take_profit?: number;
   stop_loss?: number;
-  close_reason?: "manual" | "liquidation" | "take_profit" | "stop_loss";
+  /** Trailing stop: % distance behind the best mark seen since it was set. */
+  trailing_stop_pct?: number;
+  trail_anchor?: number; // best mark seen (max for long / min for short)
+  close_reason?: "manual" | "liquidation" | "take_profit" | "stop_loss" | "trailing_stop";
   /** Set when an agent opened this under a mandate (Agent Mode attribution). */
   mandate_id?: ID;
   agent_id?: ID;
@@ -818,10 +821,16 @@ export interface LimitOrder {
   side: "buy" | "sell";
   price: number; // limit price (USDC)
   qty: number; // base qty
-  filled: number;
+  filled: number; // cumulative base filled (partial fills leave the order open)
   status: "open" | "filled" | "cancelled";
   created_at: ISODate;
   filled_at?: ISODate;
+  /** Perp limit ENTRY: rests until mark crosses `price`, then opens a position
+   *  (long fills at-or-below, short at-or-above). Spot fill fields don't apply. */
+  kind?: "spot" | "perp_entry";
+  pside?: PositionSide;
+  collateral?: number;
+  leverage?: number;
 }
 
 /* ----------------------- Agent Mode (mandates) --------------------- */

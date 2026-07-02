@@ -14,7 +14,7 @@
 import { db } from "../store";
 import { newId, nowISO } from "../id";
 import * as Wallets from "./wallets";
-import type { Position, PositionSide } from "../types";
+import type { LimitOrder, Position, PositionSide } from "../types";
 
 export const MAX_LEVERAGE = 10;
 const MMR = 0.005; // maintenance-margin buffer baked into the liquidation price
@@ -89,7 +89,7 @@ function accrueFunding(p: Position, mark: number, rate: number, now: number): vo
 }
 
 /** Settle a position to USDC at `mark` (margin already net of funding). Returns PnL. */
-function closeAt(p: Position, mark: number, reason: "manual" | "liquidation" | "take_profit" | "stop_loss"): number {
+function closeAt(p: Position, mark: number, reason: NonNullable<Position["close_reason"]>): number {
   const pnl = pnlOf(p, mark);
   Wallets.creditUsdc(p.user_id, Math.max(0, p.margin + pnl));
   p.status = "closed";
@@ -130,14 +130,24 @@ export function closePosition(position_id: string, user_id: string): { position?
   return { position: p, pnl };
 }
 
-/** Set / clear a position's take-profit and stop-loss triggers (both ⇒ OCO). */
-export function setTriggers(position_id: string, user_id: string, tp: number | null | undefined, sl: number | null | undefined): { position?: Position; error?: string } {
+/** Set / clear a position's take-profit / stop-loss / trailing-stop triggers
+ *  (TP+SL ⇒ OCO; the trailing stop rides the best mark seen since it was set). */
+export function setTriggers(position_id: string, user_id: string, tp: number | null | undefined, sl: number | null | undefined, trail_pct?: number | null): { position?: Position; error?: string } {
   const p = store().find((x) => x.position_id === position_id);
   if (!p) return { error: "not_found" };
   if (p.user_id !== user_id) return { error: "not_owner" };
   if (p.status !== "open") return { error: "not_open" };
   if (tp !== undefined) p.take_profit = tp && tp > 0 ? tp : undefined;
   if (sl !== undefined) p.stop_loss = sl && sl > 0 ? sl : undefined;
+  if (trail_pct !== undefined) {
+    if (trail_pct && trail_pct > 0) {
+      p.trailing_stop_pct = Math.min(50, trail_pct);
+      p.trail_anchor = markPrice(p.market_id); // trail starts from here, never from history
+    } else {
+      p.trailing_stop_pct = undefined;
+      p.trail_anchor = undefined;
+    }
+  }
   return { position: p };
 }
 
@@ -155,9 +165,55 @@ export function settle(market_id: string): void {
     if (liqHit) { p.status = "liquidated"; p.pnl = -p.margin; p.close_reason = "liquidation"; p.closed_at = nowISO(); continue; }
     const tpHit = p.take_profit != null && (p.side === "long" ? mark >= p.take_profit : mark <= p.take_profit);
     const slHit = p.stop_loss != null && (p.side === "long" ? mark <= p.stop_loss : mark >= p.stop_loss);
+    // trailing stop: ratchet the anchor with the favorable extreme, close on pullback
+    let trailHit = false;
+    if (p.trailing_stop_pct != null) {
+      const a = p.trail_anchor ?? mark;
+      p.trail_anchor = p.side === "long" ? Math.max(a, mark) : Math.min(a, mark);
+      const stop = p.side === "long" ? p.trail_anchor * (1 - p.trailing_stop_pct / 100) : p.trail_anchor * (1 + p.trailing_stop_pct / 100);
+      trailHit = p.side === "long" ? mark <= stop : mark >= stop;
+    }
     if (tpHit) closeAt(p, mark, "take_profit");
     else if (slHit) closeAt(p, mark, "stop_loss");
+    else if (trailHit) closeAt(p, mark, "trailing_stop");
   }
+  fillPerpEntries(market_id, mark);
+}
+
+/** Perp limit ENTRIES resting in the order book: open the position when the mark
+ *  crosses the limit (long at-or-below, short at-or-above). Funds are debited at
+ *  trigger time — if the wallet can't cover the collateral, the entry cancels. */
+function fillPerpEntries(market_id: string, mark: number): void {
+  for (const o of db.orders ?? []) {
+    if (o.status !== "open" || o.kind !== "perp_entry" || o.market_id !== market_id) continue;
+    const hit = o.pside === "long" ? mark <= o.price : mark >= o.price;
+    if (!hit) continue;
+    const r = openPosition(market_id, o.user_id, o.pside ?? "long", o.collateral ?? 0, o.leverage ?? 1);
+    o.status = r.error ? "cancelled" : "filled";
+    o.filled_at = nowISO();
+  }
+}
+
+/** Rest a perp limit entry (or open immediately if the mark already satisfies it). */
+export function placeLimitEntry(market_id: string, user_id: string, side: PositionSide, collateral: number, leverage: number, price: number): { order?: LimitOrder; position?: Position; error?: string } {
+  const m = marketById(market_id);
+  if (!m) return { error: "no_market" };
+  if (m.stage !== "futures") return { error: "futures_only" };
+  if (!(price > 0) || !(collateral > 0)) return { error: "bad_input" };
+  const mark = markPrice(market_id);
+  if (side === "long" ? mark <= price : mark >= price) {
+    const r = openPosition(market_id, user_id, side, collateral, leverage);
+    if (r.error) return { error: r.error };
+    return { position: r.position };
+  }
+  const order = {
+    order_id: newId("ord"), market_id, user_id,
+    side: side === "long" ? ("buy" as const) : ("sell" as const),
+    price, qty: 0, filled: 0, status: "open" as const, created_at: nowISO(),
+    kind: "perp_entry" as const, pside: side, collateral, leverage: Math.max(1, Math.min(MAX_LEVERAGE, Math.floor(leverage || 1))),
+  };
+  (db.orders ??= []).push(order);
+  return { order };
 }
 
 /** @deprecated alias — use settle(). Kept so existing call sites stay valid. */

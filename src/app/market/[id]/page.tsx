@@ -33,9 +33,9 @@ type GridInfo = { name: string; slug: string; description: string; category: str
 type Milestone = { title: string; status: string; amount: number; order: number };
 type Level = { price: number; qty: number; total: number };
 type Book = { asks: Level[]; bids: Level[]; price: number } | null;
-type Pos = { position_id: string; side: "long" | "short"; size: number; leverage: number; entry_price: number; margin: number; liquidation_price: number; mark: number; upnl: number; funding_paid?: number; take_profit?: number; stop_loss?: number };
+type Pos = { position_id: string; side: "long" | "short"; size: number; leverage: number; entry_price: number; margin: number; liquidation_price: number; mark: number; upnl: number; funding_paid?: number; take_profit?: number; stop_loss?: number; trailing_stop_pct?: number; trail_anchor?: number };
 type Funding = { rate: number; pays: "long" | "short" | "none"; long_oi: number; short_oi: number; interval_hours: number };
-type Order = { order_id: string; side: "buy" | "sell"; price: number; qty: number; status: string };
+type Order = { order_id: string; side: "buy" | "sell"; price: number; qty: number; filled: number; status: string; kind?: string; pside?: "long" | "short"; collateral?: number; leverage?: number };
 type Cred = { schema: string; title: string };
 type Prov = {
   grid: { name: string; slug: string; grid_type: string; lifecycle_stage: string | null };
@@ -564,15 +564,17 @@ export default function MarketTerminal() {
                           <div className="mt-1 flex items-center gap-2 text-[9px] text-ink-faint">
                             <span>Margin {money(p.margin)}</span>{(p.funding_paid ?? 0) > 0 && <span className="text-danger/70">funding −{money(p.funding_paid ?? 0)}</span>}
                             {p.take_profit ? <span className="text-neon">TP ${p.take_profit.toFixed(4)}</span> : null}{p.stop_loss ? <span className="text-danger">SL ${p.stop_loss.toFixed(4)}</span> : null}{p.take_profit && p.stop_loss ? <span className="rounded bg-cyan/15 px-1 text-cyan">OCO</span> : null}
+                            {p.trailing_stop_pct ? <span className="text-amber">TRAIL {p.trailing_stop_pct}%{p.trail_anchor ? ` @ $${p.trail_anchor.toFixed(4)}` : ""}</span> : null}
                           </div>
-                          <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); const tp = String(fd.get("tp") ?? "").trim(), sl = String(fd.get("sl") ?? "").trim(); act(`/api/markets/${id}/perp`, { action: "triggers", position_id: p.position_id, take_profit: tp ? Number(tp) : null, stop_loss: sl ? Number(sl) : null }, "TP/SL updated"); }} className="mt-1.5 flex items-center gap-1">
+                          <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); const tp = String(fd.get("tp") ?? "").trim(), sl = String(fd.get("sl") ?? "").trim(), tr = String(fd.get("trail") ?? "").trim(); act(`/api/markets/${id}/perp`, { action: "triggers", position_id: p.position_id, take_profit: tp ? Number(tp) : null, stop_loss: sl ? Number(sl) : null, trailing_pct: tr ? Number(tr) : null }, "Triggers updated"); }} className="mt-1.5 flex items-center gap-1">
                             <input name="tp" inputMode="decimal" defaultValue={p.take_profit ?? ""} placeholder="Take-profit $" className="ng-input w-full !py-1 text-[10px]" />
                             <input name="sl" inputMode="decimal" defaultValue={p.stop_loss ?? ""} placeholder="Stop-loss $" className="ng-input w-full !py-1 text-[10px]" />
+                            <input name="trail" inputMode="decimal" defaultValue={p.trailing_stop_pct ?? ""} placeholder="Trail %" className="ng-input w-24 shrink-0 !py-1 text-[10px]" />
                             <button type="submit" disabled={busy} className="ng-btn ng-btn--sm shrink-0 !py-1 text-[10px] disabled:opacity-40">Set</button>
                           </form>
                         </div>
                       ))}
-                      <p className="px-1 text-[9px] leading-relaxed text-ink-faint">TP/SL close the position when the mark crosses your level; set both for OCO (first to hit wins). Leave a field blank to clear it.</p>
+                      <p className="px-1 text-[9px] leading-relaxed text-ink-faint">TP/SL close the position when the mark crosses your level; set both for OCO (first to hit wins). Trail % follows the best mark and closes on the pullback. Leave a field blank to clear it.</p>
                     </div>
                   ) : <p className="text-xs text-ink-dim">No open positions. Open a long or short on the right.</p>)}
 
@@ -580,9 +582,9 @@ export default function MarketTerminal() {
                     <div className="space-y-1.5">
                       {d.orders.map((o) => (
                         <div key={o.order_id} className="flex items-center gap-2 px-1 text-[11px]">
-                          <span className={`w-12 font-semibold ${o.side === "buy" ? "text-neon" : "text-danger"}`}>{o.side.toUpperCase()}</span>
-                          <span className="flex-1 text-ink-dim">{compact(o.qty)} @ ${o.price.toFixed(4)}</span>
-                          <span className="text-ink-faint">limit</span>
+                          <span className={`w-12 font-semibold ${o.side === "buy" ? "text-neon" : "text-danger"}`}>{o.kind === "perp_entry" ? (o.pside ?? o.side).toUpperCase() : o.side.toUpperCase()}</span>
+                          <span className="flex-1 text-ink-dim">{o.kind === "perp_entry" ? `${money(o.collateral ?? 0)} · ${o.leverage ?? 1}×` : `${compact(o.qty)}${o.filled > 0 ? ` (${compact(o.filled)} filled)` : ""}`} @ ${o.price.toFixed(4)}</span>
+                          <span className={o.kind === "perp_entry" ? "rounded bg-cyan/15 px-1 text-[9px] text-cyan" : "text-ink-faint"}>{o.kind === "perp_entry" ? "perp entry" : o.filled > 0 ? "partial" : "limit"}</span>
                           <button onClick={() => act(`/api/markets/${id}/order`, { action: "cancel", order_id: o.order_id }, "Order cancelled")} disabled={busy} className="text-[10px] text-danger hover:underline disabled:opacity-40">Cancel</button>
                         </div>
                       ))}
@@ -705,16 +707,18 @@ export default function MarketTerminal() {
                     <div className="mt-2 flex items-center justify-between text-[10px] text-ink-faint"><span>Margin (USDC)</span><span>Bal {money(d.wallet.usdc)}</span></div>
                     <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="0" className="ng-input mt-1 !py-2 text-sm" />
                     <div className="mt-1.5 grid grid-cols-4 gap-1">{[25, 50, 75, 100].map((q) => <button key={q} onClick={() => setAmount(String(+((d.wallet.usdc) * (q / 100)).toFixed(2)))} className="rounded border border-line py-1 text-[10px] text-ink-dim transition hover:border-neon/40 hover:text-neon">{q}%</button>)}</div>
+                    <div className="mt-2 flex items-center justify-between text-[10px] text-ink-faint"><span>Limit entry $ (optional)</span><span>blank = open at mark</span></div>
+                    <input value={limitPrice} onChange={(e) => setLimitPrice(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder={`mark $${(m.price ?? 0).toFixed(4)}`} className="ng-input mt-1 !py-1.5 text-[12px]" />
                     <div className="mt-2 divide-y divide-line text-[11px]">
                       <div className="ng-row !py-1"><span className="ng-row__k">Position size</span><span className="ng-row__v font-normal">{compact(perpSize)} {m.base_symbol}</span></div>
                       <div className="ng-row !py-1"><span className="ng-row__k">Notional</span><span className="ng-row__v font-normal">{money(collateral * lev)}</span></div>
                       <div className="ng-row !py-1"><span className="ng-row__k">Est. liq (long)</span><span className="ng-row__v font-normal text-amber">${(((m.price ?? 0) * (1 - 1 / lev + 0.005)) || 0).toFixed(4)}</span></div>
                     </div>
                     <div className="mt-2 grid grid-cols-2 gap-1.5">
-                      <button onClick={() => { act(`/api/markets/${id}/perp`, { action: "open", side: "long", collateral, leverage: lev }, "Long opened"); setAmount(""); }} disabled={busy || !(collateral > 0)} className="ng-btn ng-btn-primary disabled:opacity-40">Open Long</button>
-                      <button onClick={() => { act(`/api/markets/${id}/perp`, { action: "open", side: "short", collateral, leverage: lev }, "Short opened"); setAmount(""); }} disabled={busy || !(collateral > 0)} className="ng-btn ng-btn-danger disabled:opacity-40">Open Short</button>
+                      <button onClick={() => { const lp = Number(limitPrice); act(`/api/markets/${id}/perp`, { action: "open", side: "long", collateral, leverage: lev, ...(lp > 0 ? { limit_price: lp } : {}) }, lp > 0 ? "Long entry resting" : "Long opened"); setAmount(""); setLimitPrice(""); }} disabled={busy || !(collateral > 0)} className="ng-btn ng-btn-primary disabled:opacity-40">{Number(limitPrice) > 0 ? "Limit Long" : "Open Long"}</button>
+                      <button onClick={() => { const lp = Number(limitPrice); act(`/api/markets/${id}/perp`, { action: "open", side: "short", collateral, leverage: lev, ...(lp > 0 ? { limit_price: lp } : {}) }, lp > 0 ? "Short entry resting" : "Short opened"); setAmount(""); setLimitPrice(""); }} disabled={busy || !(collateral > 0)} className="ng-btn ng-btn-danger disabled:opacity-40">{Number(limitPrice) > 0 ? "Limit Short" : "Open Short"}</button>
                     </div>
-                    <p className="mt-2 text-[9.5px] text-ink-faint">Mark = spot AMM · margin in USDC · auto-liquidation past the liq price · max {d.maxLeverage}×.</p>
+                    <p className="mt-2 text-[9.5px] text-ink-faint">Mark = spot AMM · margin in USDC · auto-liquidation past the liq price · max {d.maxLeverage}× · a limit entry opens when the mark reaches your price (long at-or-below, short at-or-above).</p>
                   </div>
                 ) : (
                   /* ALPHA + SPOT — buy / sell */

@@ -468,6 +468,13 @@ create table if not exists positions (
   opened_at         timestamptz not null default now(),
   closed_at         timestamptz,
   pnl               numeric,
+  funding_paid      numeric,    -- cumulative skew-carry paid from margin
+  last_funding_at   timestamptz,
+  take_profit       numeric,    -- conditional close triggers (TP+SL ⇒ OCO)
+  stop_loss         numeric,
+  trailing_stop_pct numeric,    -- trailing stop: % behind the best mark seen
+  trail_anchor      numeric,
+  close_reason      text,       -- manual | liquidation | take_profit | stop_loss | trailing_stop
   mandate_id        text,       -- set when an agent opened this under a mandate (Agent Mode)
   agent_id          text,
   pnl_booked        boolean     default false -- mandate has accounted this position's PnL
@@ -484,7 +491,11 @@ create table if not exists orders (
   filled     numeric     not null default 0,
   status     text        not null default 'open', -- open | filled | cancelled
   created_at timestamptz not null default now(),
-  filled_at  timestamptz
+  filled_at  timestamptz,
+  kind       text,       -- spot (default) | perp_entry (opens a position on cross)
+  pside      text,       -- perp entry side: long | short
+  collateral numeric,    -- perp entry margin (USDC), debited at trigger
+  leverage   numeric     -- perp entry leverage
 );
 
 -- Per-Grid community chat (surfaced on the market terminal + the Grid page).
