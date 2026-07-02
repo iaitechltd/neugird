@@ -313,6 +313,7 @@ create table if not exists markets (
   eligibility   jsonb,      -- GraduationCriterion[] gate to reach this stage
   status        text        not null default 'pending',
   stage_changed_at timestamptz, -- last graduation moment (holder notifications)
+  fraud_flags   jsonb,      -- Verifier fraud reports; halt+slash at quorum
   created_at    timestamptz not null default now()
 );
 

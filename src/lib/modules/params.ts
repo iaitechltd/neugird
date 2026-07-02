@@ -11,9 +11,9 @@
 
 import { db } from "../store";
 
-export type ParamKey = "tradex_fee_bps" | "echo_build_cost_grid" | "grid_market_fee_bps" | "gov_quorum_grid" | "grid_fee_discount_bps" | "campaign_ghost_days" | "echo_revision_cost_grid" | "echo_ask_cost_grid" | "echo_deploy_cost_grid";
+export type ParamKey = "tradex_fee_bps" | "echo_build_cost_grid" | "grid_market_fee_bps" | "gov_quorum_grid" | "grid_fee_discount_bps" | "campaign_ghost_days" | "echo_revision_cost_grid" | "echo_ask_cost_grid" | "echo_deploy_cost_grid" | "fraud_flag_quorum" | "agent_perf_fee_bps";
 
-export type ParamUnit = "bps" | "grid" | "days";
+export type ParamUnit = "bps" | "grid" | "days" | "count";
 
 export const DEFAULTS: Record<ParamKey, number> = {
   tradex_fee_bps: 100, // TradeX AMM trade fee (1%)
@@ -25,6 +25,8 @@ export const DEFAULTS: Record<ParamKey, number> = {
   echo_revision_cost_grid: 100, // GRID metered per Echo build REVISION (the iterate loop)
   echo_ask_cost_grid: 5, // GRID metered per Echo Personal/Analyst/Observer question
   echo_deploy_cost_grid: 50, // GRID metered per deploy to NeuGrid hosting (/d/<slug>)
+  fraud_flag_quorum: 2, // distinct Verifier fraud reports required to halt + slash a market
+  agent_perf_fee_bps: 1000, // cut of POSITIVE realized PnL to a hired trading agent (trader ≠ wallet owner)
 };
 
 /** UI labels + validation bounds (so a malicious proposal can't set fee = 10000%). */
@@ -38,6 +40,8 @@ export const META: Record<ParamKey, { label: string; unit: ParamUnit; min: numbe
   echo_revision_cost_grid: { label: "Echo revision cost", unit: "grid", min: 0, max: 5_000 },
   echo_ask_cost_grid: { label: "Echo question cost", unit: "grid", min: 0, max: 500 },
   echo_deploy_cost_grid: { label: "Echo deploy cost", unit: "grid", min: 0, max: 5_000 },
+  fraud_flag_quorum: { label: "Fraud-flag quorum", unit: "count", min: 1, max: 7 },
+  agent_perf_fee_bps: { label: "Agent performance fee", unit: "bps", min: 0, max: 5_000 }, // ≤50% of positive PnL
 };
 
 export function isKey(k: string): k is ParamKey {

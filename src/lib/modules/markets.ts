@@ -311,20 +311,30 @@ export function graduateMarket(market_id: string): { market?: Market; error?: st
  * v1 mirrors the single-Verifier audit-review trust model — production should gate
  * it behind staked-review / dispute quorum.
  */
-export function flagFraud(market_id: string, reviewer_id: string, reason?: string): { market?: Market; slashed?: number; count?: number; error?: string } {
+/** Report a launched market as fraudulent. DISPUTE QUORUM: a single accusation
+ *  only registers a report — the halt + stake-slash fires when
+ *  Params.fraud_flag_quorum DISTINCT non-founder Verifiers agree. */
+export function flagFraud(market_id: string, reviewer_id: string, reason?: string): { market?: Market; slashed?: number; count?: number; flags?: number; needed?: number; tripped?: boolean; error?: string } {
   const m = getMarket(market_id);
   if (!m) return { error: "no_market" };
   if (m.status === "paused") return { error: "already_flagged" };
   const grid = db.grids.find((g) => g.grid_id === m.grid_id);
   if (grid && grid.owner_id === reviewer_id) return { error: "founder_cannot_flag" };
+  const flags = (m.fraud_flags ??= []);
+  if (flags.some((f) => f.reviewer_id === reviewer_id)) return { error: "already_flagged_by_you" };
   const why = (reason && reason.trim().slice(0, 200)) || "Flagged fraudulent by a Verifier";
+  flags.push({ reviewer_id, reason: why, at: nowISO() });
+
+  const needed = Params.get("fraud_flag_quorum");
+  if (flags.length < needed) return { market: m, flags: flags.length, needed, tripped: false };
+
   const slash = Staking.slashStakes(m.grid_id, why);
   m.status = "paused";
   if (grid) {
     grid.lifecycle_stage = "failed";
-    Pulse.recordEvent({ target_type: "grid", target_id: grid.grid_id, action_type: "spam_penalty", weight: -60, reason: `Fraud flagged — ${slash.count} listing stake(s) slashed (${slash.slashed.toLocaleString()} GRID forfeited)`, verification_source: `reviewer:${reviewer_id}` });
+    Pulse.recordEvent({ target_type: "grid", target_id: grid.grid_id, action_type: "spam_penalty", weight: -60, reason: `Fraud quorum reached (${flags.length} Verifiers) — ${slash.count} listing stake(s) slashed (${slash.slashed.toLocaleString()} GRID forfeited)`, verification_source: `reviewer:${reviewer_id}` });
   }
-  return { market: m, slashed: slash.slashed, count: slash.count };
+  return { market: m, slashed: slash.slashed, count: slash.count, flags: flags.length, needed, tripped: true };
 }
 
 export function holdingOf(market_id: string, user_id: string): number {

@@ -48,7 +48,7 @@ type Prov = {
   backers: { id: string; username: string; amount: number; reputation: number }[];
 } | null;
 type Data =
-  | { market: Market & { grid_name?: string; marketcap?: number }; grid: GridInfo; trades: Trade[]; holders: Holder[]; holder_count: number; stats: Stats; holding: number; wallet: { usdc: number; grid: number }; progress: Progress; graduation: Grad; stake: StakeInfo; roadmap: Milestone[]; orderBook: Book; orders: Order[]; positions: Pos[]; maxLeverage: number; funding: Funding; provenance: Prov; my_stakes: MyStake[]; staker_fees: number; can_flag: boolean; flagged: boolean }
+  | { market: Market & { grid_name?: string; marketcap?: number }; grid: GridInfo; trades: Trade[]; holders: Holder[]; holder_count: number; stats: Stats; holding: number; wallet: { usdc: number; grid: number }; progress: Progress; graduation: Grad; stake: StakeInfo; roadmap: Milestone[]; orderBook: Book; orders: Order[]; positions: Pos[]; maxLeverage: number; funding: Funding; provenance: Prov; my_stakes: MyStake[]; staker_fees: number; can_flag: boolean; flagged: boolean; fraud_flags?: number; fraud_quorum?: number }
   | null
   | "missing";
 
@@ -367,7 +367,7 @@ export default function MarketTerminal() {
   // tracked via ref so the stream survives tab switches), `price` events keep
   // the marquee honest between full refreshes. Stream error → 4s poll fallback.
   const rPanelRef = useRef(rPanel);
-  rPanelRef.current = rPanel;
+  useEffect(() => { rPanelRef.current = rPanel; }, [rPanel]);
   useEffect(() => {
     if (!id) return;
     let alive = true;
@@ -428,7 +428,7 @@ export default function MarketTerminal() {
   const tradeMkt = (s: "buy" | "sell", amt: number, msg: string) => { if (amt > 0) act(`/api/markets/${id}/trade`, { side: s, amount: amt }, msg); };
   const sendChat = (t: string) => act(`/api/markets/${id}/chat`, { text: t });
   const likeChat = (mid: string) => act(`/api/markets/${id}/chat`, { action: "like", message_id: mid });
-  const flagFraud = () => { if (window.confirm("Flag this market as fraudulent? Trading HALTS and every listing stake is SLASHED (vouchers forfeit their locked GRID). This can't be undone.")) act(`/api/markets/${id}/slash`, {}, "Market flagged — listing stakes slashed"); };
+  const flagFraud = () => { if (window.confirm("Report this market as fraudulent? Your report counts toward the Verifier quorum — at quorum, trading HALTS and every listing stake is SLASHED (vouchers forfeit their locked GRID). This can't be undone.")) act(`/api/markets/${id}/slash`, {}, "Fraud report registered"); };
 
   async function armAgent(f: ArmInput) {
     if (busy) return; setBusy(true);
@@ -526,7 +526,9 @@ export default function MarketTerminal() {
                 {d.flagged ? (
                   <div className="mt-3 flex items-center gap-1.5 rounded border border-danger/30 bg-danger/[0.06] px-2.5 py-1.5 text-[10px] text-danger"><IconShield className="h-3.5 w-3.5 shrink-0" />Flagged fraudulent — halted, stakes slashed.</div>
                 ) : d.can_flag ? (
-                  <button onClick={flagFraud} disabled={busy} className="mt-3 flex w-full items-center justify-center gap-1.5 rounded border border-danger/25 px-2.5 py-1.5 text-[10px] text-danger/80 transition hover:bg-danger/10 hover:text-danger disabled:opacity-40"><IconShield className="h-3.5 w-3.5" /> Flag fraud (Verifier)</button>
+                  <button onClick={flagFraud} disabled={busy} className="mt-3 flex w-full items-center justify-center gap-1.5 rounded border border-danger/25 px-2.5 py-1.5 text-[10px] text-danger/80 transition hover:bg-danger/10 hover:text-danger disabled:opacity-40"><IconShield className="h-3.5 w-3.5" /> Flag fraud ({d.fraud_flags ?? 0}/{d.fraud_quorum ?? 2} reports)</button>
+                ) : (d.fraud_flags ?? 0) > 0 && !d.flagged ? (
+                  <div className="mt-3 flex items-center gap-1.5 rounded border border-amber/25 bg-amber/[0.05] px-2.5 py-1.5 text-[10px] text-amber"><IconShield className="h-3.5 w-3.5 shrink-0" />{d.fraud_flags}/{d.fraud_quorum} fraud reports — halts at quorum.</div>
                 ) : null}
               </>
             )}

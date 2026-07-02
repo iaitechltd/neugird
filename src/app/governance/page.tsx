@@ -17,14 +17,14 @@ import type { GovProposal, GovProposalKind } from "@/lib/types";
 
 type GovView = GovProposal & { total_grid: number; for_pct: number; against_pct: number; quorum_pct: number; voters: number; my_vote: { support: boolean; grid: number } | null };
 type Me = { grid: number; can_propose: boolean; propose_min: number };
-type ParamView = { key: string; value: number; default: number; overridden: boolean; label: string; unit: "bps" | "grid" | "days" };
+type ParamView = { key: string; value: number; default: number; overridden: boolean; label: string; unit: "bps" | "grid" | "days" | "count" };
 
 const KINDS: (GovProposalKind | "all")[] = ["all", "param", "listing", "treasury", "general"];
 const KIND_LABEL: Record<GovProposalKind, string> = { param: "Parameter", listing: "Listing", treasury: "Treasury", general: "General" };
 const KIND_ACCENT: Record<GovProposalKind, "cyan" | "neon" | "amber" | undefined> = { param: "cyan", listing: "neon", treasury: "amber", general: undefined };
 
 const grid = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : `${Math.round(n)}`);
-const fmtParam = (unit: "bps" | "grid" | "days", v: number) => (unit === "bps" ? `${(v / 100).toFixed(2)}%` : unit === "days" ? `${v.toLocaleString()} day${v === 1 ? "" : "s"}` : `${v.toLocaleString()} GRID`);
+const fmtParam = (unit: "bps" | "grid" | "days" | "count", v: number) => (unit === "bps" ? `${(v / 100).toFixed(2)}%` : unit === "days" ? `${v.toLocaleString()} day${v === 1 ? "" : "s"}` : unit === "count" ? v.toLocaleString() : `${v.toLocaleString()} GRID`);
 
 /* One-line description of what a proposal ENACTS on pass (uses live param meta). */
 function actionText(action: GovProposal["action"], meta: Record<string, ParamView>): string | null {
@@ -263,7 +263,7 @@ export default function GovernancePage() {
                     </select>
                     <div className="flex items-center gap-1">
                       <input value={form.paramValue} onChange={(e) => setForm((f) => ({ ...f, paramValue: e.target.value.replace(/[^0-9.]/g, "") }))} inputMode="decimal" placeholder="new" className="ng-input w-20 !py-1.5 text-[12px]" />
-                      <span className="text-[11px] text-ink-faint">{meta[form.paramKey]?.unit === "bps" ? "%" : meta[form.paramKey]?.unit === "days" ? "days" : "GRID"}</span>
+                      <span className="text-[11px] text-ink-faint">{meta[form.paramKey]?.unit === "bps" ? "%" : meta[form.paramKey]?.unit === "days" ? "days" : meta[form.paramKey]?.unit === "count" ? "×" : "GRID"}</span>
                     </div>
                   </div>
                   <div className="mt-1 text-[10px] text-ink-faint">Current: {meta[form.paramKey] ? fmtParam(meta[form.paramKey].unit, meta[form.paramKey].value) : "—"} · leave blank for an advisory proposal</div>

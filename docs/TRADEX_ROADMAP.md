@@ -74,9 +74,9 @@ Show / do:
 
 - ✅ **Funding rate — BUILT.** Mark = spot AMM (no perp-vs-index premium), so funding is a **skew carry**: `Perps.fundingRate` from open-interest imbalance (`openInterest`); the **crowded side** pays a capped hourly carry → the treasury (insurance fund), accrued lazily per position in `Perps.settle` (`accrueFunding`, reduces margin, can trigger liquidation). `Perps.funding(market_id)` (rate + which side pays + OI) → the `[id]` GET → a **Funding row** in the terminal's Margin panel + per-position `funding_paid`. Guards retroactive charging on pre-existing positions (first-touch sets the clock, no back-charge). Tunables: `FUNDING_K`/`FUNDING_MAX`/`FUNDING_INTERVAL_MS`.
 - ✅ **TP / SL / OCO — BUILT.** `Position` gained `take_profit`/`stop_loss`/`close_reason`; `Perps.setTriggers` sets/clears them (`POST /api/markets/[id]/perp { action:"triggers" }`); `Perps.settle` closes the position at mark when a trigger crosses (after funding + liquidation). Both set ⇒ **OCO** (first to hit wins). Terminal Positions tab: per-position TP/SL inputs + an OCO badge + funding shown. (`checkLiquidations` is now an alias for `settle`.)
-- ❌ **Trailing-stop** — not yet (OCO done; trailing needs a moving anchor).
-- 🟡 **Limit orders** — fill on price-cross only; add **partial fills** + true resting-book matching.
-- 🟡 **Perp limit orders** — perps open at market only; add limit entries.
+- ✅ **Trailing-stop** — BUILT (2026-07-02): % behind the best mark since set, ratchets in Perps.settle, closes as close_reason=trailing_stop; Trail % field in the terminal trigger editor.
+- ✅ **Limit orders — partial fills** — BUILT (2026-07-02): fills execute only up to the qty the curve gives within the limit price (exact quote-in from x*y=k); the remainder keeps resting; marketable limits respect the limit too. (True resting-book matching still N/A on an AMM.)
+- ✅ **Perp limit entries** — BUILT (2026-07-02): rest in the order book, open at trigger (long at-or-below / short at-or-above), funds debited at trigger; optional limit-entry price in the perp panel.
 
 ---
 

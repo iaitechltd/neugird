@@ -5,6 +5,7 @@
 
 -- graduation moment (holder notifications)
 alter table markets   add column if not exists stage_changed_at  timestamptz;
+alter table markets   add column if not exists fraud_flags       jsonb;
 
 -- position trigger/funding state that predated the schema (was silently dropped
 -- on round-trip) + the new trailing stop

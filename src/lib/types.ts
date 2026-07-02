@@ -741,6 +741,9 @@ export interface Market {
   eligibility?: GraduationCriterion[]; // gate to reach this stage
   status: "pending" | "active" | "paused";
   stage_changed_at?: ISODate; // last graduation moment (drives holder notifications)
+  /** Verifier fraud reports — the market halts + stakes slash only at quorum
+   *  (Params.fraud_flag_quorum), not on a single accusation. */
+  fraud_flags?: { reviewer_id: ID; reason: string; at: ISODate }[];
   created_at: ISODate;
 }
 

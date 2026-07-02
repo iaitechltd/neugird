@@ -3,7 +3,7 @@
  *  project (Grid) details + roadmap. */
 
 import { NextResponse } from "next/server";
-import { Markets, GridRegistry, Wallets, Staking, Genesis, Perps, Provenance } from "@/lib/modules";
+import { Markets, GridRegistry, Wallets, Staking, Genesis, Perps, Provenance, Params } from "@/lib/modules";
 import { getCurrentUserId } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -32,8 +32,10 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
     stake: next ? { stage: next, ...Staking.listingProgress(market.grid_id, next) } : null,
     my_stakes: Staking.myStakes(market.grid_id, uid).map((s) => ({ stake_id: s.stake_id, amount: s.amount, stage: s.stage_target, locked_until: s.locked_until, fees_earned: s.fees_earned ?? 0, released: !!s.released, slashed: !!s.slashed, matured: Date.parse(s.locked_until) <= Date.now() })),
     staker_fees: Staking.feesEarnedFor(market.grid_id, uid),
-    can_flag: market.status === "active" && !!grid && grid.owner_id !== uid, // a non-founder Verifier may flag fraud
+    can_flag: market.status === "active" && !!grid && grid.owner_id !== uid && !(market.fraud_flags ?? []).some((f) => f.reviewer_id === uid), // a non-founder Verifier may flag fraud once
     flagged: market.status === "paused",
+    fraud_flags: (market.fraud_flags ?? []).length,
+    fraud_quorum: Params.get("fraud_flag_quorum"),
     roadmap: Genesis.listMilestones(market.grid_id).map((m) => ({ title: m.title, status: m.status, amount: m.amount, order: m.order })),
     orderBook: Markets.orderBook(id),
     orders: Markets.ordersFor(id, uid),

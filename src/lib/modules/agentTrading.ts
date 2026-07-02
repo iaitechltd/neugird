@@ -23,6 +23,8 @@ import { newId, nowISO } from "../id";
 import * as Markets from "./markets";
 import * as Perps from "./perps";
 import * as Agents from "./agents";
+import * as Wallets from "./wallets";
+import * as Params from "./params";
 import type { AgentAction, AgentActionKind, Mandate, MandateStrategy, MarketStage, Position } from "../types";
 
 /* --- tunables (the native playbooks; deterministic off live market state) --- */
@@ -83,7 +85,12 @@ export function createMandate(input: CreateMandateInput): { mandate?: Mandate; e
   if (!market) return { error: "no_market" };
   const agent = Agents.getAgent(input.agent_id);
   if (!agent) return { error: "agent_not_found" };
-  if (agent.owner_id !== input.owner_id) return { error: "not_owner" };
+  // Native strategies arm YOUR OWN agent. The "external" strategy is also the
+  // HIRE door: arm someone else's (trusted) agent to trade your wallet — it earns
+  // a governable performance fee on positive realized PnL (see bookPosition).
+  const hired = agent.owner_id !== input.owner_id;
+  if (hired && input.strategy !== "external") return { error: "not_owner" };
+  if (hired && agent.trust_tier !== "trusted") return { error: "hired_agent_not_trusted" };
   if (agent.status === "suspended" || agent.trust_tier === "suspended") return { error: "agent_suspended" };
 
   const budget = Number(input.budget_usdc);
@@ -308,13 +315,28 @@ function closeAgentPosition(m: Mandate, p: Position, rationale: string): AgentAc
   return bookPosition(m, p, rationale);
 }
 
-/** Book a (now-closed/liquidated) agent position's realized PnL into the mandate. */
+/** Book a (now-closed/liquidated) agent position's realized PnL into the mandate.
+ *  HIRED-TRADER performance fee: when the trading agent belongs to someone OTHER
+ *  than the wallet owner, a governable cut of POSITIVE realized PnL
+ *  (Params.agent_perf_fee_bps) moves from the wallet owner to the agent — split
+ *  with the agent's owner by its standard owner_split_bps. Losses pay nothing. */
 function bookPosition(m: Mandate, p: Position, rationale: string): AgentAction {
   p.pnl_booked = true;
   const pnl = p.pnl ?? 0;
   m.realized_pnl += pnl;
   m.trades_count += 1;
-  const a = record(m, { kind: "close", ok: true, price: Markets.priceOf(Markets.getMarket(m.market_id)!), pnl, rationale: `${rationale} (PnL $${pnl.toFixed(2)})` });
+  let feeNote = "";
+  const agent = Agents.getAgent(m.agent_id);
+  if (pnl > 0 && agent && agent.owner_id && agent.owner_id !== m.owner_id) {
+    const fee = Math.round(pnl * Params.get("agent_perf_fee_bps")) / 10000;
+    if (fee > 0 && Wallets.debitUsdc(m.owner_id, fee)) {
+      const ownerCut = Math.round((fee * (agent.owner_split_bps ?? 0)) / 10000);
+      agent.earnings = (agent.earnings ?? 0) + Math.max(0, fee - ownerCut);
+      if (ownerCut > 0) Wallets.creditUsdc(agent.owner_id, ownerCut);
+      feeNote = ` · perf fee $${fee.toFixed(2)} → ${agent.name}`;
+    }
+  }
+  const a = record(m, { kind: "close", ok: true, price: Markets.priceOf(Markets.getMarket(m.market_id)!), pnl, rationale: `${rationale} (PnL $${pnl.toFixed(2)}${feeNote})` });
   recomputeTradingRating(m.agent_id);
   return a;
 }
