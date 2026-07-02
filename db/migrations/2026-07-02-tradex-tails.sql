@@ -35,3 +35,6 @@ create table if not exists follows (
   created_at  timestamptz not null default now(),
   primary key (follower_id, followee_id)
 );
+
+-- GenesisX raise expiry window
+alter table proposals add column if not exists closes_at timestamptz;

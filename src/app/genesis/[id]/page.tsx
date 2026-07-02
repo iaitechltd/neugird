@@ -40,7 +40,11 @@ type View = {
   build?: BuildInfo | null;
   origin_grid?: { grid_id: string; slug: string; name: string; members: number } | null;
   team?: TeamRow[];
+  closes_at?: string;
+  refunded?: number;
 };
+
+const daysLeft = (iso?: string) => (iso ? Math.max(0, Math.ceil((Date.parse(iso) - Date.now()) / 86_400_000)) : null);
 
 const M_ACCENT: Record<string, "neon" | "cyan" | "amber"> = { pending: "amber", submitted: "cyan", released: "neon", rejected: "amber" };
 
@@ -223,11 +227,12 @@ export default function ProposalDetail() {
             <div className="mt-5">
               <div className="mb-1.5 flex items-end justify-between">
                 <div><span className="ng-stat__v !text-2xl text-neon text-glow tnum">${view.raised.toLocaleString()}</span><span className="text-sm text-ink-dim"> / ${p.ask_amount.toLocaleString()} USDC</span></div>
-                <div className="text-right text-[11px] text-ink-dim">{view.backers} backers · {pct}%</div>
+                <div className="text-right text-[11px] text-ink-dim">{view.backers} backers · {pct}%{isOpen && daysLeft(view.closes_at) != null && <span className="text-amber"> · closes in {daysLeft(view.closes_at)}d</span>}</div>
               </div>
               <ProgressBar percent={pct} />
-              {isOpen && !view.is_author && <div className="mt-3 max-w-sm"><FundForm busy={busy} onSubmit={fund} /></div>}
+              {isOpen && !view.is_author && <div className="mt-3 max-w-sm"><FundForm busy={busy} balance={view.me.usdc} onSubmit={fund} /></div>}
               {p.status === "funded" && <div className="mt-2 text-[11px] text-ink-faint">{released.toLocaleString()} released to the project via milestones.</div>}
+              {p.status === "expired" && <div className="mt-2 rounded border border-amber/25 bg-amber/[0.06] px-2.5 py-1.5 text-[11px] text-amber">Raise window closed unfilled — ${Math.round(view.refunded ?? 0).toLocaleString()} in escrowed backings refunded to backers.</div>}
             </div>
           </Bracket>
 

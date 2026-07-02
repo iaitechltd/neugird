@@ -230,6 +230,7 @@ create table if not exists proposals (
   reward_token_terms text,
   status             text        not null default 'open',
   endorsements       jsonb       not null default '[]', -- Endorsement[]
+  closes_at          timestamptz, -- raise window end (unfilled past this => expired + refunds)
   created_at         timestamptz not null default now()
 );
 

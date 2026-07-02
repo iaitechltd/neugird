@@ -293,7 +293,8 @@ export type ProposalStatus =
   | "open" // open for funding
   | "funded"
   | "rejected"
-  | "withdrawn";
+  | "withdrawn"
+  | "expired"; // raise window closed unfilled — escrowed backings refunded pro-rata
 
 export interface Proposal {
   proposal_id: ID;
@@ -308,6 +309,7 @@ export interface Proposal {
   reward_token_terms?: string; // what backers receive
   status: ProposalStatus;
   endorsements: Endorsement[];
+  closes_at?: ISODate; // raise window end — unfilled past this ⇒ expired + refunds (governable, genesis_raise_days)
   created_at: ISODate;
 }
 

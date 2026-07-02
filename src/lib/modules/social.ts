@@ -56,8 +56,10 @@ export function followingOf(user_id: string): string[] {
  *  the owner) + paid agent services. Excludes refunds (their own escrow returning)
  *  and anything they paid out. */
 function incomeRows(user_id: string) {
+  // refunds (job escrow back, expired-raise backings back) are your own money
+  // returning — never income
   return db.settlements.filter(
-    (s) => s.payee === user_id && s.status === "settled" && s.payer_id !== user_id && !s.resource.startsWith("job_refund"),
+    (s) => s.payee === user_id && s.status === "settled" && s.payer_id !== user_id && !s.resource.includes("refund"),
   );
 }
 

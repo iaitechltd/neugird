@@ -9,7 +9,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { ReputationMaint, Governance } from "@/lib/modules";
+import { ReputationMaint, Governance, Genesis } from "@/lib/modules";
 
 export const dynamic = "force-dynamic";
 
@@ -21,5 +21,6 @@ export async function POST(request: Request) {
   const force = new URL(request.url).searchParams.get("force") === "1";
   const summary = ReputationMaint.runMaintenance({ force });
   const gov = Governance.sweepExpired();
-  return NextResponse.json({ ok: true, ...summary, gov_settled: gov.settled });
+  const raises = Genesis.sweepExpiredRaises(); // unfilled raise windows → expire + refund escrow
+  return NextResponse.json({ ok: true, ...summary, gov_settled: gov.settled, raises_expired: raises.expired, backings_refunded: raises.refunded });
 }

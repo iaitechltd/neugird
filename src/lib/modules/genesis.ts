@@ -15,6 +15,7 @@ import * as Pulse from "./pulse";
 import * as GridRegistry from "./gridRegistry";
 import * as Echo from "./echo";
 import * as Wallets from "./wallets";
+import * as Params from "./params";
 import type { Backing, Milestone, MilestoneDraft, Proposal, ProposalStatus, Treasury } from "../types";
 
 export const PROPOSE_REPUTATION_MIN = 100;
@@ -33,7 +34,45 @@ export function canPropose(user_id: string): boolean {
   return reputationOf(user_id) >= PROPOSE_REPUTATION_MIN;
 }
 
+/** When this raise's funding window ends (legacy proposals derive from created_at). */
+export function closesAtOf(p: Proposal): string {
+  return p.closes_at ?? new Date(Date.parse(p.created_at) + Params.get("genesis_raise_days") * 86_400_000).toISOString();
+}
+
+/**
+ * Settle raise windows: an OPEN proposal past its close that never filled goes
+ * `expired`, and every escrowed backing refunds to its backer (real USDC back
+ * out of the Genesis escrow). Runs on every read + the daily cron, mirroring
+ * governance auto-resolve — locks never strand on a quiet deployment.
+ */
+export function sweepExpiredRaises(): { expired: number; refunded: number } {
+  const now = Date.now();
+  let expired = 0, refunded = 0;
+  for (const p of db.proposals) {
+    if (p.status !== "open" || Date.parse(closesAtOf(p)) > now) continue;
+    p.status = "expired";
+    expired++;
+    for (const b of db.backings.filter((x) => x.round_id === p.proposal_id && !x.refunded)) {
+      // pre-escrow (legacy) backings have nothing in the sink — mark them refunded
+      // without a wallet movement so they can't double-count later.
+      if (Wallets.debitUsdc(GENESIS_ESCROW, b.amount)) {
+        Wallets.creditUsdc(b.backer_id, b.amount);
+        db.settlements.push({
+          settlement_id: newId("setl"), payer_id: GENESIS_ESCROW, payee: b.backer_id,
+          resource: `genesis_refund:${p.proposal_id}`, amount: b.amount, asset: "USDC",
+          network: "neugrid", scheme: "exact", proof: `genesis:${b.backing_id}`, status: "settled", created_at: nowISO(),
+        });
+      }
+      b.refunded = true;
+      refunded++;
+    }
+    Pulse.recordEvent({ target_type: "user", target_id: p.author_id, action_type: "campaign_completed", weight: 0, reason: `Raise "${p.title}" expired unfilled — backers refunded`, verification_source: "auto" });
+  }
+  return { expired, refunded };
+}
+
 export function listProposals(filter: { status?: ProposalStatus; author_id?: string } = {}): Proposal[] {
+  sweepExpiredRaises(); // reads settle expiry, the cron is the zero-traffic backstop
   return db.proposals.filter((p) => (!filter.status || p.status === filter.status) && (!filter.author_id || p.author_id === filter.author_id));
 }
 export function getProposal(id: string): Proposal | undefined {
@@ -71,6 +110,7 @@ export function createProposal(input: CreateProposalInput): { proposal?: Proposa
     ask_amount: input.ask_amount,
     status: "open",
     endorsements: [],
+    closes_at: new Date(Date.now() + Params.get("genesis_raise_days") * 86_400_000).toISOString(),
     created_at: nowISO(),
   };
 
@@ -231,6 +271,7 @@ export function approveMilestone(milestone_id: string, backer_id: string) {
 
 /** Full read model for a proposal: funding progress, backers, spawned grid, milestones. */
 export function proposalView(id: string) {
+  sweepExpiredRaises(); // detail reads settle expiry too
   const p = getProposal(id);
   if (!p) return undefined;
   const grid = db.grids.find((g) => g.spawned_from?.proposal_id === id);
@@ -281,5 +322,7 @@ export function proposalView(id: string) {
     build: buildView,
     origin_grid: relatedGrid ? { grid_id: relatedGrid.grid_id, slug: relatedGrid.slug, name: relatedGrid.name, members: relatedGrid.member_count } : null,
     team,
+    closes_at: closesAtOf(p),
+    refunded: p.status === "expired" ? db.backings.filter((b) => b.round_id === id && b.refunded).reduce((s, b) => s + b.amount, 0) : 0,
   };
 }

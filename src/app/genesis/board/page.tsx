@@ -16,7 +16,9 @@ import { CountUp, Decrypt } from "@/components/app/typefx";
 import GenesisProposeWizard from "@/components/app/GenesisProposeWizard";
 import type { Milestone, Proposal } from "@/lib/types";
 
-type View = { proposal: Proposal; raised: number; backers: number; spawned_grid_slug: string | null; milestones: Milestone[]; i_backed: boolean; founder?: { username: string; reputation: number } };
+type View = { proposal: Proposal; raised: number; backers: number; spawned_grid_slug: string | null; milestones: Milestone[]; i_backed: boolean; founder?: { username: string; reputation: number }; closes_at?: string; refunded?: number };
+
+const daysLeft = (iso?: string) => (iso ? Math.max(0, Math.ceil((Date.parse(iso) - Date.now()) / 86_400_000)) : null);
 type Me = { id: string; reputation: number; can_propose: boolean; min: number };
 const M_ACCENT: Record<string, "neon" | "cyan" | "amber"> = { pending: "amber", submitted: "cyan", released: "neon", rejected: "amber", approving: "cyan", approved: "neon" };
 
@@ -117,7 +119,7 @@ export default function GenesisBoard() {
                   <p className="mt-2 text-[12px] leading-relaxed text-ink-dim">{p.summary}</p>
 
                   <div className="mt-3">
-                    <div className="mb-1 flex items-center justify-between text-[11px] text-ink-dim"><span>${v.raised.toLocaleString()} / ${p.ask_amount.toLocaleString()} USDC</span><span>{v.backers} backers · {pct}%</span></div>
+                    <div className="mb-1 flex items-center justify-between text-[11px] text-ink-dim"><span>${v.raised.toLocaleString()} / ${p.ask_amount.toLocaleString()} USDC</span><span>{v.backers} backers · {pct}%{p.status === "open" && daysLeft(v.closes_at) != null ? <span className="text-amber"> · {daysLeft(v.closes_at)}d left</span> : null}</span></div>
                     <ProgressBar percent={pct} />
                   </div>
 
@@ -128,6 +130,7 @@ export default function GenesisBoard() {
                     </form>
                   )}
                   {p.status === "open" && isAuthor && <div className="mt-3 border-t border-line pt-3 text-[11px] text-ink-faint">Your raise is open — share it to attract backers.</div>}
+                  {p.status === "expired" && <div className="mt-3 border-t border-line pt-3 text-[11px] text-amber">Window closed unfilled — ${Math.round(v.refunded ?? 0).toLocaleString()} refunded to backers.</div>}
 
                   {p.status === "funded" && (
                     <div className="mt-3 border-t border-line pt-3">
