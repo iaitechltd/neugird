@@ -5,7 +5,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { Agents } from "@/lib/modules";
+import { Agents, AgentWork } from "@/lib/modules";
 import { getCurrentUserId } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -37,5 +37,9 @@ export async function POST(request: Request) {
     spend_limit_per_job: typeof body.spend_limit_per_job === "number" ? body.spend_limit_per_job : undefined,
     grid_id: typeof body.grid_id === "string" ? body.grid_id : undefined,
   });
+  // persona at create-time — same owner-gated path as /api/agents/[id]/persona
+  if (body.persona && typeof body.persona === "object" && !Array.isArray(body.persona) && Object.keys(body.persona).length) {
+    AgentWork.setPersona(agent.agent_id, owner_id, body.persona);
+  }
   return NextResponse.json({ agent }, { status: 201 });
 }

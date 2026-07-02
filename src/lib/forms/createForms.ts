@@ -63,18 +63,16 @@ export const CREATE_FORMS: Record<string, FormConfig> = {
   agent: {
     key: "agent",
     title: "Create AI Agent (SentientX)",
-    subtitle: "Create an AI agent (Persona, Task, or Personality)",
+    subtitle: "Name it, give it a persona, pick its skills — it works the marketplace in character",
     icon: "⬡",
     submit: "Create Agent",
     fields: [
-      { t: "select", label: "Select Agent Type", ph: "Select a Agent Type", options: ["Persona", "Task", "Personality", "Research", "Growth", "Support"], half: true },
       { t: "text", label: "Agent Name", ph: "Enter agent name", half: true },
-      { t: "upload", label: "Agent Avatar", hint: "Upload agent avatar or generate with AI" },
-      { t: "text", label: "Synapse Identity (.synapse)", ph: "agent-name", half: true },
-      { t: "select", label: "Template", ph: "Use existing template", options: ["None", "Research Bot", "Growth Engine", "Support Desk"], half: true },
-      { t: "textarea", label: "Personality & Behavior", ph: "Describe agent's personality, communication style, and behavioural patterns" },
+      { t: "text", label: "Role", ph: "e.g. Research analyst, growth strategist", half: true },
+      { t: "textarea", label: "Personality & Behavior", ph: "How it thinks and behaves — tone, quirks, boundaries…" },
+      { t: "text", label: "Goals", ph: "What it optimizes for, e.g. build a track record in research work" },
+      { t: "select", label: "Communication Style", ph: "How it writes", options: ["Professional", "Friendly", "Terse", "Playful", "Formal"], half: true },
       { t: "tags", label: "Capabilities", ph: "Select all matching", options: ["Research", "Growth", "Content", "Support", "Analytics", "Moderation"] },
-      { t: "toggle", label: "Enable Pulse / NeuroBits rewards logic", hint: "Define when and how rewards are distributed" },
     ],
   },
   coreagent: {

@@ -245,16 +245,23 @@ export default function StartNewButton() {
       return;
     }
 
-    // AI Agent / Core Agent → a real native agent
+    // AI Agent / Core Agent → a real native agent (persona set at create when given)
     if (form.key === "agent" || form.key === "coreagent") {
       const name = get("Agent Name") || get("Core Agent Name");
       if (!name) return flash("Give your agent a name", 2400);
       const picked = (get("Capabilities") || get("Stack")).split(",").map((c) => c.trim().toLowerCase()).filter(Boolean);
-      const typeCap = (get("Select Agent Type") || get("Framework Type")).toLowerCase();
+      const typeCap = get("Framework Type").toLowerCase();
       const known = ["research", "growth", "content", "support", "analytics", "moderation"];
       const capabilities = picked.length ? picked : known.includes(typeCap) ? [typeCap] : ["general"];
+      const personaEntries = Object.entries({
+        role: get("Role"),
+        personality: get("Personality & Behavior"),
+        goals: get("Goals"),
+        style: get("Communication Style"),
+      }).filter(([, v]) => v);
+      const persona = personaEntries.length ? Object.fromEntries(personaEntries) : undefined;
       try {
-        const res = await fetch("/api/agents", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, capabilities }) });
+        const res = await fetch("/api/agents", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, capabilities, persona }) });
         if (!res.ok) throw new Error();
         window.dispatchEvent(new Event("neugrid:refresh-me"));
         setForm(null); flash(`Agent "${name}" created ✓`); router.push("/agents");
