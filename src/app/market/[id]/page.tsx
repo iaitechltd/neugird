@@ -362,14 +362,35 @@ export default function MarketTerminal() {
     return () => { alive = false; };
   }, [tick]);
 
-  // Community chat: poll every 4s while the Chat tab is open.
+  // ONE SSE stream per open terminal replaces the 4s chat poll: `chat` events
+  // trigger a refetch of the shaped thread (only while the Chat tab is open —
+  // tracked via ref so the stream survives tab switches), `price` events keep
+  // the marquee honest between full refreshes. Stream error → 4s poll fallback.
+  const rPanelRef = useRef(rPanel);
+  rPanelRef.current = rPanel;
+  useEffect(() => {
+    if (!id) return;
+    let alive = true;
+    let iv: ReturnType<typeof setInterval> | null = null;
+    const loadChat = () => fetch(`/api/markets/${id}/chat`).then((r) => r.json()).then((j) => { if (alive) setChatMsgs(j.messages ?? []); }).catch(() => {});
+    const es = new EventSource(`/api/markets/${id}/stream`);
+    es.addEventListener("chat", () => { if (rPanelRef.current === "chat") loadChat(); });
+    es.addEventListener("price", (e) => {
+      try {
+        const { price } = JSON.parse((e as MessageEvent).data) as { price: number };
+        if (alive) setAllMarkets((prev) => prev.map((t) => (t.id === id ? { ...t, price } : t)));
+      } catch { /* malformed frame — ignore */ }
+    });
+    es.onerror = () => { es.close(); if (alive && !iv) iv = setInterval(() => { if (rPanelRef.current === "chat") loadChat(); }, 4000); };
+    return () => { alive = false; es.close(); if (iv) clearInterval(iv); };
+  }, [id]);
+
+  // Initial thread load when the Chat tab opens (SSE only signals CHANGES).
   useEffect(() => {
     if (rPanel !== "chat" || !id) return;
     let alive = true;
-    const load = () => fetch(`/api/markets/${id}/chat`).then((r) => r.json()).then((j) => { if (alive) setChatMsgs(j.messages ?? []); }).catch(() => {});
-    load();
-    const iv = setInterval(load, 4000);
-    return () => { alive = false; clearInterval(iv); };
+    fetch(`/api/markets/${id}/chat`).then((r) => r.json()).then((j) => { if (alive) setChatMsgs(j.messages ?? []); }).catch(() => {});
+    return () => { alive = false; };
   }, [rPanel, id, tick]);
 
   // Agent Mode: load the mandate state (so the "agent active" indicator + feed

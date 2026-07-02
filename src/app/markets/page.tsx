@@ -11,6 +11,7 @@ import Link from "next/link";
 import NeuHeader from "@/components/app/NeuHeader";
 import NeuGridDock from "@/components/app/NeuGridDock";
 import OrbPanel from "@/components/app/OrbPanel";
+import MarketTicker from "@/components/app/MarketTicker";
 import { Panel, Mark, DataRow, IconChart, IconActivity } from "@/components/app/ui";
 import { Area, Gauge } from "@/components/app/charts";
 import { Decrypt } from "@/components/app/typefx";
@@ -92,13 +93,14 @@ export default function MarketsPage() {
     return () => { alive = false; window.removeEventListener("neugrid:refresh-me", load); };
   }, []);
 
-  const list = markets ?? [];
+  const list = useMemo(() => markets ?? [], [markets]);
   const filtered = stage === "all" ? list : list.filter((m) => m.stage === stage);
   const totals = useMemo(() => ({ markets: list.length, liq: list.reduce((s, m) => s + (m.liquidity_usd ?? 0), 0), holders: list.reduce((s, m) => s + (m.holders ?? 0), 0) }), [list]);
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
       <NeuHeader title="TradeX" collapsed={!lOpen && !rOpen} onToggleCollapse={() => { const v = lOpen || rOpen; setLOpen(!v); setROpen(!v); }} />
+      <MarketTicker />
       <div className="flex flex-col gap-3 px-3 py-3 lg:min-h-0 lg:flex-1 lg:flex-row">
         {/* LEFT */}
         <OrbPanel side="left" label="Markets" open={lOpen} onToggle={setLOpen} widthClass="lg:w-[300px] xl:w-[320px]">
