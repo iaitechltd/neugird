@@ -42,6 +42,7 @@ type View = {
   team?: TeamRow[];
   closes_at?: string;
   refunded?: number;
+  stall?: { stalled: boolean; last_activity: string; deadline: string; auto_at: string; remaining: number } | null;
 };
 
 const daysLeft = (iso?: string) => (iso ? Math.max(0, Math.ceil((Date.parse(iso) - Date.now()) / 86_400_000)) : null);
@@ -233,6 +234,19 @@ export default function ProposalDetail() {
               {isOpen && !view.is_author && <div className="mt-3 max-w-sm"><FundForm busy={busy} balance={view.me.usdc} onSubmit={fund} /></div>}
               {p.status === "funded" && <div className="mt-2 text-[11px] text-ink-faint">{released.toLocaleString()} released to the project via milestones.</div>}
               {p.status === "expired" && <div className="mt-2 rounded border border-amber/25 bg-amber/[0.06] px-2.5 py-1.5 text-[11px] text-amber">Raise window closed unfilled — ${Math.round(view.refunded ?? 0).toLocaleString()} in escrowed backings refunded to backers.</div>}
+              {p.status === "refunded" && <div className="mt-2 rounded border border-danger/25 bg-danger/[0.06] px-2.5 py-1.5 text-[11px] text-danger">Kill-switch fired — the project stalled and the unreleased treasury was returned to backers pro-rata. The founder&rsquo;s reputation took the hit.</div>}
+
+              {/* stall kill-switch — the backer's insurance on a funded project */}
+              {view.stall && !view.stall.stalled && (
+                <div className="mt-2 text-[10px] text-ink-faint">Milestone activity: last {new Date(view.stall.last_activity).toLocaleDateString()} · kill-switch arms {new Date(view.stall.deadline).toLocaleDateString()} if the project goes silent.</div>
+              )}
+              {view.stall?.stalled && (
+                <div className="mt-2 rounded border border-danger/30 bg-danger/[0.07] p-2.5">
+                  <div className="text-[11px] font-semibold text-danger">Project stalled — no milestone activity since {new Date(view.stall.last_activity).toLocaleDateString()}</div>
+                  <div className="mt-0.5 text-[10px] text-ink-dim">${Math.round(view.stall.remaining).toLocaleString()} unreleased sits in escrow. Any backer can return it pro-rata now; it auto-returns {new Date(view.stall.auto_at).toLocaleDateString()}.</div>
+                  {view.i_backed && <button disabled={busy} onClick={() => act(`/api/proposals/${id}/killswitch`, {}, "Treasury returned to backers")} className="ng-btn ng-btn-danger ng-btn--sm mt-2 disabled:opacity-50">Return remaining treasury</button>}
+                </div>
+              )}
             </div>
           </Bracket>
 

@@ -185,6 +185,7 @@ export function submitMilestone(milestone_id: string, user_id: string, proof?: s
   if (!grid || grid.owner_id !== user_id) return { error: "only_founder" };
   if (m.status !== "pending" && m.status !== "rejected") return { error: "bad_state" };
   m.status = "submitted";
+  m.updated_at = nowISO(); // milestone activity — resets the stall clock
   if (proof) m.deliverable = { kind: "link", payload: proof, submitted_at: nowISO() };
   // Open the backer governance vote (clear any prior round on a re-submit).
   db.milestoneApprovals = db.milestoneApprovals.filter((a) => a.milestone_id !== milestone_id);
@@ -225,6 +226,7 @@ export function voteMilestone(milestone_id: string, voter_id: string, support: b
   const existing = db.milestoneApprovals.find((a) => a.milestone_id === milestone_id && a.backer_id === voter_id);
   if (existing) existing.support = support;
   else db.milestoneApprovals.push({ milestone_id, backer_id: voter_id, support });
+  m.updated_at = nowISO(); // vote activity — resets the stall clock
 
   // Weighted tally over TOTAL weighted backing (so 50% = quorum AND majority in one).
   const backerIds = new Set(db.backings.filter((b) => b.grid_id === m.grid_id).map((b) => b.backer_id));
@@ -270,6 +272,94 @@ export function approveMilestone(milestone_id: string, backer_id: string) {
 }
 
 /** Full read model for a proposal: funding progress, backers, spawned grid, milestones. */
+/* ------------------------- funded-stall kill-switch ------------------------ */
+// The other half of escrow integrity: a FUNDED project that goes silent
+// mid-milestones can't strand the remaining treasury. After `genesis_stall_days`
+// with zero milestone activity, any backer may pull the kill-switch (the daily
+// cron auto-fires at 2× the window) — the UNRELEASED balance returns to backers
+// pro-rata and the founder takes a reputation hit.
+
+export interface StallState {
+  stalled: boolean;
+  last_activity: string; // funding moment or the latest milestone touch
+  deadline: string; // when the kill-switch arms
+  auto_at: string; // when the cron fires it unprompted (2× window)
+  remaining: number; // unreleased treasury balance
+}
+
+/** Stall clock for a funded proposal's project. Undefined when not applicable. */
+export function stallStateOf(proposal_id: string): StallState | undefined {
+  const p = getProposal(proposal_id);
+  if (!p || p.status !== "funded") return undefined;
+  const grid = db.grids.find((g) => g.spawned_from?.proposal_id === proposal_id);
+  if (!grid) return undefined;
+  const tre = db.treasuries.find((t) => t.treasury_id === grid.treasury_id);
+  if (!tre || tre.balance <= 0) return undefined; // fully released — nothing to strand
+  const ms = db.milestones.filter((m) => m.grid_id === grid.grid_id);
+  if (ms.some((m) => m.status === "submitted")) return undefined; // a live vote = active, never stalled
+  const last = Math.max(Date.parse(grid.created_at), ...ms.map((m) => (m.updated_at ? Date.parse(m.updated_at) : 0)));
+  const windowMs = Params.get("genesis_stall_days") * 86_400_000;
+  return {
+    stalled: Date.now() - last > windowMs,
+    last_activity: new Date(last).toISOString(),
+    deadline: new Date(last + windowMs).toISOString(),
+    auto_at: new Date(last + 2 * windowMs).toISOString(),
+    remaining: tre.balance,
+  };
+}
+
+/** Pull the kill-switch: return the unreleased treasury to backers pro-rata.
+ *  `by` must be a backer (or "system:stall-sweep" from the cron backstop). */
+export function triggerKillSwitch(proposal_id: string, by: string): { refunded?: number; backers?: number; error?: string } {
+  const p = getProposal(proposal_id);
+  if (!p) return { error: "not_found" };
+  const st = stallStateOf(proposal_id);
+  if (!st) return { error: "not_applicable" };
+  if (!st.stalled) return { error: "not_stalled" };
+  const isSystem = by.startsWith("system:");
+  if (!isSystem && !hasBacked(proposal_id, by)) return { error: "not_a_backer" };
+
+  const grid = db.grids.find((g) => g.spawned_from?.proposal_id === proposal_id)!;
+  const tre = db.treasuries.find((t) => t.treasury_id === grid.treasury_id)!;
+  const backings = db.backings.filter((b) => b.round_id === proposal_id && !b.refunded);
+  const totalBacked = backings.reduce((s, b) => s + b.amount, 0);
+  const pot = tre.balance;
+  let paid = 0;
+  for (const b of backings) {
+    const share = totalBacked > 0 ? Math.floor((pot * b.amount) / totalBacked * 100) / 100 : 0;
+    if (share <= 0) continue;
+    // escrow-era raises have the money in the sink; legacy ones stay accounting-only
+    if (Wallets.debitUsdc(GENESIS_ESCROW, share)) {
+      Wallets.creditUsdc(b.backer_id, share);
+      db.settlements.push({
+        settlement_id: newId("setl"), payer_id: GENESIS_ESCROW, payee: b.backer_id,
+        resource: `genesis_killswitch_refund:${proposal_id}`, amount: share, asset: "USDC",
+        network: "neugrid", scheme: "exact", proof: `genesis:${b.backing_id}`, status: "settled", created_at: nowISO(),
+      });
+    }
+    paid += share;
+  }
+  tre.balance = 0;
+  p.status = "refunded";
+  grid.lifecycle_stage = "failed";
+  for (const m of db.milestones.filter((x) => x.grid_id === grid.grid_id && (x.status === "pending" || x.status === "rejected"))) m.status = "rejected";
+  Pulse.recordEvent({ target_type: "user", target_id: grid.owner_id, action_type: "submission_rejected", weight: -40, reason: `Kill-switch: "${p.title}" stalled — unreleased treasury returned to backers`, verification_source: isSystem ? "auto" : "backers", dimension: "builder" });
+  Pulse.recordEvent({ target_type: "grid", target_id: grid.grid_id, action_type: "submission_rejected", weight: -30, reason: "Project stalled — treasury refunded", verification_source: "auto" });
+  return { refunded: Math.round(paid * 100) / 100, backers: backings.length };
+}
+
+/** Cron backstop: auto-fire the kill-switch on projects stalled past 2× the window. */
+export function sweepStalledProjects(): { killed: number; refunded: number } {
+  let killed = 0, refunded = 0;
+  for (const p of db.proposals.filter((x) => x.status === "funded")) {
+    const st = stallStateOf(p.proposal_id);
+    if (!st?.stalled || Date.parse(st.auto_at) > Date.now()) continue;
+    const r = triggerKillSwitch(p.proposal_id, "system:stall-sweep");
+    if (!r.error) { killed++; refunded += r.refunded ?? 0; }
+  }
+  return { killed, refunded };
+}
+
 export function proposalView(id: string) {
   sweepExpiredRaises(); // detail reads settle expiry too
   const p = getProposal(id);
@@ -324,5 +414,6 @@ export function proposalView(id: string) {
     team,
     closes_at: closesAtOf(p),
     refunded: p.status === "expired" ? db.backings.filter((b) => b.round_id === id && b.refunded).reduce((s, b) => s + b.amount, 0) : 0,
+    stall: stallStateOf(id) ?? null,
   };
 }

@@ -294,7 +294,8 @@ export type ProposalStatus =
   | "funded"
   | "rejected"
   | "withdrawn"
-  | "expired"; // raise window closed unfilled — escrowed backings refunded pro-rata
+  | "expired" // raise window closed unfilled — escrowed backings refunded pro-rata
+  | "refunded"; // funded project stalled — kill-switch returned the unreleased treasury
 
 export interface Proposal {
   proposal_id: ID;
@@ -664,6 +665,7 @@ export interface Milestone {
   approval_vote?: BackerVote; // backers hold the deciding vote
   released_tx?: string;
   due_at?: ISODate;
+  updated_at?: ISODate; // last activity (submit/vote/release) — drives the stall clock
   created_at: ISODate;
 }
 

@@ -259,6 +259,7 @@ create table if not exists milestones (
   approval_vote jsonb,      -- BackerVote (backers hold the deciding vote)
   released_tx   text,
   due_at        timestamptz,
+  updated_at    timestamptz, -- last activity (submit/vote) => the stall clock
   created_at    timestamptz not null default now()
 );
 

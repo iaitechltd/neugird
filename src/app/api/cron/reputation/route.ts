@@ -22,5 +22,6 @@ export async function POST(request: Request) {
   const summary = ReputationMaint.runMaintenance({ force });
   const gov = Governance.sweepExpired();
   const raises = Genesis.sweepExpiredRaises(); // unfilled raise windows → expire + refund escrow
-  return NextResponse.json({ ok: true, ...summary, gov_settled: gov.settled, raises_expired: raises.expired, backings_refunded: raises.refunded });
+  const stalls = Genesis.sweepStalledProjects(); // funded projects silent past 2× the stall window
+  return NextResponse.json({ ok: true, ...summary, gov_settled: gov.settled, raises_expired: raises.expired, backings_refunded: raises.refunded, projects_killed: stalls.killed, treasury_refunded: stalls.refunded });
 }

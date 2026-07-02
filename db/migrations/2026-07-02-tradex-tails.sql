@@ -38,3 +38,6 @@ create table if not exists follows (
 
 -- GenesisX raise expiry window
 alter table proposals add column if not exists closes_at timestamptz;
+
+-- funded-stall kill-switch: milestone activity clock
+alter table milestones add column if not exists updated_at timestamptz;
