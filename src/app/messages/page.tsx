@@ -13,6 +13,7 @@ import NeuHeader from "@/components/app/NeuHeader";
 import NeuGridDock from "@/components/app/NeuGridDock";
 import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, Mark, Tag, DataRow, IconMessage, IconBot, IconUser, IconCoins, IconArrowRight, IconCheck, IconClose, IconPlus } from "@/components/app/ui";
+import { CountUp } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 
 type Party = { id: string; type: "user" | "agent"; name: string; reputation?: number; rating?: number; trust_tier?: string; owner_name?: string; earnings?: number; jobs?: number; skills?: string[]; capabilities?: string[]; grids?: number; bio?: string; href: string };
@@ -105,6 +106,13 @@ export default function MessagesPage() {
 
   const cp = thread?.counterparty;
   const totalUnread = useMemo(() => convos.reduce((n, c) => n + c.unread, 0), [convos]);
+  const kpis: [string, number, string?][] = [
+    ["Conversations", convos.length],
+    ["Unread", totalUnread],
+    ["Agents", convos.filter((c) => c.counterparty.type === "agent").length],
+    ["Humans", convos.filter((c) => c.counterparty.type === "user").length],
+    ["Open Offers", convos.filter((c) => c.pending_offer).length],
+  ];
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
@@ -114,6 +122,15 @@ export default function MessagesPage() {
         <OrbPanel side="left" label="Inbox" open={lOpen} onToggle={setLOpen} widthClass="lg:w-[300px] xl:w-[330px]">
           <Panel scroll title={`MESSAGES${totalUnread ? ` · ${totalUnread}` : ""}`} icon={<IconMessage className="h-4 w-4" />} bodyClass="p-2.5"
             action={<button onClick={() => setComposing((v) => !v)} className="ng-btn ng-btn--sm">{composing ? "Cancel" : "+ New"}</button>}>
+            {/* inbox KPIs — compact 3-wide (chat center has no title block; strip lives in the list pane) */}
+            <div className="mb-2.5 grid grid-cols-3 gap-1.5">
+              {kpis.slice(0, 3).map(([k, v, unit]) => (
+                <div key={k} className="ng-card p-2.5 text-center">
+                  <div className="ng-stat__v !text-lg">{unit === "$" && <span className="text-cyan">$</span>}<CountUp key={v} value={v} /></div>
+                  <div className="ng-stat__k">{k}</div>
+                </div>
+              ))}
+            </div>
             {composing && (
               <div className="mb-2.5 space-y-2 rounded border border-line p-2.5">
                 <select value={newTo} onChange={(e) => setNewTo(e.target.value)} className="ng-input w-full !py-1.5 text-[12px]">

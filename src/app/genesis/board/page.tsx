@@ -12,7 +12,7 @@ import NeuHeader from "@/components/app/NeuHeader";
 import NeuGridDock from "@/components/app/NeuGridDock";
 import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, Tag, Mark, DataRow, ProgressBar, IconRocket, IconActivity, IconBolt, IconCheck, IconArrowRight } from "@/components/app/ui";
-import { Decrypt } from "@/components/app/typefx";
+import { CountUp, Decrypt } from "@/components/app/typefx";
 import GenesisProposeWizard from "@/components/app/GenesisProposeWizard";
 import type { Milestone, Proposal } from "@/lib/types";
 
@@ -40,6 +40,13 @@ export default function GenesisBoard() {
   const list = views ?? [];
   const open = list.filter((v) => v.proposal.status === "open");
   const totals = { open: open.length, raised: list.reduce((s, v) => s + v.raised, 0), ask: open.reduce((s, v) => s + v.proposal.ask_amount, 0) };
+  const kpis: [string, number, string?][] = [
+    ["Open Raises", totals.open],
+    ["Asked", Math.round(totals.ask), "$"],
+    ["Funded", Math.round(totals.raised), "$"],
+    ["Backers", list.reduce((s, v) => s + v.backers, 0)],
+    ["Funded Raises", list.filter((v) => v.proposal.status === "funded").length],
+  ];
 
   async function act(url: string, body?: object, msg?: string) {
     if (busy) return; setBusy(true);
@@ -78,6 +85,16 @@ export default function GenesisBoard() {
             {me?.can_propose
               ? <button onClick={() => setCreating(true)} className="ng-btn ng-btn-primary shrink-0">+ Propose</button>
               : <Mark plain className="shrink-0 text-[11px]">Earn {me?.min ?? 100}+ rep to propose</Mark>}
+          </div>
+
+          {/* page KPIs — 3 by default, 4/5 as the side panels collapse */}
+          <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
+            {kpis.slice(0, 3 + closed).map(([k, v, unit]) => (
+              <div key={k} className="ng-card p-4 text-center">
+                <div className="ng-stat__v">{unit === "$" && <span className="text-cyan">$</span>}<CountUp key={v} value={v} /></div>
+                <div className="ng-stat__k">{k}</div>
+              </div>
+            ))}
           </div>
 
           {views === null &&<div className="space-y-3">{[0, 1].map((i) => <div key={i} className="ng-card h-44 animate-pulse opacity-40" />)}</div>}

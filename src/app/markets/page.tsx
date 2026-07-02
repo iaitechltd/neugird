@@ -14,7 +14,7 @@ import OrbPanel from "@/components/app/OrbPanel";
 import MarketTicker from "@/components/app/MarketTicker";
 import { Panel, Mark, DataRow, IconChart, IconActivity } from "@/components/app/ui";
 import { Area, Gauge } from "@/components/app/charts";
-import { Decrypt } from "@/components/app/typefx";
+import { CountUp, Decrypt } from "@/components/app/typefx";
 import type { Market, MarketStage } from "@/lib/types";
 
 type Mkt = Market & { grid_name: string; grid_slug: string; marketcap?: number; cap_target?: number; cap_pct?: number; vol24h?: number; volTotal?: number; series?: number[] };
@@ -96,6 +96,13 @@ export default function MarketsPage() {
   const list = useMemo(() => markets ?? [], [markets]);
   const filtered = stage === "all" ? list : list.filter((m) => m.stage === stage);
   const totals = useMemo(() => ({ markets: list.length, liq: list.reduce((s, m) => s + (m.liquidity_usd ?? 0), 0), holders: list.reduce((s, m) => s + (m.holders ?? 0), 0) }), [list]);
+  const kpis: [string, number, string?][] = [
+    ["Live Markets", totals.markets],
+    ["Liquidity", Math.round(totals.liq), "$"],
+    ["24h Vol", Math.round(list.reduce((s, m) => s + (m.vol24h ?? 0), 0)), "$"],
+    ["Holders", totals.holders],
+    ["Futures", list.filter((m) => m.stage === "futures").length],
+  ];
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
@@ -142,6 +149,16 @@ export default function MarketsPage() {
                 </button>
               );
             })}
+          </div>
+
+          {/* page KPIs — 3 by default, 4/5 as the side panels collapse */}
+          <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
+            {kpis.slice(0, 3 + closed).map(([k, v, unit]) => (
+              <div key={k} className="ng-card p-4 text-center">
+                <div className="ng-stat__v">{unit === "$" && <span className="text-cyan">$</span>}<CountUp key={v} value={v} /></div>
+                <div className="ng-stat__k">{k}</div>
+              </div>
+            ))}
           </div>
 
           {markets === null && <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>{[0, 1, 2, 3].map((i) => <div key={i} className="ng-card h-72 animate-pulse opacity-40" />)}</div>}

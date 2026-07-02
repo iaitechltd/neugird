@@ -13,7 +13,7 @@ import NeuHeader from "@/components/app/NeuHeader";
 import NeuGridDock from "@/components/app/NeuGridDock";
 import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, Tag, Mark, DataRow, IconBriefcase, IconActivity, IconBolt, IconCheck } from "@/components/app/ui";
-import { Decrypt } from "@/components/app/typefx";
+import { CountUp, Decrypt } from "@/components/app/typefx";
 import type { Job } from "@/lib/types";
 
 type View = "open" | "doing" | "created" | "all";
@@ -64,6 +64,13 @@ export default function JobsPage() {
     view === "doing" ? j.assignee_id === mineId :
     view === "created" ? j.created_by === mineId : true
   );
+  const kpis: [string, number, string?][] = [
+    ["Open Jobs", counts.open],
+    ["Rewards Pool", Math.round(counts.pool), "$"],
+    ["In Progress", list.filter((j) => j.status === "in_progress").length],
+    ["Delivered", list.filter((j) => j.status === "paid").length],
+    ["Agent-eligible", list.filter((j) => j.status === "open" && j.executor_kind !== "human").length],
+  ];
 
   async function act(url: string, body?: object, msg?: string) {
     if (busy) return;
@@ -130,6 +137,16 @@ export default function JobsPage() {
               <p className="mt-1 text-sm text-ink-dim">Post work. Claim it. Deliver. Earn verified reputation.</p>
             </div>
             <button onClick={() => setCreating((c) => !c)} className="ng-btn ng-btn-primary shrink-0">{creating ? "Cancel" : "+ Post a Job"}</button>
+          </div>
+
+          {/* page KPIs — 3 by default, 4/5 as the side panels collapse */}
+          <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
+            {kpis.slice(0, 3 + closed).map(([k, v, unit]) => (
+              <div key={k} className="ng-card p-4 text-center">
+                <div className="ng-stat__v">{unit === "$" && <span className="text-cyan">$</span>}<CountUp key={v} value={v} /></div>
+                <div className="ng-stat__k">{k}</div>
+              </div>
+            ))}
           </div>
 
           {creating && (

@@ -9,7 +9,7 @@ import {
   IconChevronDown, IconCheck, IconBot, IconGrid, IconStar, IconBolt,
   IconNetwork, IconRocket, IconUser, IconCoins, IconShield,
 } from "@/components/app/ui";
-import { Decrypt } from "@/components/app/typefx";
+import { CountUp, Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import OrbPanel from "@/components/app/OrbPanel";
 import type { Agent, Job } from "@/lib/types";
@@ -152,6 +152,16 @@ export default function AgentsPage() {
             <div className="flex items-center gap-2 text-[12px] text-neon"><IconBot className="h-4 w-4" /><Decrypt text="The Agent Economy" /></div>
             <p className="mt-1 text-sm text-ink-dim">First-class economic actors — native or external (via MCP). Agents claim Jobs, earn reputation + ratings, and split the reward with their owner.</p>
           </Bracket>
+
+          {/* page KPIs — 3 by default, 4/5 as the side panels collapse */}
+          <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
+            {([["Agents", allAgents.length, undefined], ["Earned", Math.round(totalEarned), "$"], ["Trusted", trustedCount, undefined], ["Native", nativeCount, undefined], ["External", externalCount, undefined]] as [string, number, string?][]).slice(0, 3 + closed).map(([k, v, unit]) => (
+              <div key={k} className="ng-card p-4 text-center">
+                <div className="ng-stat__v">{unit === "$" && <span className="text-cyan">$</span>}<CountUp key={v} value={v} /></div>
+                <div className="ng-stat__k">{k}</div>
+              </div>
+            ))}
+          </div>
 
           {/* MY AGENTS — real */}
           <div className="flex items-center justify-between">

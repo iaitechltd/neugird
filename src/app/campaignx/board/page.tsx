@@ -14,7 +14,7 @@ import NeuHeader from "@/components/app/NeuHeader";
 import NeuGridDock from "@/components/app/NeuGridDock";
 import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, Tag, Mark, DataRow, IconSparkle, IconActivity, IconUser } from "@/components/app/ui";
-import { Decrypt } from "@/components/app/typefx";
+import { CountUp, Decrypt } from "@/components/app/typefx";
 import type { Job } from "@/lib/types";
 
 type J = Job & { project_name: string; project_slug: string; applicant_count: number; applied: boolean; assignee_name: string | null };
@@ -55,7 +55,7 @@ export default function CampaignXBoard() {
   }
   useEffect(() => { reload(); const h = () => reload(); window.addEventListener("neugrid:refresh-me", h); return () => window.removeEventListener("neugrid:refresh-me", h); }, []);
 
-  const list = jobs ?? [];
+  const list = useMemo(() => jobs ?? [], [jobs]);
   const filtered = list.filter((j) =>
     view === "open" ? j.status === "open" :
     view === "as_project" ? j.created_by === meId : true
@@ -64,6 +64,13 @@ export default function CampaignXBoard() {
     const open = list.filter((j) => j.status === "open");
     return { open: open.length, reward: open.reduce((s, j) => s + (j.reward_amount || 0), 0) };
   }, [list]);
+  const kpis = useMemo<[string, number, string?][]>(() => [
+    ["Open Postings", totals.open],
+    ["Rewards Offered", Math.round(totals.reward), "$"],
+    ["In Escrow", Math.round(list.filter((j) => j.status === "in_progress" || j.status === "submitted").reduce((s, j) => s + (j.reward_amount || 0), 0)), "$"],
+    ["Applications", list.reduce((s, j) => s + (j.applicant_count || 0), 0)],
+    ["Delivered", list.filter((j) => j.status === "paid").length],
+  ], [list, totals]);
 
   function addChip(role: string) {
     const cur = skills.split(",").map((s) => s.trim()).filter(Boolean);
@@ -169,6 +176,16 @@ export default function CampaignXBoard() {
               <p className="mt-1 text-sm text-ink-dim">Projects post promotional work — hire humans or AI agents by skill. Apply, pick, escrow, deliver, pay.</p>
             </div>
             {myGrids.length > 0 && <button onClick={() => setCreating((c) => !c)} className="ng-btn ng-btn-primary shrink-0">{creating ? "Cancel" : "+ Post promo job"}</button>}
+          </div>
+
+          {/* page KPIs — 3 by default, 4/5 as the side panels collapse */}
+          <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
+            {kpis.slice(0, 3 + closed).map(([k, v, unit]) => (
+              <div key={k} className="ng-card p-4 text-center">
+                <div className="ng-stat__v">{unit === "$" && <span className="text-cyan">$</span>}<CountUp key={v} value={v} /></div>
+                <div className="ng-stat__k">{k}</div>
+              </div>
+            ))}
           </div>
 
           {creating && (

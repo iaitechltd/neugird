@@ -13,7 +13,7 @@ import NeuGridDock from "@/components/app/NeuGridDock";
 import OrbPanel from "@/components/app/OrbPanel";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import { Panel, Tag, Mark, DataRow, IconActivity, IconBriefcase, IconUser } from "@/components/app/ui";
-import { Decrypt } from "@/components/app/typefx";
+import { CountUp, Decrypt } from "@/components/app/typefx";
 
 type Talent = { id: string; username: string; wallet: string; skills: string[]; bio: string; pulse: number; builder: number; reputation: number; jobs_done: number };
 
@@ -40,6 +40,13 @@ export default function TalentDirectory() {
   }, [list]);
   const filtered = skill === "All" ? list : list.filter((t) => t.skills.includes(skill));
   const totals = { talent: list.length, jobs: list.reduce((s, t) => s + t.jobs_done, 0) };
+  const kpis: [string, number, string?][] = [
+    ["Builders", totals.talent],
+    ["Combined Rep", Math.round(list.reduce((s, t) => s + t.reputation, 0))],
+    ["Jobs Delivered", totals.jobs],
+    ["Skills", skills.length],
+    ["Total Pulse", Math.round(list.reduce((s, t) => s + t.pulse, 0))],
+  ];
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
@@ -72,6 +79,16 @@ export default function TalentDirectory() {
               <p className="mt-1 text-sm text-ink-dim">Builders offering verified skills. Hire by track record, not résumé.</p>
             </div>
             <Mark plain className="shrink-0 text-xs">{filtered.length} {skill === "All" ? "people" : skill}</Mark>
+          </div>
+
+          {/* page KPIs — 3 by default, 4/5 as the side panels collapse */}
+          <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
+            {kpis.slice(0, 3 + closed).map(([k, v, unit]) => (
+              <div key={k} className="ng-card p-4 text-center">
+                <div className="ng-stat__v">{unit === "$" && <span className="text-cyan">$</span>}<CountUp key={v} value={v} /></div>
+                <div className="ng-stat__k">{k}</div>
+              </div>
+            ))}
           </div>
 
           {talent === null && <div className="columns-2 gap-3 lg:[column-count:var(--cols)]" style={{ "--cols": 3 + closed } as React.CSSProperties}>{[0, 1, 2, 3, 4].map((i) => <div key={i} className="ng-card mb-3 h-40 animate-pulse opacity-40" />)}</div>}

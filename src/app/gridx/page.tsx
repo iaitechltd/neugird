@@ -7,9 +7,9 @@ import NeuHeader from "@/components/app/NeuHeader";
 import {
   Panel, Mark, Tag, Bracket,
   IconChevronDown, IconGrid, IconCheck, IconBolt, IconRocket, IconStore,
-  IconCoins, IconUser, IconLayers, IconArrowRight,
+  IconCoins, IconLayers, IconArrowRight,
 } from "@/components/app/ui";
-import { Decrypt } from "@/components/app/typefx";
+import { CountUp, Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import OrbPanel from "@/components/app/OrbPanel";
 import type { Build, Product } from "@/lib/types";
@@ -61,6 +61,13 @@ export default function GridXPage() {
 
   const totalRevenue = products.reduce((s, p) => s + (p.onchain_revenue ?? 0), 0);
   const totalUsers = products.reduce((s, p) => s + (p.active_users ?? 0), 0);
+  const kpis: [string, number, string?][] = [
+    ["Products", products.length],
+    ["Revenue 30D", Math.round(totalRevenue), "$"],
+    ["Active Users", totalUsers],
+    ["Followers", products.reduce((s, p) => s + (p.followers ?? 0), 0)],
+    ["Reviews", products.reduce((s, p) => s + (p.review_count ?? 0), 0)],
+  ];
   const unlisted = builds.filter((b) => !b.product_id);
   const categories = Array.from(new Set(products.map((p) => p.category)));
   const topProducts = [...products].sort((a, b) => (b.onchain_revenue ?? 0) - (a.onchain_revenue ?? 0)).slice(0, 5);
@@ -110,12 +117,12 @@ export default function GridXPage() {
             <p className="mt-1 text-sm text-ink-dim">The on-chain app store — products shipped through Echo, with verifiable usage &amp; revenue.</p>
           </div>
 
-          {/* real stats */}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-            {([["Products", products.length.toLocaleString(), IconGrid], ["Active users", totalUsers.toLocaleString(), IconUser], ["On-chain revenue", `$${totalRevenue.toLocaleString()}`, IconCoins]] as [string, string, (p: { className?: string }) => React.JSX.Element][]).map(([k, v, Ico]) => (
-              <div key={k} className="ng-card p-3.5">
-                <div className="ng-tag ng-tag--neon mb-1.5"><Ico className="h-3 w-3" />{k}</div>
-                <div className="ng-stat__v !text-xl">{v}</div>
+          {/* page KPIs — 3 by default, 4/5 as the side panels collapse */}
+          <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
+            {kpis.slice(0, 3 + closed).map(([k, v, unit]) => (
+              <div key={k} className="ng-card p-4 text-center">
+                <div className="ng-stat__v">{unit === "$" && <span className="text-cyan">$</span>}<CountUp key={v} value={v} /></div>
+                <div className="ng-stat__k">{k}</div>
               </div>
             ))}
           </div>

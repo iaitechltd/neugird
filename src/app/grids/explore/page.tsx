@@ -12,7 +12,7 @@ import NeuHeader from "@/components/app/NeuHeader";
 import NeuGridDock from "@/components/app/NeuGridDock";
 import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, Tag, Mark, DataRow, IconActivity, IconArrowRight, IconNetwork, IconLayers, IconBot, IconCoins } from "@/components/app/ui";
-import { Decrypt } from "@/components/app/typefx";
+import { CountUp, Decrypt } from "@/components/app/typefx";
 import type { Grid } from "@/lib/types";
 
 type GridRow = Grid & { subgrid_count?: number; agent_count?: number; earnings?: number };
@@ -52,6 +52,13 @@ export default function GridsExplorePage() {
     pulse: list.reduce((s, g) => s + (g.pulse_score || 0), 0),
   }), [list]);
   const topByPulse = useMemo(() => [...list].sort((a, b) => (b.pulse_score || 0) - (a.pulse_score || 0)).slice(0, 5), [list]);
+  const kpis = useMemo<[string, number, string?][]>(() => [
+    ["Grids", list.length],
+    ["Members", list.reduce((s, g) => s + (g.member_count || 0), 0)],
+    ["Activity Value", Math.round(list.reduce((s, g) => s + (g.earnings || 0), 0)), "$"],
+    ["SubGrids", list.reduce((s, g) => s + (g.subgrid_count || 0), 0)],
+    ["Avg Pulse", list.length ? Math.round(list.reduce((s, g) => s + (g.pulse_score || 0), 0) / list.length) : 0],
+  ], [list]);
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
@@ -89,6 +96,16 @@ export default function GridsExplorePage() {
               <p className="mt-1 text-sm text-ink-dim">Every community on the network. Start one, or join the signal.</p>
             </div>
             <Mark plain className="shrink-0 text-xs">{filtered.length} {cat === "All" ? "grids" : cat}</Mark>
+          </div>
+
+          {/* page KPIs — 3 by default, 4/5 as the side panels collapse */}
+          <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
+            {kpis.slice(0, 3 + closed).map(([k, v, unit]) => (
+              <div key={k} className="ng-card p-4 text-center">
+                <div className="ng-stat__v">{unit === "$" && <span className="text-cyan">$</span>}<CountUp key={v} value={v} /></div>
+                <div className="ng-stat__k">{k}</div>
+              </div>
+            ))}
           </div>
 
           {err && <Panel><div className="p-6 text-center text-sm text-ink-dim">Could not load grids.</div></Panel>}

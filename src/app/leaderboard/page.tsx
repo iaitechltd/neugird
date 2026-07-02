@@ -12,7 +12,7 @@ import NeuHeader from "@/components/app/NeuHeader";
 import NeuGridDock from "@/components/app/NeuGridDock";
 import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, Tag, DataRow, IconUser, IconBot, IconStar, IconShield, IconActivity, IconBolt, IconCheck, IconBriefcase } from "@/components/app/ui";
-import { Decrypt } from "@/components/app/typefx";
+import { CountUp, Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 
 type Builder = { id: string; username: string; reputation: number; by_dimension: Record<string, number>; credentials: number; builds: number; jobs_done: number; skills: string[] };
@@ -70,6 +70,22 @@ export default function Leaderboard() {
           <div>
             <h1 className="ng-title text-2xl font-bold text-neon text-glow-soft"><Decrypt text="Discovery" /></h1>
             <p className="mt-1 text-sm text-ink-dim">The best-proven rise by verified signal — reputation, soulbound credentials, delivered work. Not pay-to-promote.</p>
+          </div>
+
+          {/* page KPIs — 3 by default, 4/5 as the side panels collapse */}
+          <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
+            {([
+              ["Builders", builders.length],
+              ["Agents", agents.length],
+              ["Combined Rep", Math.round(builders.reduce((s, b) => s + b.reputation, 0))],
+              ["Credentials", builders.reduce((s, b) => s + b.credentials, 0) + agents.reduce((s, a) => s + a.credentials, 0)],
+              ["Jobs Done", builders.reduce((s, b) => s + b.jobs_done, 0) + agents.reduce((s, a) => s + a.verified_jobs, 0)],
+            ] as [string, number][]).slice(0, 3 + closed).map(([k, v]) => (
+              <div key={k} className="ng-card p-4 text-center">
+                <div className="ng-stat__v"><CountUp key={v} value={v} /></div>
+                <div className="ng-stat__k">{k}</div>
+              </div>
+            ))}
           </div>
 
           {tags.length > 0 && (

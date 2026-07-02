@@ -12,7 +12,7 @@ import NeuHeader from "@/components/app/NeuHeader";
 import NeuGridDock from "@/components/app/NeuGridDock";
 import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, Mark, DataRow, ProgressBar, IconShield, IconActivity, IconLock, IconWallet, IconBolt, IconCheck, IconCoins } from "@/components/app/ui";
-import { Decrypt } from "@/components/app/typefx";
+import { CountUp, Decrypt } from "@/components/app/typefx";
 import type { GovProposal, GovProposalKind } from "@/lib/types";
 
 type GovView = GovProposal & { total_grid: number; for_pct: number; against_pct: number; quorum_pct: number; voters: number; my_vote: { support: boolean; grid: number } | null };
@@ -187,8 +187,16 @@ export default function GovernancePage() {
   const stats = useMemo(() => ({
     open: list.filter((p) => p.status === "open").length,
     passed: list.filter((p) => p.status === "passed").length,
+    rejected: list.filter((p) => p.status === "rejected").length,
     locked: list.reduce((s, p) => s + (p.status === "open" ? p.total_grid : 0), 0),
   }), [list]);
+  const kpis: [string, number, string?][] = [
+    ["Open Votes", stats.open],
+    ["GRID Locked", Math.round(stats.locked)],
+    ["Passed", stats.passed],
+    ["Rejected", stats.rejected],
+    ["Quorum", Math.round(params.find((p) => p.key === "gov_quorum_grid")?.value ?? 0)],
+  ];
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
@@ -239,6 +247,16 @@ export default function GovernancePage() {
               <p className="mt-1 text-sm text-ink-dim">GRID holders steer the protocol — lock GRID to vote on parameters, listings, and the treasury.</p>
             </div>
             <button onClick={() => setComposing((v) => !v)} disabled={!!me && !me.can_propose} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-50" title={me && !me.can_propose ? `Hold ≥ ${grid(me.propose_min)} GRID to propose` : undefined}>{composing ? "Cancel" : "+ New Proposal"}</button>
+          </div>
+
+          {/* page KPIs — 3 by default, 4/5 as the side panels collapse */}
+          <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
+            {kpis.slice(0, 3 + closed).map(([k, v, unit]) => (
+              <div key={k} className="ng-card p-4 text-center">
+                <div className="ng-stat__v">{unit === "$" && <span className="text-cyan">$</span>}<CountUp key={v} value={v} /></div>
+                <div className="ng-stat__k">{k}</div>
+              </div>
+            ))}
           </div>
 
           {/* Composer */}
