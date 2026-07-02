@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server";
 import { X402, Echo, GridMarket } from "@/lib/modules";
 import { gatewayAgent } from "@/lib/agentAuth";
+import { publicRequestUrl } from "@/lib/publicUrl";
 
 export const dynamic = "force-dynamic";
 
@@ -28,12 +29,13 @@ export async function POST(request: Request) {
 
   // ── real x402 (Solana) ──
   if (X402.active()) {
+    const resourceUrl = publicRequestUrl(request);
     const xPayment = request.headers.get("x-payment");
     if (!xPayment) {
-      return NextResponse.json(await X402.challengeRaw({ amount: price, resourceUrl: request.url, description }), { status: 402, headers: { "accept-payment": "x402" } });
+      return NextResponse.json(await X402.challengeRaw({ amount: price, resourceUrl, description }), { status: 402, headers: { "accept-payment": "x402" } });
     }
-    const r = await X402.settleTreasuryRaw(xPayment, price, request.url, agent.agent_id, description, "echo_build");
-    if (r.error) return NextResponse.json(await X402.challengeRaw({ amount: price, resourceUrl: request.url, description }, r.error), { status: 402 });
+    const r = await X402.settleTreasuryRaw(xPayment, price, resourceUrl, agent.agent_id, description, "echo_build");
+    if (r.error) return NextResponse.json(await X402.challengeRaw({ amount: price, resourceUrl, description }, r.error), { status: 402 });
     const built = await Echo.runBuild({ owner_id: agent.owner_id, prompt, title, paid_externally: true });
     if (built.error) return NextResponse.json({ error: built.error }, { status: built.error === "synthesis_failed" ? 503 : 400 });
     return NextResponse.json({ paid: true, price, build: built.build }, { headers: { "x-payment-response": r.paymentResponse ?? "" } });

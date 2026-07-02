@@ -5,6 +5,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { publicRequestUrl } from "../publicUrl";
 import * as X402 from "./x402";
 import * as Jobs from "./jobs";
 import * as Markets from "./markets";
@@ -83,13 +84,15 @@ export async function produce(name: string, agent: Agent, request: Request): Pro
 export async function serveMeteredResource(request: Request, agent: Agent, name: string): Promise<NextResponse> {
   if (!X402.isResource(name)) return NextResponse.json({ error: "unknown_resource" }, { status: 404 });
   const xPayment = request.headers.get("x-payment");
+  // the public URL, not request.url — behind Cloud Run's proxy the latter is 0.0.0.0:8080
+  const resourceUrl = publicRequestUrl(request);
 
   if (X402.active()) {
     if (!xPayment) {
-      return NextResponse.json(await X402.challenge(name, request.url, agent), { status: 402, headers: { "accept-payment": "x402" } });
+      return NextResponse.json(await X402.challenge(name, resourceUrl, agent), { status: 402, headers: { "accept-payment": "x402" } });
     }
-    const r = await X402.settleViaFacilitator(xPayment, name, request.url, agent.agent_id);
-    if (r.error) return NextResponse.json(await X402.challenge(name, request.url, agent, r.error), { status: 402 });
+    const r = await X402.settleViaFacilitator(xPayment, name, resourceUrl, agent.agent_id);
+    if (r.error) return NextResponse.json(await X402.challenge(name, resourceUrl, agent, r.error), { status: 402 });
     return NextResponse.json(await produce(name, agent, request), { headers: { "x-payment-response": r.paymentResponse ?? "" } });
   }
 

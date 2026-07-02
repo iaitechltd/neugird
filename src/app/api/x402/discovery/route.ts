@@ -7,11 +7,12 @@
 
 import { NextResponse } from "next/server";
 import { X402 } from "@/lib/modules";
+import { publicRequestUrl } from "@/lib/publicUrl";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const origin = new URL(request.url).origin;
+  const origin = new URL(publicRequestUrl(request)).origin;
   const items = Object.entries(X402.RESOURCES).map(([name, meta]) => {
     const resourceUrl = `${origin}/api/agent-gateway/x402/resource/${name}`;
     const reqs = X402.requirements(name, resourceUrl); // real requirements in solana mode

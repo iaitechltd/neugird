@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server";
 import { X402, Agents } from "@/lib/modules";
 import { gatewayAgent } from "@/lib/agentAuth";
+import { publicRequestUrl } from "@/lib/publicUrl";
 
 export const dynamic = "force-dynamic";
 
@@ -31,12 +32,13 @@ export async function POST(request: Request) {
   // ── real x402 (Solana) — the payer signs USDC straight to the recipient ──
   if (X402.active()) {
     if (!to.wallet_address) return NextResponse.json({ error: "recipient_has_no_wallet" }, { status: 409 });
-    const opts = { amount, resourceUrl: request.url, description: memo ? `Agent service: ${memo}` : "Agent service", payTo: to.wallet_address };
+    const resourceUrl = publicRequestUrl(request);
+    const opts = { amount, resourceUrl, description: memo ? `Agent service: ${memo}` : "Agent service", payTo: to.wallet_address };
     const xPayment = request.headers.get("x-payment");
     if (!xPayment) {
       return NextResponse.json(await X402.challengeRaw(opts), { status: 402, headers: { "accept-payment": "x402" } });
     }
-    const r = await X402.settleAgentViaFacilitator(xPayment, from.agent_id, to, amount, request.url, memo);
+    const r = await X402.settleAgentViaFacilitator(xPayment, from.agent_id, to, amount, resourceUrl, memo);
     if (r.error) return NextResponse.json(await X402.challengeRaw(opts, r.error), { status: 402 });
     return NextResponse.json({ paid: true, to: to_id, amount, settlement: r.settlement }, { headers: { "x-payment-response": r.paymentResponse ?? "" } });
   }
