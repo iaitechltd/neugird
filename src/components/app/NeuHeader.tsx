@@ -7,7 +7,7 @@ import NeuGridMark from "@/components/NeuGridMark";
 import PulseMonitor from "./PulseMonitor";
 import StartNewButton from "./StartNewButton";
 import UserMenu from "./UserMenu";
-import { IconBell, IconCheck, IconConnect, IconMessage, IconSearch, IconShield, IconUser } from "./ui";
+import { IconActivity, IconBell, IconChart, IconCheck, IconConnect, IconMessage, IconSearch, IconShield, IconUser } from "./ui";
 import { Typewriter } from "./typefx";
 
 /** Clean ghost icon button for the header (no background, neon on hover). */
@@ -127,8 +127,8 @@ function SearchOverlay({ onClose }: { onClose: () => void }) {
 
 /* ------------------------------ notifications ------------------------------ */
 
-type Note = { kind: "message" | "review" | "applicants" | "governance"; text: string; sub?: string; href: string };
-const NOTE_ICON: Record<Note["kind"], (p: { className?: string }) => React.JSX.Element> = { message: IconMessage, review: IconCheck, applicants: IconUser, governance: IconShield };
+type Note = { kind: "message" | "review" | "applicants" | "governance" | "fill" | "position" | "market"; text: string; sub?: string; href: string };
+const NOTE_ICON: Record<Note["kind"], (p: { className?: string }) => React.JSX.Element> = { message: IconMessage, review: IconCheck, applicants: IconUser, governance: IconShield, fill: IconChart, position: IconActivity, market: IconChart };
 
 function BellDropdown({ notes, onClose }: { notes: Note[]; onClose: () => void }) {
   const router = useRouter();
@@ -142,7 +142,7 @@ function BellDropdown({ notes, onClose }: { notes: Note[]; onClose: () => void }
             <p className="px-3 py-4 text-[11px] text-ink-dim">You&rsquo;re all caught up — nothing needs you right now.</p>
           ) : (
             notes.map((n, i) => {
-              const Ico = NOTE_ICON[n.kind];
+              const Ico = NOTE_ICON[n.kind] ?? IconCheck; // unknown kinds must never crash the bell
               return (
                 <button key={i} onClick={() => { onClose(); router.push(n.href); }} className="flex w-full items-start gap-2.5 rounded-lg px-3 py-2 text-left transition hover:bg-neon/[0.07]">
                   <span className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded ${n.kind === "message" ? "bg-cyan/10 text-cyan" : "bg-neon/10 text-neon"}`}><Ico className="h-3.5 w-3.5" /></span>

@@ -312,6 +312,7 @@ create table if not exists markets (
   volume        numeric,
   eligibility   jsonb,      -- GraduationCriterion[] gate to reach this stage
   status        text        not null default 'pending',
+  stage_changed_at timestamptz, -- last graduation moment (holder notifications)
   created_at    timestamptz not null default now()
 );
 

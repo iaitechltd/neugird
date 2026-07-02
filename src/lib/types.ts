@@ -740,6 +740,7 @@ export interface Market {
   volume?: number;
   eligibility?: GraduationCriterion[]; // gate to reach this stage
   status: "pending" | "active" | "paused";
+  stage_changed_at?: ISODate; // last graduation moment (drives holder notifications)
   created_at: ISODate;
 }
 

@@ -7,12 +7,16 @@
 
 import { NextResponse } from "next/server";
 import { db } from "@/lib/store";
-import { Messaging, Governance } from "@/lib/modules";
+import { Messaging, Governance, Markets } from "@/lib/modules";
 import { getCurrentUserId } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-type Note = { kind: "message" | "review" | "applicants" | "governance"; text: string; sub?: string; href: string };
+type Note = { kind: "message" | "review" | "applicants" | "governance" | "fill" | "position" | "market"; text: string; sub?: string; href: string };
+
+const RECENT_MS = 48 * 3600 * 1000; // TradeX event window — old fills/closes age out of the bell
+const recent = (iso?: string) => !!iso && Date.now() - Date.parse(iso) <= RECENT_MS;
+const sym = (market_id: string) => db.markets.find((m) => m.market_id === market_id)?.base_symbol ?? market_id;
 
 export async function GET() {
   const uid = await getCurrentUserId();
@@ -37,10 +41,38 @@ export async function GET() {
     if (pending > 0) notes.push({ kind: "applicants", text: `${pending} applicant${pending === 1 ? "" : "s"} waiting`, sub: j.title.slice(0, 60), href: "/campaignx/board" });
   }
 
-  // 4 · open protocol votes (informational)
+  // 4 · TradeX — my limit orders that filled recently
+  const fills = db.orders.filter((o) => o.user_id === uid && o.status === "filled" && recent(o.filled_at));
+  for (const o of fills.slice(0, 3)) {
+    notes.push({ kind: "fill", text: `Limit ${o.side} filled — ${sym(o.market_id)}`, sub: `${o.qty} @ $${o.price}`, href: `/market/${o.market_id}` });
+  }
+
+  // 5 · TradeX — my positions closed by the engine (liquidation / TP / SL)
+  const closes = db.positions.filter((p) => p.user_id === uid && recent(p.closed_at) && (p.close_reason === "liquidation" || p.close_reason === "take_profit" || p.close_reason === "stop_loss"));
+  for (const p of closes.slice(0, 3)) {
+    const label = p.close_reason === "liquidation" ? "Position liquidated" : p.close_reason === "take_profit" ? "Take-profit hit" : "Stop-loss hit";
+    const pnl = p.pnl ?? 0;
+    notes.push({ kind: "position", text: `${label} — ${sym(p.market_id)}`, sub: `${p.side} ${p.leverage}x · PnL ${pnl >= 0 ? "+" : ""}$${Math.round(pnl)}`, href: `/market/${p.market_id}` });
+  }
+
+  // 6 · TradeX — a market I own is ready to graduate (actionable), or one I hold just did
+  const myGridIds = new Set(db.grids.filter((g) => g.owner_id === uid).map((g) => g.grid_id));
+  for (const m of db.markets) {
+    if (myGridIds.has(m.grid_id) && m.stage !== "futures") {
+      const g = Markets.canGraduate(m.market_id);
+      if (g.ok && g.next) notes.push({ kind: "market", text: `${m.base_symbol} is ready to graduate to ${g.next}`, sub: "cap · liquidity · stake gates all met", href: `/market/${m.market_id}` });
+    }
+    if (recent(m.stage_changed_at) && db.holdings.some((h) => h.user_id === uid && h.market_id === m.market_id && h.base > 0)) {
+      notes.push({ kind: "market", text: `${m.base_symbol} graduated to ${m.stage}`, sub: "a market you hold moved up a stage", href: `/market/${m.market_id}` });
+    }
+  }
+
+  // 7 · open protocol votes (informational)
   const openGov = Governance.listProposals().filter((p) => p.status === "open").length;
   if (openGov > 0) notes.push({ kind: "governance", text: `${openGov} protocol proposal${openGov === 1 ? "" : "s"} open for voting`, href: "/governance" });
 
-  const badge = convos.reduce((n, c) => n + c.unread, 0) + reviews.length + notes.filter((n) => n.kind === "applicants").length;
-  return NextResponse.json({ badge, notes: notes.slice(0, 10) });
+  // badge = actionable only (fills/closes are informational and would pin forever)
+  const readyToGrad = notes.filter((n) => n.kind === "market" && n.text.includes("ready to graduate")).length;
+  const badge = convos.reduce((n, c) => n + c.unread, 0) + reviews.length + notes.filter((n) => n.kind === "applicants").length + readyToGrad;
+  return NextResponse.json({ badge, notes: notes.slice(0, 12) });
 }

@@ -16,10 +16,23 @@ import { Area, Gauge } from "@/components/app/charts";
 import { Decrypt } from "@/components/app/typefx";
 import type { Market, MarketStage } from "@/lib/types";
 
-type Mkt = Market & { grid_name: string; grid_slug: string; marketcap?: number; cap_target?: number; cap_pct?: number; vol24h?: number; series?: number[] };
+type Mkt = Market & { grid_name: string; grid_slug: string; marketcap?: number; cap_target?: number; cap_pct?: number; vol24h?: number; volTotal?: number; series?: number[] };
 const STAGES: (MarketStage | "all")[] = ["all", "alpha", "spot", "futures"];
 
 const money = (n: number) => (n >= 1e6 ? `$${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${Math.round(n)}`);
+
+/* The standing last tile — markets are earned, so the "add" action is a pointer
+ * back to the pipeline (deliver + audit → graduate), never a listing form. */
+function EarnMarketCard() {
+  return (
+    <Link href="/grids/explore" className="ng-card group flex min-h-[280px] flex-col items-center justify-center gap-2 !border-dashed p-4 text-center opacity-70 transition hover:!border-neon/40 hover:opacity-100">
+      <span className="grid h-9 w-9 place-items-center rounded-lg text-lg text-neon" style={{ background: "radial-gradient(circle, rgba(0,255,0,0.10), rgba(0,255,0,0.02))" }}>+</span>
+      <div className="ng-title text-sm font-bold text-neon">Earn your market</div>
+      <p className="max-w-[200px] text-[10px] leading-relaxed text-ink-faint">Deliver your project and pass the audit — graduates launch here. No listings, no buy-ins.</p>
+      <span className="mt-1 text-[11px] text-ink-dim group-hover:text-neon">Explore Grids ›</span>
+    </Link>
+  );
+}
 
 /* A tokenized market card — identity, ROI, price spark, and the Ascension Arc
  * (real progress toward the next stage's market-cap target). The spark + ROI are
@@ -48,7 +61,9 @@ function MarketCard({ m }: { m: Mkt }) {
       <div className="mt-2 divide-y divide-line text-[11px]">
         <div className="ng-row !py-1"><span className="ng-row__k">Market cap</span><Mark plain className="!text-[11px]">{money(m.marketcap ?? 0)}</Mark></div>
         <div className="ng-row !py-1"><span className="ng-row__k">Liquidity</span><Mark plain className="!text-[11px]">{money(m.liquidity_usd ?? 0)}</Mark></div>
-        <div className="ng-row !py-1"><span className="ng-row__k">24h Vol</span><Mark plain className="!text-[11px]">{money(m.vol24h ?? 0)}</Mark></div>
+        {(m.vol24h ?? 0) > 0 || !(m.volTotal ?? 0)
+          ? <div className="ng-row !py-1"><span className="ng-row__k">24h Vol</span><Mark plain className="!text-[11px]">{money(m.vol24h ?? 0)}</Mark></div>
+          : <div className="ng-row !py-1"><span className="ng-row__k">Total Vol</span><Mark plain className="!text-[11px]">{money(m.volTotal ?? 0)}</Mark></div>}
         <div className="ng-row !py-1"><span className="ng-row__k">Holders</span><Mark plain className="!text-[11px]">{(m.holders ?? 0).toLocaleString()}</Mark></div>
       </div>
       {/* Ascension Arc → progress toward the next stage's market-cap target */}
@@ -134,6 +149,7 @@ export default function MarketsPage() {
             // balancing leaves columns empty with few markets, stretching cards to 2-up
             <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
               {filtered.map((m) => <MarketCard key={m.market_id} m={m} />)}
+              <EarnMarketCard />
             </div>
           )}
         </main>
@@ -146,6 +162,34 @@ export default function MarketsPage() {
               <li className="flex gap-2"><Mark plain accent="neon" className="!text-[9px]">spot</Mark> unlocked by real traction (holders)</li>
               <li className="flex gap-2"><Mark plain accent="cyan" className="!text-[9px]">futures</Mark> deep liquidity + licensing, last</li>
             </ol>
+
+            {/* live ranking — real cap progress toward each market's next stage */}
+            <div className="ng-label mb-2 mt-5 !text-ink-dim">Next to graduate</div>
+            <div className="space-y-2.5">
+              {list.filter((m) => m.stage !== "futures").sort((a, b) => (b.cap_pct ?? 0) - (a.cap_pct ?? 0)).slice(0, 5).map((m) => {
+                const pct = Math.min(100, Math.round(m.cap_pct ?? 0));
+                const next = m.stage === "alpha" ? "spot" : "futures";
+                return (
+                  <Link key={m.market_id} href={`/market/${m.market_id}`} className="block rounded px-2 py-1.5 transition hover:bg-neon/[0.06]">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-neon">{m.base_symbol}</span>
+                      <span className="text-ink-faint">{m.stage} › {next}</span>
+                    </div>
+                    <div className="mt-1 h-1 overflow-hidden rounded bg-neon/10">
+                      <div className="h-full rounded bg-neon/70" style={{ width: `${Math.max(2, pct)}%` }} />
+                    </div>
+                    <div className="mt-0.5 flex items-center justify-between text-[10px] text-ink-faint">
+                      <span>{money(m.marketcap ?? 0)} / {money(m.cap_target ?? 0)}</span>
+                      <span className="tnum">{pct}%</span>
+                    </div>
+                  </Link>
+                );
+              })}
+              {markets !== null && list.filter((m) => m.stage !== "futures").length === 0 && (
+                <p className="text-[10px] text-ink-faint">Every live market has fully ascended.</p>
+              )}
+            </div>
+
             <p className="mt-4 text-[10px] leading-relaxed text-ink-faint">A token reaches TradeX only after its project delivered its milestones — markets are earned, not bought.</p>
           </Panel>
         </OrbPanel>

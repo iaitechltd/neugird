@@ -294,6 +294,7 @@ export function graduateMarket(market_id: string): { market?: Market; error?: st
   if (!g.ok || !g.next) return { error: g.reason ?? "not_eligible" };
   const m = getMarket(market_id)!;
   m.stage = g.next;
+  m.stage_changed_at = nowISO();
   const grid = db.grids.find((x) => x.grid_id === m.grid_id);
   if (grid) {
     grid.lifecycle_stage = g.next;
