@@ -1,0 +1,146 @@
+/**
+ * The pluggable AGENT BRAIN seam. `agentWork.decide()` is the rule-based default;
+ * a real model brain plugs in HERE behind one contract: given an agent (persona +
+ * skill library) and the candidate Jobs it may take, choose the single best Job.
+ *
+ * Same design as the chain rails (src/lib/chain/): env-gated, mock-by-default,
+ * swap-ready. The brain is INACTIVE unless NEUGRID_BRAIN=claude + ANTHROPIC_API_KEY
+ * are set, so importing this is harmless in the sandbox — the rule-based decide()
+ * stands, unchanged. A real ElizaOS / Hermes brain implements the same `chooseJob`
+ * contract behind another flag, without touching agentWork.
+ */
+
+import type { Agent, Job } from "../types";
+import { claudeChooseJob, claudeAgentReply, claudeSynthesizeBuild, claudeReviseBuild, claudeDraftProposal, claudeEchoAsk, type ChatContext, type SynthesizedBuild, type SynthFile, type ProposalDraft, type EchoAskMode } from "./claude";
+
+export type { ChatContext, ChatTurn, SynthesizedBuild, SynthFile, ProposalDraft, EchoAskMode } from "./claude";
+
+export interface BrainChoice {
+  /** A candidate Job's exact id, or null when the brain actively chooses to HOLD. */
+  job_id: string | null;
+  rationale: string;
+}
+
+/** Which model brain is active. Mock/rule-based (null) by default — see decide(). */
+export function activeBrain(): "claude" | null {
+  const b = (process.env.NEUGRID_BRAIN || "").trim().toLowerCase();
+  if (b === "claude" && process.env.ANTHROPIC_API_KEY) return "claude";
+  return null;
+}
+
+/**
+ * Ask the configured model brain to pick a Job.
+ *  - `null`            → no brain configured OR the call failed → caller uses rule-based decide().
+ *  - `{ job_id, ... }` → the active brain's choice (job_id may be null = an intentional hold).
+ * Never throws (fail-safe, like the chain adapters).
+ */
+export async function chooseJob(agent: Agent, jobs: Job[]): Promise<BrainChoice | null> {
+  if (!jobs.length) return null;
+  switch (activeBrain()) {
+    case "claude":
+      try {
+        return await claudeChooseJob(agent, jobs);
+      } catch {
+        return null; // misconfig / network / SDK missing → rule-based fallback stands
+      }
+    default:
+      return null;
+  }
+}
+
+/**
+ * Ask the configured model brain to synthesize a REAL build (Echo codegen).
+ * `null` → no brain configured or the call failed. Never throws.
+ */
+export async function synthesizeBuild(prompt: string): Promise<SynthesizedBuild | null> {
+  switch (activeBrain()) {
+    case "claude":
+      try {
+        return await claudeSynthesizeBuild(prompt);
+      } catch {
+        return null;
+      }
+    default:
+      return null;
+  }
+}
+
+/**
+ * Ask the configured model brain to REVISE an existing build (the iterate loop):
+ * current files + an instruction → the full updated project. Null on failure.
+ */
+export async function reviseBuild(
+  current: { title: string; summary: string; stack: string[]; files: SynthFile[] },
+  instruction: string,
+): Promise<SynthesizedBuild | null> {
+  switch (activeBrain()) {
+    case "claude":
+      try {
+        return await claudeReviseBuild(current, instruction);
+      } catch {
+        return null;
+      }
+    default:
+      return null;
+  }
+}
+
+/**
+ * Grounded Echo Q&A (Personal / Analyst / Observer) over a live data snapshot the
+ * server assembled. Null on failure or when no brain is configured.
+ */
+export async function echoAsk(mode: EchoAskMode, question: string, context: string): Promise<string | null> {
+  switch (activeBrain()) {
+    case "claude":
+      try {
+        return await claudeEchoAsk(mode, question, context);
+      } catch {
+        return null;
+      }
+    default:
+      return null;
+  }
+}
+
+/**
+ * Ask the configured model brain to draft a GenesisX funding proposal from a REAL
+ * build (the founder journey): pitch + ask + next-phase milestones. Null on failure.
+ */
+export async function draftProposal(build: {
+  title: string;
+  summary: string;
+  prompt: string;
+  stack: string[];
+  readme?: string;
+  file_paths: string[];
+}): Promise<ProposalDraft | null> {
+  switch (activeBrain()) {
+    case "claude":
+      try {
+        return await claudeDraftProposal(build);
+      } catch {
+        return null;
+      }
+    default:
+      return null;
+  }
+}
+
+/**
+ * Ask the configured model brain to write the agent's chat reply — in persona,
+ * grounded in its live state. `null` → no brain / call failed → the caller sends
+ * a deterministic fallback reply instead. Never throws.
+ */
+export async function replyAsAgent(agent: Agent, ctx: ChatContext): Promise<string | null> {
+  if (!ctx.history.length) return null;
+  switch (activeBrain()) {
+    case "claude":
+      try {
+        return await claudeAgentReply(agent, ctx);
+      } catch {
+        return null;
+      }
+    default:
+      return null;
+  }
+}

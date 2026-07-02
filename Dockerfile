@@ -1,0 +1,43 @@
+# NeuGrid — production container for Cloud Run.
+# Multi-stage: install deps → build (Next standalone) → minimal runtime image.
+# syntax=docker/dockerfile:1
+
+# ---- deps: full install for the build ----
+FROM node:22-alpine AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# ---- build: compile the app (emits .next/standalone) + stage `pg` in isolation ----
+FROM node:22-alpine AS build
+WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npm run build
+# `pg` and `@anthropic-ai/sdk` are imported via non-analyzable specifiers (so the
+# app builds without them), so Next's file tracer leaves them out of the standalone
+# bundle. Resolve them + their deps into an isolated tree we overlay onto the
+# runtime node_modules.
+RUN mkdir -p /pgmod && cd /pgmod && npm init -y >/dev/null 2>&1 \
+    && npm install pg@8.22.0 @anthropic-ai/sdk@0.109.1 --omit=dev --no-audit --no-fund
+
+# ---- runtime: only the standalone server + static + public (+ pg) ----
+FROM node:22-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=8080 \
+    HOSTNAME=0.0.0.0
+RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
+
+COPY --from=build /app/.next/standalone ./
+COPY --from=build /app/.next/static ./.next/static
+COPY --from=build /app/public ./public
+# Overlay `pg` (+ deps) into the traced standalone node_modules.
+COPY --from=build /pgmod/node_modules ./node_modules
+
+USER nextjs
+EXPOSE 8080
+# Cloud Run injects PORT; the Next standalone server honors PORT + HOSTNAME.
+CMD ["node", "server.js"]

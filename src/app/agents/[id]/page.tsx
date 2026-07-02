@@ -1,0 +1,320 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import NeuGridDock from "@/components/app/NeuGridDock";
+import NeuHeader from "@/components/app/NeuHeader";
+import {
+  Mark, Tag, Bracket, ProgressBar,
+  IconCheck, IconArrowRight, IconBolt, IconBot, IconUser, IconActivity,
+  IconNetwork, IconCoins, IconShield, IconStar, IconCode, IconMessage,
+  IconPlay, IconLayers, IconTarget, IconRefresh, IconClose,
+} from "@/components/app/ui";
+import { Decrypt, CountUp } from "@/components/app/typefx";
+import { MatrixAvatar } from "@/components/app/MatrixAvatar";
+import OrbPanel from "@/components/app/OrbPanel";
+import type { Agent, AgentPersona, AgentWorkSession, Job, LearnedSkill } from "@/lib/types";
+
+type WorkView = { persona: AgentPersona | null; work: AgentWorkSession | null; skills: LearnedSkill[]; earnings: number; cap: number };
+
+type Cred = { attestation_id: string; schema: string; title: string; fields: Record<string, string | number>; status: string };
+type View = { agent: Agent; owner: { id: string; username: string } | null; jobs: Job[]; credentials: Cred[]; x402_spend: number };
+const tierAccent = (t?: string): "neon" | "amber" | "danger" => (t === "trusted" ? "neon" : t === "suspended" ? "danger" : "amber");
+const INP = "w-full rounded border border-neon/20 bg-black/40 px-2 py-1.5 text-[12px] text-ink outline-none transition placeholder:text-ink-faint focus:border-neon/50";
+const CRED_ICON: Record<string, (p: { className?: string }) => React.JSX.Element> = { agent_trusted: IconShield, work_delivered: IconCheck };
+const CRED_NAME: Record<string, string> = { agent_trusted: "Agent Trusted", work_delivered: "Work Delivered" };
+
+function Sec({ icon, title, children, action }: { icon: React.ReactNode; title: string; children: React.ReactNode; action?: React.ReactNode }) {
+  return (
+    <section className="ng-card p-3.5">
+      <div className="ng-label mb-2.5 flex items-center justify-between gap-2 !text-ink-dim">
+        <span className="flex items-center gap-2"><span className="text-neon">{icon}</span>{title}</span>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+export default function AgentDetail() {
+  const params = useParams();
+  const id = typeof params?.id === "string" ? params.id : "";
+  const [lOpen, setLOpen] = useState(true);
+  const [rOpen, setROpen] = useState(true);
+  const closed = (lOpen ? 0 : 1) + (rOpen ? 0 : 1);
+  const [toast, setToast] = useState<string | null>(null);
+  const notify = (m: string) => { setToast(m); window.setTimeout(() => setToast(null), 2400); };
+
+  const [view, setView] = useState<View | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    if (!id) return;
+    fetch(`/api/agents/${id}`).then((r) => (r.ok ? r.json() : null)).then((d) => { setView(d?.agent ? d : null); setLoaded(true); }).catch(() => setLoaded(true));
+  }, [id]);
+
+  // native-agent framework — the owner-only work runtime (the /work fetch is owner-gated).
+  const [work, setWork] = useState<WorkView | null>(null);
+  const [editPersona, setEditPersona] = useState(false);
+  const [pForm, setPForm] = useState({ role: "", bio: "", personality: "", goals: "", style: "", knowledge: "" });
+  const [armForm, setArmForm] = useState({ skills: "", max_jobs: 5, max_reward: 0 });
+  const [busy, setBusy] = useState(false);
+
+  const refreshWork = useCallback(() => {
+    if (!id) return;
+    fetch(`/api/agents/${id}/work`).then((r) => (r.ok ? r.json() : null)).then((d: WorkView | null) => {
+      if (!d) return;
+      setWork(d);
+      const p = d.persona ?? {};
+      setPForm({ role: p.role ?? "", bio: p.bio ?? "", personality: p.personality ?? "", goals: p.goals ?? "", style: p.style ?? "", knowledge: (p.knowledge ?? []).join(", ") });
+      setArmForm((f) => ({ ...f, max_reward: f.max_reward || Math.round(d.cap) }));
+    }).catch(() => {});
+  }, [id]);
+  useEffect(() => { if (view && view.agent.origin !== "external") refreshWork(); }, [view, refreshWork]);
+
+  async function workPost(path: string, body?: unknown): Promise<Record<string, unknown> | null> {
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/agents/${id}/${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: body !== undefined ? JSON.stringify(body) : undefined });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { notify((d as { error?: string }).error || "Failed"); return null; }
+      return d as Record<string, unknown>;
+    } finally { setBusy(false); }
+  }
+  async function savePersona() {
+    const d = await workPost("persona", { ...pForm, knowledge: pForm.knowledge.split(",").map((s) => s.trim()).filter(Boolean) });
+    if (d) { setEditPersona(false); notify("Persona saved"); refreshWork(); }
+  }
+  async function armWork() {
+    const d = await workPost("work", { skills: armForm.skills.split(",").map((s) => s.trim()).filter(Boolean), max_jobs: armForm.max_jobs, max_reward: armForm.max_reward || undefined });
+    if (d) { notify("Autonomous work armed"); refreshWork(); }
+  }
+  async function tickWork() {
+    const d = await workPost("work/tick");
+    if (d) { const act = (d as { action?: { kind?: string; job_title?: string; rationale?: string } }).action; notify(act ? `${act.kind}: ${act.job_title || act.rationale || ""}` : "step"); refreshWork(); }
+  }
+  async function stopWork() { const d = await workPost("work/stop"); if (d) { notify("Autonomous work stopped"); refreshWork(); } }
+
+  if (!loaded || !view) {
+    return (
+      <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
+        <NeuHeader />
+        <div className="shrink-0 border-b border-neon/10 px-4 py-2 sm:px-6"><Link href="/agents" className="inline-flex items-center gap-2 text-xs text-ink-dim transition hover:text-neon"><IconArrowRight className="h-3.5 w-3.5 rotate-180" />Back to Agents</Link></div>
+        <div className="grid flex-1 place-items-center px-4 py-16 text-center">
+          {!loaded ? <div className="text-sm text-ink-dim"><IconBot className="mx-auto mb-3 h-9 w-9 animate-pulse text-neon/60" />Loading agent…</div> : (
+            <div><IconBot className="mx-auto h-10 w-10 text-neon/50" /><div className="mt-3 text-sm text-ink">Agent not found.</div><Link href="/agents" className="ng-btn ng-btn-primary ng-btn--sm mt-4">Browse agents</Link></div>
+          )}
+        </div>
+        <NeuGridDock />
+      </div>
+    );
+  }
+
+  const { agent: a, owner, jobs } = view;
+  const verified = jobs.filter((j) => j.status === "paid").length;
+  const repTotal = Math.round(a.reputation?.total ?? 0);
+  const isExternal = a.origin === "external";
+
+  return (
+    <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
+      <NeuHeader collapsed={!lOpen && !rOpen} onToggleCollapse={() => { const v = lOpen || rOpen; setLOpen(!v); setROpen(!v); }} onSearch={() => notify("Search")} onBell={() => notify("Notifications")} />
+      <div className="shrink-0 border-b border-neon/10 px-4 py-2 sm:px-6"><Link href="/agents" className="inline-flex items-center gap-2 text-xs text-ink-dim transition hover:text-neon"><IconArrowRight className="h-3.5 w-3.5 rotate-180" />Back to Agents</Link></div>
+
+      <div className="flex flex-col gap-3 px-3 py-3 lg:min-h-0 lg:flex-1 lg:flex-row">
+        {/* LEFT — identity */}
+        <OrbPanel side="left" label="Agent" open={lOpen} onToggle={setLOpen} widthClass="lg:w-[320px] xl:w-[340px]" className="space-y-3 lg:overflow-y-auto">
+          <Bracket className="ng-panel p-4">
+            <div className="flex items-center gap-3">
+              <MatrixAvatar seed={a.agent_id} size={56} />
+              <div className="min-w-0">
+                <div className="ng-title text-lg font-bold text-neon text-glow"><Decrypt text={a.name} /></div>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]"><Tag>{a.origin ?? "native"}</Tag><Mark plain accent={tierAccent(a.trust_tier)} className="!text-[9px]">{a.trust_tier ?? "trusted"}</Mark></div>
+              </div>
+            </div>
+            <div className="mt-3 divide-y divide-line text-[11px]">
+              <div className="ng-row !py-2"><span className="ng-row__k">Status</span><span className="ng-row__v flex items-center gap-1.5"><span className={a.status === "active" ? "ng-led" : "ng-led ng-led--idle"} /><span className={a.status === "active" ? "text-neon" : "text-ink-dim"}>{a.status}</span></span></div>
+              {isExternal && a.external_framework && <div className="ng-row !py-2"><span className="ng-row__k">Framework</span><span className="ng-row__v">{a.external_framework}</span></div>}
+              <div className="ng-row !py-2"><span className="ng-row__k">Owner</span><span className="ng-row__v">{owner?.username ?? a.owner_id}</span></div>
+            </div>
+            <Link href={`/messages?to=${a.agent_id}`} className="ng-btn ng-btn-primary ng-btn--block ng-btn--sm mt-3"><IconMessage className="h-3.5 w-3.5" /> Message · deal · hire</Link>
+          </Bracket>
+
+          <Sec icon={<IconBolt className="h-3.5 w-3.5" />} title="Capabilities">
+            {a.capabilities.length ? <div className="flex flex-wrap gap-2">{a.capabilities.map((c) => <Tag key={c}>{c}</Tag>)}</div> : <p className="text-[11px] text-ink-dim">None declared.</p>}
+          </Sec>
+
+          <Sec icon={<IconCoins className="h-3.5 w-3.5" />} title="Economics">
+            <div className="divide-y divide-line text-[11px]">
+              <div className="ng-row !py-2"><span className="ng-row__k">Owner revenue split</span><Mark plain className="!text-[11px]">{Math.round((a.owner_split_bps ?? 0) / 100)}%</Mark></div>
+              <div className="ng-row !py-2"><span className="ng-row__k">Agent wallet</span><Mark plain className="!text-[11px]">{(a.earnings ?? 0).toLocaleString()} Pulse</Mark></div>
+              {isExternal && <div className="ng-row !py-2"><span className="ng-row__k">Bond</span><Mark plain className="!text-[11px]">{(a.bond_amount ?? 0).toLocaleString()}</Mark></div>}
+            </div>
+          </Sec>
+        </OrbPanel>
+
+        {/* CENTER — overview + job history */}
+        <main className="@container order-1 space-y-4 lg:order-2 lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
+          <Bracket className="ng-panel p-5">
+            <div className="flex items-center gap-2 text-[12px] text-neon"><IconBot className="h-4 w-4" /><Decrypt text={isExternal ? "External agent · via MCP" : "Native agent"} /></div>
+            <div className="ng-title mt-1 text-2xl font-bold text-neon text-glow">{a.name}</div>
+            <p className="text-sm text-ink-dim">A first-class economic actor — claims Jobs, earns reputation + a rating, and splits the reward with {owner?.username ?? "its owner"}.</p>
+          </Bracket>
+
+          <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 4 + closed } as React.CSSProperties}>
+            {([["Reputation", repTotal], ["Rating", a.rating ?? 0], ["Earnings", a.earnings ?? 0], ["Verified jobs", verified]] as [string, number][]).map(([k, v]) => (
+              <div key={k} className="ng-card p-4 text-center"><div className="ng-stat__v"><CountUp key={v} value={v} decimals={k === "Rating" ? 1 : 0} /></div><div className="ng-stat__k">{k}</div></div>
+            ))}
+          </div>
+
+          {/* NATIVE AGENT FRAMEWORK (owner-only) — persona · autonomous work · skill library */}
+          {work && (
+            <>
+              <Sec icon={<IconTarget className="h-3.5 w-3.5" />} title="Persona" action={<button onClick={() => setEditPersona((v) => !v)} className="text-[11px] text-neon/80 transition hover:text-neon">{editPersona ? "Cancel" : work.persona?.role || work.persona?.personality ? "Edit" : "Set persona"}</button>}>
+                {!editPersona ? (
+                  work.persona?.role || work.persona?.personality || work.persona?.goals ? (
+                    <div className="space-y-1 text-[11px]">
+                      {work.persona.role && <div className="ng-row !py-1.5"><span className="ng-row__k">Role</span><span className="ng-row__v text-ink">{work.persona.role}</span></div>}
+                      {work.persona.personality && <div className="ng-row !py-1.5"><span className="ng-row__k">Personality</span><span className="ng-row__v text-ink">{work.persona.personality}</span></div>}
+                      {work.persona.goals && <div className="ng-row !py-1.5"><span className="ng-row__k">Goals</span><span className="ng-row__v text-ink">{work.persona.goals}</span></div>}
+                      {work.persona.knowledge?.length ? <div className="flex flex-wrap gap-1.5 pt-1.5">{work.persona.knowledge.map((k) => <Tag key={k}>{k}</Tag>)}</div> : null}
+                    </div>
+                  ) : <p className="text-[11px] text-ink-dim">No persona yet — give this agent a character (role · personality · goals) so it works like an agent, not an LLM wrapper.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {([["role", "Role — e.g. Research analyst"], ["personality", "Personality — e.g. rigorous, concise, skeptical"], ["goals", "Goals — what it optimizes for"], ["style", "Output style"], ["knowledge", "Knowledge domains (comma-separated)"]] as [keyof typeof pForm, string][]).map(([k, ph]) => (
+                      <input key={k} value={pForm[k]} onChange={(e) => setPForm((f) => ({ ...f, [k]: e.target.value }))} placeholder={ph} className={INP} />
+                    ))}
+                    <button disabled={busy} onClick={savePersona} className="ng-btn ng-btn-primary ng-btn--sm ng-btn--block">Save persona</button>
+                  </div>
+                )}
+              </Sec>
+
+              <Sec icon={<IconBolt className="h-3.5 w-3.5" />} title="Autonomous Work" action={<span className="flex items-center gap-2">{work.work?.active ? <span className="flex items-center gap-1.5 text-[10px] text-neon"><span className="ng-led" />running</span> : <span className="text-[10px] text-ink-faint">idle</span>}<button onClick={refreshWork} title="refresh" className="text-ink-faint transition hover:text-neon"><IconRefresh className="h-3 w-3" /></button></span>}>
+                {work.work?.active ? (
+                  <div className="space-y-3">
+                    <div>
+                      <div className="mb-1 flex items-center justify-between text-[11px]"><span className="text-ink-dim">Jobs delivered</span><Mark plain className="!text-[11px]">{work.work.jobs_done} / {work.work.max_jobs}</Mark></div>
+                      <ProgressBar percent={Math.min(100, (work.work.jobs_done / Math.max(1, work.work.max_jobs)) * 100)} />
+                    </div>
+                    <div className="flex gap-2">
+                      <button disabled={busy} onClick={tickWork} className="ng-btn ng-btn-primary ng-btn--sm flex-1"><IconPlay className="h-3.5 w-3.5" /> Run step</button>
+                      <button disabled={busy} onClick={stopWork} className="ng-btn ng-btn-danger ng-btn--sm"><IconClose className="h-3.5 w-3.5" /> Stop</button>
+                    </div>
+                    <div className="border-t border-line pt-2.5">
+                      <div className="ng-label mb-2 !text-[9px] !text-ink-faint">Activity feed</div>
+                      {work.work.log.length ? (
+                        <div className="space-y-2">
+                          {work.work.log.map((e, i) => (
+                            <div key={i} className="flex items-start gap-2 text-[10.5px]">
+                              <span className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded ${e.ok ? "bg-neon/10 text-neon" : "bg-neon/5 text-ink-faint"}`}>{e.kind === "delivered" ? <IconCheck className="h-2.5 w-2.5" /> : <IconActivity className="h-2.5 w-2.5" />}</span>
+                              <div className="min-w-0"><span className="text-ink">{e.kind}{e.job_title ? ` · ${e.job_title}` : ""}</span><span className="block truncate text-ink-faint">{e.rationale}{e.skills_applied ? ` · ${e.skills_applied} skill(s) applied` : ""}</span></div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : <p className="text-[10px] text-ink-faint">No steps yet — run one.</p>}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-[11px] text-ink-dim">Arm the agent to autonomously find, claim, deliver, and get paid for matching Jobs — within your guardrails.</p>
+                    <input value={armForm.skills} onChange={(e) => setArmForm((f) => ({ ...f, skills: e.target.value }))} placeholder={`Skills filter — default: ${a.capabilities.join(", ") || "any"}`} className={INP} />
+                    <div className="flex gap-2">
+                      <label className="flex-1 text-[10px] text-ink-dim">Max jobs<input type="number" min={1} max={50} value={armForm.max_jobs} onChange={(e) => setArmForm((f) => ({ ...f, max_jobs: Number(e.target.value) }))} className={`${INP} mt-1`} /></label>
+                      <label className="flex-1 text-[10px] text-ink-dim">Max reward / job<input type="number" min={1} value={armForm.max_reward} onChange={(e) => setArmForm((f) => ({ ...f, max_reward: Number(e.target.value) }))} className={`${INP} mt-1`} /></label>
+                    </div>
+                    <button disabled={busy} onClick={armWork} className="ng-btn ng-btn-primary ng-btn--sm ng-btn--block"><IconBolt className="h-3.5 w-3.5" /> Arm autonomous work</button>
+                  </div>
+                )}
+              </Sec>
+
+              <Sec icon={<IconLayers className="h-3.5 w-3.5" />} title="Skill Library" action={<Mark plain className="!text-[10px]">{work.skills.length}</Mark>}>
+                {work.skills.length ? (
+                  <div className="space-y-1.5">
+                    {work.skills.map((s) => (
+                      <div key={s.skill_id} className="flex items-center justify-between gap-2 border-b border-neon/10 pb-1.5 text-[11px] last:border-0 last:pb-0">
+                        <div className="flex min-w-0 items-center gap-1.5"><span className="truncate text-ink">{s.title}</span><Tag className="!text-[9px] shrink-0">{s.domain}</Tag></div>
+                        <span className="shrink-0 text-[10px] text-neon" title="mastery (reuses)">×{s.uses}</span>
+                      </div>
+                    ))}
+                    <p className="pt-1 text-[10px] text-ink-faint">Skills the agent wrote from delivered Jobs — reused on matching work; mastery grows with use (Hermes-style self-improvement).</p>
+                  </div>
+                ) : <p className="text-[11px] text-ink-dim">No skills yet — the agent writes a reusable skill each time it delivers a Job, getting better over time.</p>}
+              </Sec>
+            </>
+          )}
+
+          <Sec icon={<IconActivity className="h-3.5 w-3.5" />} title={`Job History · ${jobs.length}`} action={<Link href="/jobs" className="text-[11px] text-ink-dim transition hover:text-neon">Job board</Link>}>
+            {jobs.length ? (
+              <div className="grid grid-cols-1 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 2 + closed } as React.CSSProperties}>
+                {jobs.map((j) => (
+                  <div key={j.job_id} className="ng-card p-3.5">
+                    <div className="flex items-center justify-between gap-2"><span className="truncate text-[13px] text-ink">{j.title}</span><Mark plain accent={j.status === "paid" ? "neon" : j.status === "rejected" ? "danger" : "amber"} className="!text-[9px]">{j.status}</Mark></div>
+                    <p className="mt-1 line-clamp-2 text-[11px] text-ink-dim">{j.description}</p>
+                    <div className="mt-2 flex items-center justify-between text-[10px]"><div className="flex flex-wrap gap-1.5">{j.required_skills.slice(0, 3).map((sk) => <Tag key={sk}>{sk}</Tag>)}</div><Mark plain className="!text-[11px]">{j.reward_amount}</Mark></div>
+                  </div>
+                ))}
+              </div>
+            ) : <p className="text-[11px] text-ink-dim">No jobs yet — deploy this agent from the <Link href="/agents" className="text-neon">Agents</Link> page.</p>}
+          </Sec>
+        </main>
+
+        {/* RIGHT — signal */}
+        <OrbPanel label="Signal" open={rOpen} onToggle={setROpen} widthClass="lg:w-[320px] xl:w-[340px]" className="space-y-3 lg:overflow-y-auto">
+          <Sec icon={<IconStar className="h-3.5 w-3.5" />} title="Standing">
+            <div className="flex items-baseline justify-between"><span className="ng-stat__v !text-2xl">{repTotal}</span><span className="flex items-center gap-1 text-[12px] text-neon"><IconStar className="h-3.5 w-3.5" />{(a.rating ?? 0).toFixed(1)}</span></div>
+            <div className="text-[11px] text-ink-dim">reputation · rating</div>
+            {view.x402_spend > 0 && <div className="mt-2 flex items-center justify-between border-t border-line pt-2 text-[11px]"><span className="text-ink-dim">x402 spend</span><Mark plain className="!text-[11px]">{view.x402_spend} USDC</Mark></div>}
+          </Sec>
+
+          <Sec icon={<IconShield className="h-3.5 w-3.5" />} title="Trust Tier">
+            <div className="flex items-center gap-2 text-[12px]"><Mark plain accent={tierAccent(a.trust_tier)} className="!text-[10px]">{a.trust_tier ?? "trusted"}</Mark></div>
+            {a.trust_tier === "trusted" ? (
+              <p className="mt-2 text-[11px] text-ink-dim">Uncapped — earned a track record of verified work.</p>
+            ) : (
+              <div className="mt-2">
+                <div className="mb-1 flex items-center justify-between text-[11px]"><span className="text-ink-dim">Verified jobs</span><Mark plain className="!text-[11px]">{verified} / 3</Mark></div>
+                <ProgressBar percent={Math.min(100, (verified / 3) * 100)} />
+                <p className="mt-2 text-[10px] text-ink-dim">Probation: capped at 200 reward/Job until 3 verified jobs (or a 1,000+ bond).</p>
+              </div>
+            )}
+          </Sec>
+
+          <Sec icon={<IconShield className="h-3.5 w-3.5" />} title="Soulbound Credentials" action={<Mark plain className="!text-[10px]">{view.credentials.length}</Mark>}>
+            {view.credentials.length === 0 ? (
+              <p className="text-[11px] text-ink-faint">No credentials yet — deliver verified jobs to earn them.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {view.credentials.map((c) => {
+                  const Ico = CRED_ICON[c.schema] ?? IconShield;
+                  return (
+                    <div key={c.attestation_id} className="flex items-center gap-2.5">
+                      <span className="grid h-6 w-6 shrink-0 place-items-center rounded bg-neon/10 text-neon"><Ico className="h-3.5 w-3.5" /></span>
+                      <div className="min-w-0 flex-1"><div className="truncate text-[11px] text-ink">{CRED_NAME[c.schema] ?? c.schema}</div><div className="truncate text-[10px] text-ink-faint">{c.title}</div></div>
+                      <Mark plain accent="neon" className="!text-[9px] shrink-0">soulbound</Mark>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <p className="mt-2 text-[10px] text-ink-faint">Ready to mint as Solana SAS attestations. <Tag className="!text-[9px]">pending</Tag></p>
+          </Sec>
+
+          <Sec icon={<IconUser className="h-3.5 w-3.5" />} title="Owner">
+            <div className="flex items-center gap-2.5">
+              <MatrixAvatar seed={owner?.username ?? a.owner_id} size={36} />
+              <div className="min-w-0"><div className="truncate text-sm text-ink">{owner?.username ?? a.owner_id}</div><div className="text-[10px] text-ink-dim">earns {Math.round((a.owner_split_bps ?? 0) / 100)}% of this agent&#39;s rewards</div></div>
+            </div>
+          </Sec>
+
+          <Sec icon={<IconNetwork className="h-3.5 w-3.5" />} title="Integration">
+            <div className="flex items-center gap-1.5 text-[11px]"><IconCheck className="h-3.5 w-3.5 text-neon" /><Mark plain accent={isExternal ? "cyan" : "neon"}>{isExternal ? "External · connected via MCP" : "Native · built in-platform"}</Mark></div>
+            {isExternal && <p className="mt-1 flex items-center gap-1.5 text-[10px] text-ink-dim"><IconCode className="h-3 w-3" />Operates over the agent-gateway (list/claim/submit).</p>}
+          </Sec>
+        </OrbPanel>
+      </div>
+
+      {toast && <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded border border-neon/40 bg-black/90 px-4 py-2.5 text-sm text-neon shadow-[0_0_20px_rgba(0,255,0,0.3)]">{toast}</div>}
+      <NeuGridDock />
+    </div>
+  );
+}

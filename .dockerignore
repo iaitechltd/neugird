@@ -1,0 +1,15 @@
+# Build/runtime artifacts + local-only files that must never ship in the image.
+node_modules
+.next
+.git
+.gitignore
+.neugrid-store.json
+npm-debug.log*
+.DS_Store
+Dockerfile
+.dockerignore
+README.md
+scratchpad
+docs
+*.local
+.env*

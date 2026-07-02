@@ -1,0 +1,396 @@
+@import "tailwindcss";
+
+/*
+  NeuGrid — Matrix Design System
+  Tokens sourced from the Builder Spec (page 11):
+    base black #050806 · deep green panels #07140D · neon green #00FF88
+    cyan accent #48F5FF · amber warning · high contrast, strong hierarchy.
+*/
+
+:root {
+  /* Raw palette */
+  --ng-bg: #000000;
+  --ng-bg-2: #030a06;
+  --ng-panel: #051009;
+  --ng-panel-2: #07160d;
+  --ng-neon: #00ff00;
+  --ng-neon-soft: #13c013;
+  --ng-cyan: #48f5ff;
+  --ng-amber: #ffb020;
+  --ng-danger: #ff4d5e;
+  --ng-ink: #41ff41;
+  --ng-ink-dim: #2fc12f;
+  --ng-ink-faint: #1d801d;
+
+  /* Lines, glows, overlays */
+  --ng-line: rgba(0, 255, 0, 0.2);
+  --ng-line-strong: rgba(0, 255, 0, 0.5);
+  --ng-grid: rgba(0, 255, 0, 0.07);
+  --ng-glow: 0 0 0 1px rgba(0, 255, 0, 0.18), 0 0 24px -6px rgba(0, 255, 0, 0.45);
+  --ng-glow-cyan: 0 0 24px -6px rgba(72, 245, 255, 0.4);
+
+  --ng-radius: 6px;
+  --ng-radius-lg: 11px;
+}
+
+@theme inline {
+  --color-bg: var(--ng-bg);
+  --color-bg-2: var(--ng-bg-2);
+  --color-panel: var(--ng-panel);
+  --color-panel-2: var(--ng-panel-2);
+  --color-neon: var(--ng-neon);
+  --color-neon-soft: var(--ng-neon-soft);
+  --color-cyan: var(--ng-cyan);
+  --color-amber: var(--ng-amber);
+  --color-danger: var(--ng-danger);
+  --color-ink: var(--ng-ink);
+  --color-ink-dim: var(--ng-ink-dim);
+  --color-ink-faint: var(--ng-ink-faint);
+  --color-line: var(--ng-line);
+
+  --font-sans: var(--font-geist-mono);
+  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-grotesk);
+
+  --animate-scan: scan 6s linear infinite;
+  --animate-flicker: flicker 4s steps(1) infinite;
+  --animate-pulse-node: pulseNode 2.4s ease-in-out infinite;
+  --animate-blink: blink 1.1s steps(1) infinite;
+}
+
+@keyframes scan {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+@keyframes flicker {
+  0%, 92%, 100% { opacity: 1; }
+  93% { opacity: 0.78; }
+  95% { opacity: 1; }
+  97% { opacity: 0.85; }
+}
+@keyframes pulseNode {
+  0%, 100% { opacity: 0.45; box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.45); }
+  50% { opacity: 1; box-shadow: 0 0 0 4px rgba(0, 255, 136, 0); }
+}
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* ---------- Base ---------- */
+/* Layered so component border-colors (.ng-card, .ng-btn variants, hover) win;
+   an UNLAYERED `*` here would override them all and break variant strokes. */
+@layer base {
+  * {
+    border-color: var(--ng-line);
+  }
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--ng-bg);
+  background-image:
+    radial-gradient(1200px 600px at 80% -10%, rgba(0, 255, 0, 0.09), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(72, 245, 255, 0.05), transparent 55%),
+    linear-gradient(var(--ng-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ng-grid) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 40px 40px, 40px 40px;
+  color: var(--ng-ink);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(0, 255, 136, 0.25);
+  color: #eafff5;
+}
+
+/* Scrollbar — thin, neon-tinted */
+* { scrollbar-width: thin; scrollbar-color: rgba(0, 255, 0, 0.35) transparent; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0, 255, 0, 0.3); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0, 255, 0, 0.6); }
+
+/* ---------- Components ---------- */
+@layer components {
+  /* Panel (side rails) — flat, thin stroke, subtle fill so the section reads. */
+  .ng-panel {
+    background: rgba(5, 13, 9, 0.45);
+    border: 1px solid rgba(0, 255, 0, 0.14);
+    border-radius: 6px;
+  }
+
+  /* Card — flat, thin stroke + subtle fill. On hover the STROKE brightens
+     (no glow / no shadow), so sections stay crisp and readable. */
+  .ng-card {
+    position: relative;
+    background: rgba(7, 17, 11, 0.5);
+    border: 1px solid rgba(0, 255, 0, 0.16);
+    border-radius: 6px;
+    transition: border-color 0.18s ease;
+  }
+  .ng-card:hover { border-color: rgba(0, 255, 0, 0.6); }
+  /* Only the card directly under the cursor lights up — a parent card whose
+     child card is being hovered stays at its resting stroke. */
+  .ng-card:has(.ng-card:hover) { border-color: rgba(0, 255, 0, 0.16); }
+
+  /* Section/module label — display font, gives sections a clean designed header */
+  .ng-label {
+    font-family: var(--font-grotesk), ui-sans-serif, sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--ng-ink-dim);
+  }
+
+  /* Title helper — Space Grotesk for hero/page titles + entity headlines */
+  .ng-title { font-family: var(--font-grotesk), ui-sans-serif, sans-serif; letter-spacing: 0.005em; }
+  /* Quiet subtitle that sits under a title */
+  .ng-subtitle { font-family: var(--font-mono), ui-monospace, monospace; font-size: 0.8125rem; letter-spacing: 0.02em; color: var(--ng-ink-faint); }
+
+  .ng-hairline {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--ng-line-strong), transparent);
+  }
+
+  /* Status LED dot */
+  .ng-led {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--ng-neon);
+    box-shadow: 0 0 8px var(--ng-neon);
+  }
+  .ng-led--amber { background: var(--ng-amber); box-shadow: 0 0 8px var(--ng-amber); }
+  .ng-led--cyan { background: var(--ng-cyan); box-shadow: 0 0 8px var(--ng-cyan); }
+  .ng-led--danger { background: var(--ng-danger); box-shadow: 0 0 8px var(--ng-danger); }
+  .ng-led--idle { background: var(--ng-ink-faint); box-shadow: none; }
+
+  /* Chips / badges */
+  .ng-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.2rem 0.55rem;
+    border: 1px solid var(--ng-line);
+    border-radius: 999px;
+    color: var(--ng-ink-dim);
+    background: rgba(0, 255, 136, 0.04);
+  }
+  .ng-chip--neon { color: var(--ng-neon); border-color: var(--ng-line-strong); }
+  .ng-chip--cyan { color: var(--ng-cyan); border-color: rgba(72,245,255,0.4); }
+  .ng-chip--amber { color: var(--ng-amber); border-color: rgba(255,176,32,0.4); }
+
+  /* Buttons — flat OUTLINE: thin color-coded stroke, NO fill, NO glow.
+     Hover brightens the stroke + text. Primary = full-strength stroke + bold.
+     Color comes from --btn-ink (text + hover/primary stroke) and --btn-line
+     (the resting dim stroke). Variants just reset those two vars. */
+  .ng-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    height: 32px;
+    padding: 0 0.75rem;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+    border: 1px solid var(--btn-line, rgba(0, 255, 0, 0.3));
+    border-radius: 5px;
+    background: transparent;
+    color: var(--btn-ink, var(--ng-neon));
+    cursor: pointer;
+    transition: border-color 0.16s ease, color 0.16s ease;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .ng-btn svg { width: 1em; height: 1em; }
+  /* hover = fill with the button's color + black text (icons inherit currentColor) */
+  .ng-btn:hover { background: var(--btn-ink, var(--ng-neon)); border-color: var(--btn-ink, var(--ng-neon)); color: #021109; }
+  .ng-btn-cyan { --btn-ink: var(--ng-cyan); --btn-line: rgba(72, 245, 255, 0.32); }
+  .ng-btn-danger { --btn-ink: var(--ng-danger); --btn-line: rgba(255, 77, 94, 0.34); }
+  .ng-btn-primary { border-color: var(--btn-ink, var(--ng-neon)); font-weight: 700; }
+  /* ghost = no stroke, just text (tertiary actions) — text-only on hover, no fill */
+  .ng-btn-ghost { border-color: transparent; color: var(--ng-ink-dim); }
+  .ng-btn-ghost:hover { background: transparent; border-color: transparent; color: var(--ng-neon); }
+  .ng-btn--sm { height: 26px; padding: 0 0.6rem; font-size: 0.6875rem; }
+  .ng-btn--block { width: 100%; }
+
+  /* Inputs — underline style, no box. Bottom hairline lights up on focus. */
+  .ng-input {
+    width: 100%;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.875rem;
+    padding: 0.5rem 0.15rem;
+    color: var(--ng-ink);
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--ng-line);
+    border-radius: 0;
+    outline: none;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  }
+  .ng-input::placeholder { color: var(--ng-ink-faint); }
+  .ng-input:focus { border-bottom-color: var(--ng-neon); box-shadow: 0 1px 0 0 var(--ng-neon); }
+  /* Boxed input only when explicitly wanted (e.g. a search field) */
+  .ng-input--box {
+    padding: 0.5rem 0.75rem;
+    background: rgba(2, 8, 5, 0.45);
+    border: 1px solid rgba(0, 255, 0, 0.08);
+    border-radius: var(--ng-radius);
+  }
+  .ng-input--box:focus { border-color: var(--ng-neon); box-shadow: none; }
+
+  /* Scanline overlay (decorative, place inside a relative container) */
+  .ng-scanline {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    border-radius: inherit;
+  }
+  .ng-scanline::before {
+    content: "";
+    position: absolute;
+    left: 0; right: 0;
+    height: 40%;
+    background: linear-gradient(180deg, transparent, rgba(0, 255, 136, 0.06), transparent);
+    animation: scan 6s linear infinite;
+  }
+
+  /* === Box-free text system ============================================ */
+
+  /* Highlighted text — the box-free replacement for chips/badges.
+     A faint highlighter bar behind + neon ink + glow; NO border. */
+  .ng-mark {
+    color: var(--ng-neon);
+    font-weight: 600;
+    background: linear-gradient(transparent 62%, rgba(0, 255, 0, 0.16) 0);
+    padding: 0 0.18em;
+    border-radius: 1px;
+  }
+  .ng-mark--cyan { color: var(--ng-cyan); background: linear-gradient(transparent 62%, rgba(72,245,255,0.14) 0); }
+  .ng-mark--amber { color: var(--ng-amber); background: linear-gradient(transparent 62%, rgba(255,176,32,0.14) 0); }
+  .ng-mark--danger { color: var(--ng-danger); background: linear-gradient(transparent 62%, rgba(255,77,94,0.14) 0); }
+  .ng-mark--plain { background: none; padding: 0; } /* colored bold text only */
+
+  /* Mono micro-label with a leading neon tick instead of a box */
+  .ng-tag {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.625rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ng-ink-dim);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+    white-space: nowrap;
+  }
+  .ng-tag::before { content: "›"; color: var(--ng-neon); font-weight: 700; }
+  .ng-tag--neon { color: var(--ng-neon); }
+  .ng-tag--cyan { color: var(--ng-cyan); } .ng-tag--cyan::before { color: var(--ng-cyan); }
+  .ng-tag--amber { color: var(--ng-amber); } .ng-tag--amber::before { color: var(--ng-amber); }
+  .ng-tag--danger { color: var(--ng-danger); } .ng-tag--danger::before { color: var(--ng-danger); }
+
+  /* Hairline data row — label left, value right, divider beneath */
+  .ng-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid rgba(0, 255, 0, 0.08);
+    font-size: 0.8125rem;
+  }
+  .ng-row:last-child { border-bottom: 0; }
+  .ng-row__k { color: var(--ng-ink-dim); }
+  .ng-row__v { color: var(--ng-ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  /* Underline tab bar — no boxes; even, comfortable spacing */
+  .ng-tabs { display: flex; gap: 1.6rem; border-bottom: 1px solid rgba(0,255,0,0.1); overflow-x: auto; scrollbar-width: none; }
+  .ng-tabs::-webkit-scrollbar { display: none; }
+  .ng-tab {
+    position: relative;
+    padding: 0.55rem 0;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--ng-ink-faint);
+    cursor: pointer;
+    background: none;
+    border: 0;
+    transition: color 0.18s ease;
+    white-space: nowrap;
+  }
+  .ng-tab:hover { color: var(--ng-ink-dim); }
+  .ng-tab[data-active="true"] { color: var(--ng-neon); }
+  .ng-tab[data-active="true"]::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: -1px;
+    height: 2px;
+    background: var(--ng-neon);
+  }
+
+  /* Stat block — big tabular number + tiny label, no box */
+  .ng-stat__v { font-family: var(--font-grotesk), ui-sans-serif, sans-serif; font-size: 1.4rem; font-weight: 700; color: var(--ng-neon); font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .ng-stat__k { font-size: 0.625rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ng-ink-faint); }
+}
+
+/* Mono helper for inline IDs / wallet addresses / data */
+.mono { font-family: var(--font-mono), ui-monospace, monospace; }
+.tnum { font-variant-numeric: tabular-nums; }
+.text-glow { text-shadow: 0 0 7px rgba(0, 255, 0, 0.38); }
+.text-glow-cyan { text-shadow: 0 0 7px rgba(72, 245, 255, 0.38); }
+.text-glow-soft { text-shadow: 0 0 5px rgba(0, 255, 0, 0.25); }
+
+/* HUD background motion (HudBackground.tsx) */
+@keyframes hudFloor { from { background-position: 0 0; } to { background-position: 0 56px; } }
+.hud-floor { animation: hudFloor 8s linear infinite; }
+@keyframes hudSweep { 0% { top: -42vh; } 100% { top: 100vh; } }
+.hud-sweep { top: -42vh; animation: hudSweep 8s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .hud-floor, .hud-sweep { animation: none; }
+  .hud-sweep { display: none; }
+}
+
+/* App shell: lock to the viewport on desktop so columns scroll independently.
+   height is divided by the 0.9 zoom so the frame still fills the screen exactly. */
+@media (min-width: 1024px) {
+  .lg-frame-h { height: calc(100dvh / 0.9); }
+}
+
+/* Header Pulse monitor: a bright blip sweeps left -> right along the EKG. */
+@keyframes pulseSweep {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+.pulse-sweep {
+  stroke-dasharray: 0.14 0.86;
+  animation: pulseSweep 2.6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pulse-sweep { animation: none; stroke-dasharray: none; }
+}
+
+/* Price ticker: a seamless left-scrolling marquee (content is duplicated 2×). */
+@keyframes ng-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.ng-marquee { animation: ng-marquee 50s linear infinite; will-change: transform; }
+.ng-marquee:hover { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .ng-marquee { animation: none; }
+}

@@ -1,0 +1,14 @@
+{
+  "//": "OpenClaw connector — merge into ~/.openclaw/openclaw.json, then restart the gateway. Replace the ABS path + key + base.",
+  "mcpServers": {
+    "neugrid": {
+      "command": "node",
+      "args": ["/ABS/PATH/neugrid/mcp-server/neugrid-jobs.mjs"],
+      "transport": "stdio",
+      "env": {
+        "NEUGRID_AGENT_KEY": "agk_REPLACE_ME",
+        "NEUGRID_BASE": "https://YOUR_NEUGRID"
+      }
+    }
+  }
+}

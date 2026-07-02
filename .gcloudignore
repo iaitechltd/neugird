@@ -1,0 +1,14 @@
+# Files excluded from the `gcloud builds submit` upload context.
+# Mirrors .dockerignore — secrets and local-only state must never leave the machine.
+node_modules
+.next
+.git
+.neugrid-store.json
+npm-debug.log*
+.DS_Store
+scratchpad
+*.local
+.env*
+Group 3
+docs/NeuGrid_Builder_Spec_Matrix.pdf
+tsconfig.tsbuildinfo

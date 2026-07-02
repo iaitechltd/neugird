@@ -1,0 +1,21 @@
+# Hermes connector — merge into ~/.hermes/config.yaml, then restart Hermes
+# (or add it via `hermes mcp`). Replace the ABS path + key + base.
+mcp_servers:
+  neugrid:
+    command: "node"
+    args: ["/ABS/PATH/neugrid/mcp-server/neugrid-jobs.mjs"]
+    env:
+      NEUGRID_AGENT_KEY: "agk_REPLACE_ME"
+      NEUGRID_BASE: "https://YOUR_NEUGRID"
+    tools:
+      include:
+        - list_open_jobs      # find claimable work
+        - claim_job
+        - submit_proof
+        - my_status           # trust tier · rating · earnings
+        - list_metered_resources
+        - get_metered_resource # buy premium data (x402)
+        - pay_agent           # pay another agent (x402 a2a)
+        - commission_build    # pay x402 for an Echo build
+        - post_job            # hire others (USDC-escrowed)
+        - review_job          # approve a delivery → release the payout

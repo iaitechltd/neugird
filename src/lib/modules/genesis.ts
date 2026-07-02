@@ -1,0 +1,225 @@
+/**
+ * GenesisX — reputation-gated funding with milestone-escrowed treasuries.
+ *
+ *   propose (must have earned reputation) → backers fund → on a FULL raise a
+ *   PROJECT Grid spawns with a treasury + milestones → founder delivers each
+ *   milestone → backers approve (weighted by stake) → the tranche releases.
+ *
+ * This is the "merit → funding" core: who gets funded is decided by a verifiable
+ * track record, not connections. Pre-treasury, amounts are accounting units.
+ */
+
+import { db } from "../store";
+import { newId, nowISO } from "../id";
+import * as Pulse from "./pulse";
+import * as GridRegistry from "./gridRegistry";
+import * as Echo from "./echo";
+import type { Backing, Milestone, MilestoneDraft, Proposal, ProposalStatus, Treasury } from "../types";
+
+export const PROPOSE_REPUTATION_MIN = 100;
+
+export function reputationOf(user_id: string): number {
+  const u = db.users.find((u) => u.id === user_id);
+  if (!u) return 0;
+  // headline Pulse (legacy seed score) and the new multi-dim ledger both count
+  return Math.max(u.pulse_score ?? 0, u.reputation?.total ?? 0);
+}
+export function canPropose(user_id: string): boolean {
+  return reputationOf(user_id) >= PROPOSE_REPUTATION_MIN;
+}
+
+export function listProposals(filter: { status?: ProposalStatus; author_id?: string } = {}): Proposal[] {
+  return db.proposals.filter((p) => (!filter.status || p.status === filter.status) && (!filter.author_id || p.author_id === filter.author_id));
+}
+export function getProposal(id: string): Proposal | undefined {
+  return db.proposals.find((p) => p.proposal_id === id);
+}
+export function raisedFor(proposal_id: string): number {
+  return db.backings.filter((b) => b.round_id === proposal_id && !b.refunded).reduce((s, b) => s + b.amount, 0);
+}
+export function backersFor(proposal_id: string): Backing[] {
+  return db.backings.filter((b) => b.round_id === proposal_id && !b.refunded);
+}
+export function hasBacked(proposal_id: string, user_id: string): boolean {
+  return db.backings.some((b) => b.round_id === proposal_id && b.backer_id === user_id && !b.refunded);
+}
+
+export interface CreateProposalInput {
+  author_id: string;
+  title: string;
+  summary: string;
+  category: string;
+  ask_amount: number;
+  roadmap: MilestoneDraft[];
+  build_id?: string; // an Echo build to attach as the MVP (proof-of-build)
+}
+export function createProposal(input: CreateProposalInput): { proposal?: Proposal; error?: string } {
+  if (!canPropose(input.author_id)) return { error: "insufficient_reputation" };
+  if (!input.title || !(input.ask_amount > 0)) return { error: "bad_input" };
+  const proposal: Proposal = {
+    proposal_id: newId("prop"),
+    author_id: input.author_id,
+    title: input.title,
+    summary: input.summary,
+    category: input.category,
+    roadmap: input.roadmap.length ? input.roadmap : [{ title: "Deliver v1", description: "Ship the first version.", amount: input.ask_amount }],
+    ask_amount: input.ask_amount,
+    status: "open",
+    endorsements: [],
+    created_at: nowISO(),
+  };
+
+  // Attach the Echo-built MVP as proof-of-build, if one was supplied + owned by the author.
+  if (input.build_id) {
+    const build = Echo.getBuild(input.build_id);
+    if (build && build.owner_id === input.author_id) {
+      proposal.mvp_ref = build.artifact;
+      proposal.track_record_ref = input.author_id;
+      Echo.attachProposal(build.build_id, proposal.proposal_id);
+    }
+  }
+
+  db.proposals.unshift(proposal);
+  return { proposal };
+}
+
+export function fundProposal(proposal_id: string, backer_id: string, amount: number): { proposal?: Proposal; raised?: number; spawned_grid_id?: string; error?: string } {
+  const p = getProposal(proposal_id);
+  if (!p) return { error: "not_found" };
+  if (p.status !== "open") return { error: "not_open" };
+  if (!(amount > 0)) return { error: "bad_amount" };
+
+  db.backings.push({ backing_id: newId("back"), round_id: proposal_id, grid_id: "", backer_id, amount, created_at: nowISO() });
+  const raised = raisedFor(proposal_id);
+  if (raised < p.ask_amount) return { proposal: p, raised };
+
+  // Fully funded → spawn the project Grid + treasury + milestones (the recursion)
+  const grid = GridRegistry.createGrid({ owner_id: p.author_id, name: p.title, category: p.category, description: p.summary, grid_type: "project" });
+  grid.lifecycle_stage = "building";
+  grid.spawned_from = { origin: "proposal", proposal_id };
+  const treasury: Treasury = { treasury_id: newId("tre"), grid_id: grid.grid_id, total_committed: raised, total_released: 0, balance: raised, created_at: nowISO() };
+  db.treasuries.push(treasury);
+  grid.treasury_id = treasury.treasury_id;
+  const ms: Milestone[] = p.roadmap.map((m, i) => ({
+    milestone_id: newId("mile"), treasury_id: treasury.treasury_id, grid_id: grid.grid_id,
+    title: m.title, description: m.description, amount: m.amount, order: i, status: "pending", created_at: nowISO(),
+  }));
+  db.milestones.push(...ms);
+  db.backings.filter((b) => b.round_id === proposal_id).forEach((b) => (b.grid_id = grid.grid_id));
+  p.status = "funded";
+
+  Pulse.recordEvent({ target_type: "grid", target_id: grid.grid_id, action_type: "campaign_completed", weight: 50, reason: `Funded: raised ${raised} for "${p.title}"`, verification_source: "auto" });
+  for (const b of backersFor(proposal_id)) {
+    Pulse.recordEvent({ target_type: "user", target_id: b.backer_id, action_type: "referral_verified", weight: 10, reason: `Backed "${p.title}" to a full raise`, verification_source: "auto", dimension: "backer" });
+  }
+  return { proposal: p, raised, spawned_grid_id: grid.grid_id };
+}
+
+export function listMilestones(grid_id: string): Milestone[] {
+  return db.milestones.filter((m) => m.grid_id === grid_id).sort((a, b) => a.order - b.order);
+}
+export function getMilestone(id: string): Milestone | undefined {
+  return db.milestones.find((m) => m.milestone_id === id);
+}
+
+/** The founder (grid owner) a milestone belongs to — the subject of its credential. */
+export function ownerOfMilestone(milestone_id: string): string | undefined {
+  const m = getMilestone(milestone_id);
+  return m ? db.grids.find((g) => g.grid_id === m.grid_id)?.owner_id : undefined;
+}
+
+export function submitMilestone(milestone_id: string, user_id: string, proof?: string): { milestone?: Milestone; error?: string } {
+  const m = getMilestone(milestone_id);
+  if (!m) return { error: "not_found" };
+  const grid = db.grids.find((g) => g.grid_id === m.grid_id);
+  if (!grid || grid.owner_id !== user_id) return { error: "only_founder" };
+  if (m.status !== "pending" && m.status !== "rejected") return { error: "bad_state" };
+  m.status = "submitted";
+  if (proof) m.deliverable = { kind: "link", payload: proof, submitted_at: nowISO() };
+  // Open the backer governance vote (clear any prior round on a re-submit).
+  db.milestoneApprovals = db.milestoneApprovals.filter((a) => a.milestone_id !== milestone_id);
+  m.approval_vote = { for_bps: 0, against_bps: 0, quorum_bps: QUORUM_BPS, closes_at: new Date(Date.now() + 7 * 86_400_000).toISOString() };
+  return { milestone: m };
+}
+
+const QUORUM_BPS = 5000; // 50% of the weighted backing stake decides (for OR against)
+
+/** Reputation-credibility multiplier on a backer's vote weight (the "reputation-
+ *  informed" half of the milestone vote). Caps at +50% for a 1000+-rep backer. */
+function repMultiplier(user_id: string): number {
+  return 1 + Math.min(reputationOf(user_id) / 1000, 0.5);
+}
+/** Weighted stake a backer carries in a vote = their backing × reputation multiplier. */
+function voteWeight(grid_id: string, backer_id: string): number {
+  const backing = db.backings.filter((b) => b.grid_id === grid_id && b.backer_id === backer_id).reduce((s, b) => s + b.amount, 0);
+  return backing * repMultiplier(backer_id);
+}
+/** A backer's current vote on a milestone. */
+export function myMilestoneVote(milestone_id: string, user_id: string): "for" | "against" | null {
+  const a = db.milestoneApprovals.find((x) => x.milestone_id === milestone_id && x.backer_id === user_id);
+  return a ? (a.support === false ? "against" : "for") : null;
+}
+
+/**
+ * Backer governance vote on a milestone release — the spec's "backers vote, weighted
+ * by stake, reputation-informed." A backer votes FOR or AGAINST; weight = their backing
+ * × reputation. The tranche RELEASES when FOR ≥ 50% of the total weighted stake, and is
+ * REJECTED (founder must re-submit) when AGAINST ≥ 50%. Re-votable until decided.
+ */
+export function voteMilestone(milestone_id: string, voter_id: string, support: boolean): { milestone?: Milestone; released?: boolean; rejected?: boolean; for_pct?: number; against_pct?: number; error?: string } {
+  const m = getMilestone(milestone_id);
+  if (!m) return { error: "not_found" };
+  if (m.status !== "submitted") return { error: "not_submitted" };
+  if (!db.backings.some((b) => b.grid_id === m.grid_id && b.backer_id === voter_id)) return { error: "not_a_backer" };
+
+  const existing = db.milestoneApprovals.find((a) => a.milestone_id === milestone_id && a.backer_id === voter_id);
+  if (existing) existing.support = support;
+  else db.milestoneApprovals.push({ milestone_id, backer_id: voter_id, support });
+
+  // Weighted tally over TOTAL weighted backing (so 50% = quorum AND majority in one).
+  const backerIds = new Set(db.backings.filter((b) => b.grid_id === m.grid_id).map((b) => b.backer_id));
+  const total = [...backerIds].reduce((s, bid) => s + voteWeight(m.grid_id, bid), 0);
+  const votes = db.milestoneApprovals.filter((a) => a.milestone_id === milestone_id);
+  const forW = votes.filter((a) => a.support !== false).reduce((s, a) => s + voteWeight(m.grid_id, a.backer_id), 0);
+  const againstW = votes.filter((a) => a.support === false).reduce((s, a) => s + voteWeight(m.grid_id, a.backer_id), 0);
+  const forPct = total > 0 ? forW / total : 0;
+  const againstPct = total > 0 ? againstW / total : 0;
+  m.approval_vote = { for_bps: Math.round(forPct * 10000), against_bps: Math.round(againstPct * 10000), quorum_bps: QUORUM_BPS, passed: forPct >= 0.5 ? true : againstPct >= 0.5 ? false : undefined, closes_at: m.approval_vote?.closes_at ?? new Date(Date.now() + 7 * 86_400_000).toISOString() };
+
+  if (forPct >= 0.5) {
+    m.status = "released";
+    const tre = db.treasuries.find((t) => t.treasury_id === m.treasury_id);
+    if (tre) { tre.total_released += m.amount; tre.balance = Math.max(0, tre.balance - m.amount); }
+    const grid = db.grids.find((g) => g.grid_id === m.grid_id);
+    if (grid) {
+      Pulse.recordEvent({ target_type: "user", target_id: grid.owner_id, action_type: "milestone_approved", weight: 30, reason: `Milestone "${m.title}" released by backer vote`, verification_source: "backers", dimension: "builder" });
+      Pulse.recordEvent({ target_type: "grid", target_id: grid.grid_id, action_type: "milestone_approved", weight: 20, reason: `Milestone "${m.title}" released`, verification_source: "backers" });
+    }
+    return { milestone: m, released: true, for_pct: forPct, against_pct: againstPct };
+  }
+  if (againstPct >= 0.5) {
+    m.status = "rejected"; // backers blocked it — the founder addresses + re-submits (else → dispute/refund)
+    return { milestone: m, rejected: true, for_pct: forPct, against_pct: againstPct };
+  }
+  return { milestone: m, released: false, for_pct: forPct, against_pct: againstPct };
+}
+
+/** @deprecated — use voteMilestone(id, backer, true). Thin alias kept for the route. */
+export function approveMilestone(milestone_id: string, backer_id: string) {
+  return voteMilestone(milestone_id, backer_id, true);
+}
+
+/** Full read model for a proposal: funding progress, backers, spawned grid, milestones. */
+export function proposalView(id: string) {
+  const p = getProposal(id);
+  if (!p) return undefined;
+  const grid = db.grids.find((g) => g.spawned_from?.proposal_id === id);
+  return {
+    proposal: p,
+    raised: raisedFor(id),
+    backers: backersFor(id).length,
+    spawned_grid_id: grid?.grid_id ?? null,
+    spawned_grid_slug: grid?.slug ?? null,
+    milestones: grid ? listMilestones(grid.grid_id) : [],
+  };
+}
