@@ -48,6 +48,13 @@ if (!RPC || !SECRET) { console.error("set NEUGRID_SOLANA_RPC + NEUGRID_SAS_ISSUE
 
 const client = { rpc: createSolanaRpc(RPC), rpcSubscriptions: createSolanaRpcSubscriptions(WSS) };
 
+// True idempotency: a re-run's "account already in use" surfaces from the RPC as a
+// generic "Transaction simulation failed", so check existence up front instead.
+async function exists(address) {
+  const { value } = await client.rpc.getAccountInfo(address, { encoding: "base64" }).send();
+  return value !== null;
+}
+
 async function send(payer, instructions, label) {
   try {
     const { value: blockhash } = await client.rpc.getLatestBlockhash().send();
@@ -76,7 +83,8 @@ async function main() {
 
   // 1. Credential
   const [credentialPda] = await deriveCredentialPda({ authority: issuer.address, name: CREDENTIAL_NAME });
-  await send(issuer, [getCreateCredentialInstruction({
+  if (await exists(credentialPda)) console.log(`  • Credential ${CREDENTIAL_NAME} (${credentialPda}) — already exists, skipping`);
+  else await send(issuer, [getCreateCredentialInstruction({
     payer: issuer, credential: credentialPda, authority: issuer, name: CREDENTIAL_NAME, signers: [issuer.address],
   })], `Credential ${CREDENTIAL_NAME} (${credentialPda})`);
 
@@ -84,14 +92,16 @@ async function main() {
   const sasPda = await deriveSasAuthorityAddress();
   for (const s of SCHEMAS) {
     const [schemaPda] = await deriveSchemaPda({ credential: credentialPda, name: s.name, version: s.version });
-    await send(issuer, [getCreateSchemaInstruction({
+    if (await exists(schemaPda)) console.log(`  • Schema ${s.name} (${schemaPda}) — already exists, skipping`);
+    else await send(issuer, [getCreateSchemaInstruction({
       authority: issuer, payer: issuer, name: s.name, credential: credentialPda,
       description: s.description, fieldNames: FIELD_NAMES, schema: schemaPda, layout: LAYOUT,
     })], `Schema ${s.name} (${schemaPda})`);
 
     const [schemaMint] = await deriveSchemaMintPda({ schema: schemaPda });
     const maxSize = getMintSize([{ __kind: "GroupPointer", authority: sasPda, groupAddress: schemaMint }]);
-    await send(issuer, [getTokenizeSchemaInstruction({
+    if (await exists(schemaMint)) console.log(`  • Tokenize ${s.name} (mint ${schemaMint}) — already exists, skipping`);
+    else await send(issuer, [getTokenizeSchemaInstruction({
       payer: issuer, authority: issuer, credential: credentialPda, schema: schemaPda,
       mint: schemaMint, sasPda, maxSize, tokenProgram: TOKEN_2022_PROGRAM_ADDRESS,
     })], `Tokenize ${s.name} (mint ${schemaMint})`);
