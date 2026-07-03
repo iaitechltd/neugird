@@ -27,6 +27,7 @@ create table if not exists users (
   avatar           text,
   bio              text,
   skills           text[]      not null default '{}',
+  listing          jsonb,      -- TalentListing (self-serve TalenX card)
   roles_by_grid    jsonb       not null default '[]',
   pulse_score      numeric     not null default 0,
   reputation       jsonb,      -- ReputationScore (soulbound, multi-dimensional)

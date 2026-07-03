@@ -72,8 +72,8 @@ interface Spec {
 
 const SPECS: Spec[] = [
   { key: "users", table: "users",
-    cols: ["id", "wallet_addresses", "username", "avatar", "bio", "skills", "roles_by_grid", "pulse_score", "reputation", "reward", "joined_grids", "created_at"],
-    num: ["pulse_score"], ts: ["created_at"], json: ["roles_by_grid", "reputation", "reward"], arr: ["wallet_addresses", "skills", "joined_grids"] },
+    cols: ["id", "wallet_addresses", "username", "avatar", "bio", "skills", "listing", "roles_by_grid", "pulse_score", "reputation", "reward", "joined_grids", "created_at"],
+    num: ["pulse_score"], ts: ["created_at"], json: ["listing", "roles_by_grid", "reputation", "reward"], arr: ["wallet_addresses", "skills", "joined_grids"] },
   { key: "grids", table: "grids",
     cols: ["grid_id", "owner_id", "name", "slug", "category", "description", "visual_theme", "modules_enabled", "visibility", "treasury_config", "pulse_score", "member_count", "grid_type", "lifecycle_stage", "spawned_from", "treasury_id", "token_id", "subgrid_ids", "created_at"],
     num: ["pulse_score", "member_count"], ts: ["created_at"], json: ["visual_theme", "treasury_config", "spawned_from"], arr: ["modules_enabled", "subgrid_ids"] },

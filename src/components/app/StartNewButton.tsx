@@ -296,7 +296,27 @@ export default function StartNewButton() {
       return;
     }
 
-    // post / message / talent / funding-wizard — no backend yet
+    // Talent listing → the self-serve TalenX listing
+    if (form.key === "talent") {
+      const skills = get("Skills & Expertise").split(",").map((s) => s.trim()).filter(Boolean);
+      try {
+        const res = await fetch("/api/talent", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            headline: get("Professional Title") || undefined,
+            rate_usdc: Number(get("Rate")) || undefined,
+            skills: skills.length ? skills : undefined,
+            available: get("Currently available for work") === "on",
+          }),
+        });
+        if (!res.ok) throw new Error();
+        window.dispatchEvent(new Event("neugrid:refresh-me"));
+        setForm(null); flash("You're listed on TalenX ✓"); router.push("/talent");
+      } catch { setForm(null); flash("Could not save your listing — try again"); }
+      return;
+    }
+
+    // post / message / funding-wizard — no backend yet
     setForm(null); flash(`${form.title} isn't wired up yet`);
   }
 

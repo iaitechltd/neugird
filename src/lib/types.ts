@@ -56,6 +56,14 @@ export interface RoleAssignment {
 
 /* --------------------------- User & Identity ----------------------- */
 
+/** Self-serve TalenX listing — the user's "hire me" card (set on /talent). */
+export interface TalentListing {
+  headline?: string;   // e.g. "Full-stack Solana engineer"
+  rate_usdc?: number;  // asking rate per deliverable
+  available?: boolean; // open to work right now
+  updated_at: ISODate;
+}
+
 export interface UserProfile {
   id: ID;
   wallet_addresses: string[]; // Solana addresses; first is primary
@@ -63,6 +71,8 @@ export interface UserProfile {
   avatar?: string;
   bio?: string;
   skills: string[];
+  /** TalenX self-listing (headline · rate · availability). */
+  listing?: TalentListing;
   roles_by_grid: RoleAssignment[];
   pulse_score: number; // legacy single Pulse — kept; prefer `reputation` below
   /** Multi-dimensional reputation (soulbound, decays, gates access). */

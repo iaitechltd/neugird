@@ -134,14 +134,10 @@ export const CREATE_FORMS: Record<string, FormConfig> = {
     icon: "◈",
     submit: "Create Listing",
     fields: [
-      { t: "select", label: "Skill Category", ph: "Select your primary skill category", options: ["AI Research", "ML Engineering", "Design", "Development", "Growth", "Content"], half: true },
-      { t: "text", label: "Professional Title", ph: "Enter professional title", half: true },
-      { t: "textarea", label: "Professional Bio", ph: "Describe your work, key skills and use cases" },
-      { t: "text", label: "Portfolio Links", ph: "https://portfolio.com" },
-      { t: "rate", label: "Rate", unit: "ETH", units: ["ETH", "USDC", "SOL"], suffix: "100", half: true },
-      { t: "tags", label: "Skills & Expertise", ph: "Select all that applies", options: ["AI Research", "ML Engineering", "Solidity", "Design", "Growth", "Content"] },
-      { t: "toggle", label: "Currently available for work" },
-      { t: "toggle", label: "Apply for Ascended Track", hint: "Join the elite tier with enhanced visibility and premium features" },
+      { t: "text", label: "Professional Title", ph: "e.g. Full-stack Solana engineer", half: true },
+      { t: "rate", label: "Rate", unit: "USDC", suffix: "500", half: true },
+      { t: "tags", label: "Skills & Expertise", ph: "Select all that apply", options: ["AI Research", "ML Engineering", "Solidity", "Design", "Growth", "Content", "Research", "Analytics"] },
+      { t: "toggle", label: "Currently available for work", hint: "Shown as the availability dot on your talent card" },
     ],
   },
   subgrid: {
