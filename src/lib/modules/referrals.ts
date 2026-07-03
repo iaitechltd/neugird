@@ -81,6 +81,16 @@ function feesFrom(user_id: string, sinceISO: string): number {
 
 export interface ReferralRow { id: string; username: string; joined: string; verified_at?: string; fees_usd: number }
 
+/** The affiliate stream as GRID — counted into the allocation + the TGE snapshot.
+ *  Derived from real fee receipts, so it needs no sybil dampening. */
+export function affiliateGridFor(user_id: string): number {
+  const fees = db.users
+    .filter((u) => u.referred_by === user_id && u.referral_verified_at)
+    .reduce((a, u) => a + feesFrom(u.id, u.referral_verified_at!), 0);
+  const share = (fees * Params.get("affiliate_fee_share_bps")) / 10_000;
+  return Math.round(share * AFFILIATE_GRID_PER_USD);
+}
+
 /** The full referral + affiliate view for the dashboard. */
 export function viewFor(user_id: string) {
   const rows: ReferralRow[] = db.users

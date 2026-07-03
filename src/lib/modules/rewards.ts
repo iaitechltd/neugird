@@ -14,6 +14,7 @@
 import { db } from "../store";
 import { nowISO } from "../id";
 import * as Wallets from "./wallets";
+import * as Referrals from "./referrals";
 import type { PulseEvent, Vesting } from "../types";
 
 /** GRID allocation units per quality-weighted Pulse point. (TGE conversion rate TBD.) */
@@ -134,7 +135,8 @@ export function runTGE(): { executed: boolean; at: string; converted: number; re
   let converted = 0;
   let recipients = 0;
   for (const u of db.users) {
-    const total = Math.round(sybilAdjustedFor(u.id));
+    // pulse-earned (sybil-filtered) + the affiliate fee-share stream
+    const total = Math.round(sybilAdjustedFor(u.id)) + Referrals.affiliateGridFor(u.id);
     if (total <= 0) continue;
     if (!u.reward) u.reward = { accrued: 0, sybil_adjusted: 0, claimed: 0 };
     u.reward.vesting = { start_at: at, cliff_days: TGE_CLIFF_DAYS, duration_days: TGE_DURATION_DAYS, released: 0, total };
@@ -187,9 +189,13 @@ export function ledgerFor(user_id: string) {
   const accrued = accruedFor(user_id);
   const factor = sybilFactor(user_id);
   const claimed = db.users.find((u) => u.id === user_id)?.reward?.claimed ?? 0;
+  const affiliate_grid = Referrals.affiliateGridFor(user_id);
+  const sybil_adjusted = Math.round(accrued * factor);
   return {
     accrued: Math.round(accrued),
-    sybil_adjusted: Math.round(accrued * factor), // the allocation that converts at TGE
+    sybil_adjusted, // the pulse-earned allocation (sybil-filtered)
+    affiliate_grid, // the affiliate fee-share stream (real fees — no dampening)
+    total_allocation: sybil_adjusted + affiliate_grid, // what converts at TGE
     sybil_factor: Math.round(factor * 100) / 100,
     claimed,
     rate: GRID_PER_PULSE,

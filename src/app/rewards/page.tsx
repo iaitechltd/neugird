@@ -21,7 +21,7 @@ type ScheduleRow = { action: string; pulse: number | null; formula?: string; dim
 type Payload = {
   me: { id: string };
   ledger: {
-    accrued: number; sybil_adjusted: number; sybil_factor: number; claimed: number; rate: number;
+    accrued: number; sybil_adjusted: number; affiliate_grid: number; total_allocation: number; sybil_factor: number; claimed: number; rate: number;
     breakdown: { dimension: string; units: number; events: number }[];
     tge: { executed: boolean } | { executed: boolean; at: string };
     vesting: { total: number; released: number; claimable: number; vested_pct: number; unlock_pct: number; cliff_days: number; duration_days: number } | null;
@@ -61,7 +61,7 @@ export default function RewardsPage() {
 
   const l = data?.ledger;
   const kpis: [string, number, string?][] = [
-    ["GRID Allocation", l?.sybil_adjusted ?? 0],
+    ["GRID Allocation", l?.total_allocation ?? 0],
     ["Claimable Now", l?.vesting?.claimable ?? 0],
     ["Verified Referrals", data?.referrals.verified ?? 0],
     ["Affiliate GRID", data?.referrals.affiliate.grid ?? 0],
@@ -120,7 +120,7 @@ export default function RewardsPage() {
                 <div className="ng-label !text-ink-dim">GRID accrual</div>
                 <span className="text-[10px] text-ink-faint">sybil factor ×{l?.sybil_factor ?? 1}</span>
               </div>
-              <div className="ng-stat__v !text-xl"><CountUp key={l?.accrued ?? 0} value={l?.accrued ?? 0} /> <span className="text-[11px] font-normal text-ink-faint">accrued → {l?.sybil_adjusted ?? 0} allocated</span></div>
+              <div className="ng-stat__v !text-xl"><CountUp key={l?.accrued ?? 0} value={l?.accrued ?? 0} /> <span className="text-[11px] font-normal text-ink-faint">accrued → {l?.sybil_adjusted ?? 0} allocated{(l?.affiliate_grid ?? 0) > 0 ? ` + ${l?.affiliate_grid} affiliate` : ""}</span></div>
               <Area data={data?.accrual ?? [0, 0]} gid="rw-accrual" w={340} h={96} />
             </div>
             <div className="ng-card p-4">
