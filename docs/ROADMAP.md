@@ -83,9 +83,12 @@ an audited existing protocol does the job (borrow-don't-build still applies).
   agreements anchor their canonical sha256 via the audited Solana Memo
   program (timestamped, signed, queryable forever). Devnet-verified,
   prod-live (rev 00023).
-- **C8 · Trading rails** — graduated tokens list on an existing DEX (Raydium);
-  perps via an existing protocol integration. We do NOT write an AMM/perp
-  engine on-chain.
+- **C8 · Trading rails — REDEFINED (founder, 2026-07-03): TradeX IS the venue.**
+  NeuGrid integrates with NO external DEX (the earlier Raydium idea is dead) —
+  markets trade on TradeX's own engine, end of story. Founders remain free to
+  list their token elsewhere on their own; NeuGrid carries zero dependency on
+  it. On-chain settlement for TradeX itself is a later, separate decision
+  (own programs + audits), not an integration.
 - Every contract ships devnet-first with an e2e harness; **mainnet deployment
   of any of them requires a professional audit** (budget line for later).
 

@@ -39,5 +39,6 @@ anchor deploy --provider.cluster devnet   # devnet deploy (funded wallet needed)
 ## Roadmap (tier order — see docs/ROADMAP.md)
 C1 milestone vault (this) · C2 GRID mint + vesting (standard tooling) ·
 C3 staking/slashing · C4 governance (evaluate Realms first) · C5 ownership
-splits · C6 agent mandate wallets · C7 deal proofs · C8 DEX/perps integration
-(borrow, never build an AMM).
+splits · C6 agent mandate wallets · C7 deal proofs. (There is NO C8 DEX
+integration — founder decision 2026-07-03: TradeX is the venue; founders may
+list elsewhere themselves, NeuGrid holds no external-DEX dependency.)
