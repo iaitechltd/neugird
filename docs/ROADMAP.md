@@ -57,14 +57,20 @@ an audited existing protocol does the job (borrow-don't-build still applies).
   fire-and-forget, prod-armed on devnet). v1 trust posture = platform-signed
   mirror; next stages: user-signed backings (wallet adapter) + the ICP
   canister as release authority (A3), then the Jobs-escrow lens.
-- **C2 · GRID token + vesting** — standard SPL mint + audited vesting tooling
-  (TGE-ready; no custom code expected).
+- **C2 · GRID token + vesting — ✅ SHIPPED (2026-07-03)**: GRID is a real
+  devnet SPL mint (`32mPZo…`, 1B fixed supply, zero custom code) and vested
+  claims mirror as real treasury→wallet transfers (prod-armed, rev 00019).
+  Real TGE swaps in audited vesting tooling + a governance-held authority.
 - **C3 · Staking + slashing — ✅ SHIPPED (2026-07-03)**: per-market GRID
   lockups + MasterChef USDC fee share + fraud slash (principal sweeps,
   earned rewards survive). 5/5 suites, devnet-deployed (`3K6UCst…`), smoked
   with the real GRID mint, platform-mirrored + prod-armed (rev 00020).
-- **C4 · Governance** — evaluate Realms (SPL Governance) integration vs custom;
-  lock-to-vote with binding param execution.
+- **C4 · Governance — ✅ SHIPPED (2026-07-03)**: Realms evaluated first —
+  it is the TGE-era vehicle (per-user wallets); the mirror era ships a minimal
+  exact-semantics program (lock-to-vote, quorum+majority, locks return win or
+  lose, sha256-pinned titles). 7/7 suites, devnet (`AmXRjx…`), adapter-smoked
+  with real GRID, platform-mirrored + prod-armed (rev 00021). Enactment stays
+  with the platform Params layer.
 - **C5 · Ownership splits** — SubGrid revenue splitter (human + agent teams).
 - **C6 · Agent mandate wallets** — owner guardrails (budget/kill-switch)
   enforced by a contract wallet, not our server.
