@@ -79,7 +79,10 @@ an audited existing protocol does the job (borrow-don't-build still applies).
   devnet-smoked with real tUSDC, prod-armed (rev 00022).
 - **C6 · Agent mandate wallets** — owner guardrails (budget/kill-switch)
   enforced by a contract wallet, not our server.
-- **C7 · Deal proofs** — on-chain hash anchor for accepted agreements (cheap).
+- **C7 · Deal proofs — ✅ SHIPPED (2026-07-03)**: zero custom code — struck
+  agreements anchor their canonical sha256 via the audited Solana Memo
+  program (timestamped, signed, queryable forever). Devnet-verified,
+  prod-live (rev 00023).
 - **C8 · Trading rails** — graduated tokens list on an existing DEX (Raydium);
   perps via an existing protocol integration. We do NOT write an AMM/perp
   engine on-chain.
