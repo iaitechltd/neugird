@@ -13,6 +13,7 @@
 
 import { db } from "../store";
 import { nowISO } from "../id";
+import { GridToken } from "../chain";
 import * as Wallets from "./wallets";
 import * as Referrals from "./referrals";
 import type { PulseEvent, Vesting } from "../types";
@@ -181,6 +182,7 @@ export function claim(user_id: string): { claimed?: number; error?: string } {
   v.released += claimable;
   u.reward!.claimed = (u.reward!.claimed ?? 0) + claimable;
   Wallets.creditGrid(user_id, claimable);
+  void GridToken.claim(u.wallet_addresses[0], claimable); // chain mirror — real GRID to their wallet
   return { claimed: Math.round(claimable) };
 }
 

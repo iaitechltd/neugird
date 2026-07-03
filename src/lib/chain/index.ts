@@ -14,6 +14,7 @@
 import type { Attestation, Proposal } from "../types";
 import { solanaSas, solanaX402, USDC_MINT_MAINNET } from "./solana";
 import * as vaultSolana from "./vaultSolana";
+import * as gridTokenImpl from "./gridToken";
 
 /* -------------------------------- SAS seam ------------------------------------ */
 
@@ -141,4 +142,14 @@ export const Vault = {
   release: (p: Proposal, order: number) => guard("vault.release", () => vaultSolana.mirrorRelease(p, order)),
   expire: (p: Proposal) => guard("vault.expire", () => vaultSolana.mirrorExpire(p)),
   kill: (p: Proposal) => guard("vault.kill", () => vaultSolana.mirrorKill(p)),
+};
+
+/* -------------------------------- GRID token ---------------------------------- */
+// Vested-claim mirror onto the real GRID mint (C2). Guarded fire-and-forget from
+// Rewards.claim — a chain failure logs and the platform balance stands.
+
+export const GridToken = {
+  configured: (): boolean => !!gridTokenImpl.gridTokenConfig(),
+  claim: (recipientWallet: string | undefined, amountGrid: number): Promise<void> =>
+    guard("gridToken.claim", async () => { await gridTokenImpl.mirrorClaim(recipientWallet, amountGrid); }),
 };
