@@ -233,6 +233,7 @@ create table if not exists proposals (
   status             text        not null default 'open',
   endorsements       jsonb       not null default '[]', -- Endorsement[]
   closes_at          timestamptz, -- raise window end (unfilled past this => expired + refunds)
+  onchain            jsonb,      -- the raise's real on-chain escrow vault (milestone_vault program)
   created_at         timestamptz not null default now()
 );
 

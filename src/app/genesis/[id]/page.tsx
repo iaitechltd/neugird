@@ -358,6 +358,19 @@ export default function ProposalDetail() {
             </div>
           </div>
 
+          {p.onchain && (
+            <div className="ng-card p-3.5">
+              <div className="ng-label mb-2 !text-ink-dim">On-chain escrow vault</div>
+              <p className="text-[10.5px] leading-relaxed text-ink-dim">This raise&#39;s escrow mirrors to a real Solana program — escrowed, released, and refunded amounts are publicly verifiable.</p>
+              <a
+                href={`https://explorer.solana.com/address/${p.onchain.vault}?cluster=${p.onchain.cluster}`}
+                target="_blank" rel="noreferrer"
+                className="mt-2 block truncate text-[11px] text-cyan hover:underline"
+              >{p.onchain.vault}</a>
+              <div className="mt-1 flex justify-between text-[10px] text-ink-faint"><span>milestone_vault · {p.onchain.cluster}</span><span>{p.onchain.txs?.length ?? 0} tx</span></div>
+            </div>
+          )}
+
           <div className="ng-card p-3.5">
             <div className="ng-label mb-2 flex items-center gap-2 !text-ink-dim"><span className="text-neon"><IconUser className="h-4 w-4" /></span>Backers</div>
             {view.backer_list.length === 0

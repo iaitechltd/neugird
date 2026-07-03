@@ -11,9 +11,11 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.109.1",
     "@coinbase/x402": "^2.1.0",
+    "@coral-xyz/anchor": "^0.31.1",
     "@solana-program/compute-budget": "^0.15.0",
     "@solana-program/token-2022": "^0.11.0",
     "@solana/kit": "^7.0.0",
+    "@solana/spl-token": "^0.4.14",
     "bs58": "^6.0.0",
     "next": "16.2.9",
     "pg": "^8.22.0",

@@ -321,6 +321,9 @@ export interface Proposal {
   status: ProposalStatus;
   endorsements: Endorsement[];
   closes_at?: ISODate; // raise window end — unfilled past this ⇒ expired + refunds (governable, genesis_raise_days)
+  /** The raise's REAL on-chain escrow vault (the milestone_vault program), when
+   *  the chain rail is active — publicly verifiable escrowed/released/refunded state. */
+  onchain?: { vault: string; program: string; cluster: string; txs?: string[] };
   created_at: ISODate;
 }
 

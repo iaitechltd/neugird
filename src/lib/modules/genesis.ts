@@ -11,6 +11,7 @@
 
 import { db } from "../store";
 import { newId, nowISO } from "../id";
+import { Vault } from "../chain";
 import * as Pulse from "./pulse";
 import * as GridRegistry from "./gridRegistry";
 import * as Echo from "./echo";
@@ -67,6 +68,7 @@ export function sweepExpiredRaises(): { expired: number; refunded: number } {
       refunded++;
     }
     Pulse.recordEvent({ target_type: "user", target_id: p.author_id, action_type: "campaign_completed", weight: 0, reason: `Raise "${p.title}" expired unfilled — backers refunded`, verification_source: "auto" });
+    void Vault.expire(p); // chain mirror
   }
   return { expired, refunded };
 }
@@ -125,6 +127,7 @@ export function createProposal(input: CreateProposalInput): { proposal?: Proposa
   }
 
   db.proposals.unshift(proposal);
+  void Vault.create(proposal); // chain mirror — guarded, Stage-1 stands on failure
   return { proposal };
 }
 
@@ -140,6 +143,7 @@ export function fundProposal(proposal_id: string, backer_id: string, amount: num
   Wallets.creditUsdc(GENESIS_ESCROW, amount);
 
   db.backings.push({ backing_id: newId("back"), round_id: proposal_id, grid_id: "", backer_id, amount, created_at: nowISO() });
+  void Vault.back(p, amount); // chain mirror
   const raised = raisedFor(proposal_id);
   if (raised < p.ask_amount) return { proposal: p, raised };
 
@@ -256,6 +260,8 @@ export function voteMilestone(milestone_id: string, voter_id: string, support: b
     if (grid) {
       Pulse.recordEvent({ target_type: "user", target_id: grid.owner_id, action_type: "milestone_approved", weight: 30, reason: `Milestone "${m.title}" released by backer vote`, verification_source: "backers", dimension: "builder" });
       Pulse.recordEvent({ target_type: "grid", target_id: grid.grid_id, action_type: "milestone_approved", weight: 20, reason: `Milestone "${m.title}" released`, verification_source: "backers" });
+      const prop = grid.spawned_from?.proposal_id ? getProposal(grid.spawned_from.proposal_id) : undefined;
+      if (prop) void Vault.release(prop, m.order); // chain mirror
     }
     return { milestone: m, released: true, for_pct: forPct, against_pct: againstPct };
   }
@@ -342,6 +348,7 @@ export function triggerKillSwitch(proposal_id: string, by: string): { refunded?:
   tre.balance = 0;
   p.status = "refunded";
   grid.lifecycle_stage = "failed";
+  void Vault.kill(p); // chain mirror
   for (const m of db.milestones.filter((x) => x.grid_id === grid.grid_id && (x.status === "pending" || x.status === "rejected"))) m.status = "rejected";
   Pulse.recordEvent({ target_type: "user", target_id: grid.owner_id, action_type: "submission_rejected", weight: -40, reason: `Kill-switch: "${p.title}" stalled — unreleased treasury returned to backers`, verification_source: isSystem ? "auto" : "backers", dimension: "builder" });
   Pulse.recordEvent({ target_type: "grid", target_id: grid.grid_id, action_type: "submission_rejected", weight: -30, reason: "Project stalled — treasury refunded", verification_source: "auto" });

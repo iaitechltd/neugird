@@ -1,0 +1,1491 @@
+{
+  "address": "DEnN1EEMFERLNmEkXnPMDPyj93SGEHXWuNjGWesALC4N",
+  "metadata": {
+    "name": "milestone_vault",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "NeuGrid milestone escrow vault (GenesisX raises + job escrow)"
+  },
+  "instructions": [
+    {
+      "name": "back",
+      "docs": [
+        "Backer escrows USDC into the vault. Filling the ask starts milestone 0's vote."
+      ],
+      "discriminator": [
+        1,
+        144,
+        109,
+        177,
+        110,
+        131,
+        124,
+        0
+      ],
+      "accounts": [
+        {
+          "name": "backer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault.founder",
+                "account": "Vault"
+              },
+              {
+                "kind": "account",
+                "path": "vault.vault_id",
+                "account": "Vault"
+              }
+            ]
+          }
+        },
+        {
+          "name": "backing",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  99,
+                  107,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "account",
+                "path": "backer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "backer_token",
+          "writable": true
+        },
+        {
+          "name": "vault_token",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault.usdc_mint",
+                "account": "Vault"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "claim_refund",
+      "docs": [
+        "FAILED vault: backer claims their pro-rata share of the unreleased balance.",
+        "(Raise-expiry case: released == 0, so the share is the full backing.)"
+      ],
+      "discriminator": [
+        15,
+        16,
+        30,
+        161,
+        255,
+        228,
+        97,
+        60
+      ],
+      "accounts": [
+        {
+          "name": "backer",
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault.founder",
+                "account": "Vault"
+              },
+              {
+                "kind": "account",
+                "path": "vault.vault_id",
+                "account": "Vault"
+              }
+            ]
+          }
+        },
+        {
+          "name": "backing",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  99,
+                  107,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "account",
+                "path": "backer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_token",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault.usdc_mint",
+                "account": "Vault"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "backer_token",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_backing",
+      "docs": [
+        "Reclaim a Backing account's rent once it's spent (refunded, or the vault",
+        "completed). Closes to the backer."
+      ],
+      "discriminator": [
+        232,
+        23,
+        102,
+        141,
+        161,
+        27,
+        135,
+        79
+      ],
+      "accounts": [
+        {
+          "name": "backer",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "backing"
+          ]
+        },
+        {
+          "name": "vault",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault.founder",
+                "account": "Vault"
+              },
+              {
+                "kind": "account",
+                "path": "vault.vault_id",
+                "account": "Vault"
+              }
+            ]
+          }
+        },
+        {
+          "name": "backing",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  99,
+                  107,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "account",
+                "path": "backer"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_vault",
+      "docs": [
+        "Founder opens a raise. `ask` is derived on-chain as the tranche sum."
+      ],
+      "discriminator": [
+        29,
+        237,
+        247,
+        208,
+        193,
+        82,
+        54,
+        135
+      ],
+      "accounts": [
+        {
+          "name": "founder",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "founder"
+              },
+              {
+                "kind": "arg",
+                "path": "vault_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "vault_token",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "vault_id",
+          "type": "u64"
+        },
+        {
+          "name": "milestone_amounts",
+          "type": {
+            "vec": "u64"
+          }
+        },
+        {
+          "name": "raise_seconds",
+          "type": "i64"
+        },
+        {
+          "name": "stall_seconds",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "expire_raise",
+      "docs": [
+        "Anyone may flip an expired, unfilled raise to FAILED (opens refunds)."
+      ],
+      "discriminator": [
+        38,
+        85,
+        188,
+        12,
+        49,
+        8,
+        21,
+        32
+      ],
+      "accounts": [
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault.founder",
+                "account": "Vault"
+              },
+              {
+                "kind": "account",
+                "path": "vault.vault_id",
+                "account": "Vault"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "kill_switch",
+      "docs": [
+        "Any backer may kill a funded vault with no milestone activity past the",
+        "stall window. Unreleased funds become claimable pro-rata."
+      ],
+      "discriminator": [
+        189,
+        76,
+        222,
+        157,
+        130,
+        131,
+        241,
+        144
+      ],
+      "accounts": [
+        {
+          "name": "backer",
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault.founder",
+                "account": "Vault"
+              },
+              {
+                "kind": "account",
+                "path": "vault.vault_id",
+                "account": "Vault"
+              }
+            ]
+          }
+        },
+        {
+          "name": "backing",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  99,
+                  107,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "account",
+                "path": "backer"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "reopen_milestone",
+      "docs": [
+        "Founder re-requests a rejected milestone: fresh voting round, tallies reset."
+      ],
+      "discriminator": [
+        10,
+        241,
+        140,
+        42,
+        152,
+        213,
+        179,
+        215
+      ],
+      "accounts": [
+        {
+          "name": "founder",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault.founder",
+                "account": "Vault"
+              },
+              {
+                "kind": "account",
+                "path": "vault.vault_id",
+                "account": "Vault"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "milestone_idx",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "vote",
+      "docs": [
+        "Backing-weighted vote on the currently-voting milestone. Crossing 50% FOR",
+        "releases the tranche to the founder inside this same transaction; 50%",
+        "AGAINST rejects it (founder may `reopen_milestone` for a fresh round)."
+      ],
+      "discriminator": [
+        227,
+        110,
+        155,
+        23,
+        136,
+        126,
+        172,
+        25
+      ],
+      "accounts": [
+        {
+          "name": "backer",
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault.founder",
+                "account": "Vault"
+              },
+              {
+                "kind": "account",
+                "path": "vault.vault_id",
+                "account": "Vault"
+              }
+            ]
+          }
+        },
+        {
+          "name": "backing",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  99,
+                  107,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "account",
+                "path": "backer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_token",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault.usdc_mint",
+                "account": "Vault"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "founder_token",
+          "docs": [
+            "the founder's USDC account — tranche destination on release"
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "milestone_idx",
+          "type": "u8"
+        },
+        {
+          "name": "approve",
+          "type": "bool"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Backing",
+      "discriminator": [
+        183,
+        154,
+        102,
+        51,
+        83,
+        11,
+        152,
+        65
+      ]
+    },
+    {
+      "name": "Vault",
+      "discriminator": [
+        211,
+        8,
+        232,
+        43,
+        2,
+        152,
+        117,
+        119
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "Backed",
+      "discriminator": [
+        42,
+        235,
+        220,
+        40,
+        248,
+        188,
+        206,
+        255
+      ]
+    },
+    {
+      "name": "MilestoneRejected",
+      "discriminator": [
+        194,
+        242,
+        80,
+        147,
+        56,
+        228,
+        195,
+        245
+      ]
+    },
+    {
+      "name": "MilestoneReleased",
+      "discriminator": [
+        49,
+        225,
+        91,
+        223,
+        34,
+        165,
+        109,
+        181
+      ]
+    },
+    {
+      "name": "RefundClaimed",
+      "discriminator": [
+        136,
+        64,
+        242,
+        99,
+        4,
+        244,
+        208,
+        130
+      ]
+    },
+    {
+      "name": "VaultCreated",
+      "discriminator": [
+        117,
+        25,
+        120,
+        254,
+        75,
+        236,
+        78,
+        115
+      ]
+    },
+    {
+      "name": "VaultFailed",
+      "discriminator": [
+        166,
+        9,
+        13,
+        244,
+        184,
+        218,
+        66,
+        183
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "BadMilestones",
+      "msg": "milestones must be 1-8, all non-zero"
+    },
+    {
+      "code": 6001,
+      "name": "BadWindow",
+      "msg": "raise/stall windows must be positive"
+    },
+    {
+      "code": 6002,
+      "name": "Overflow",
+      "msg": "arithmetic overflow"
+    },
+    {
+      "code": 6003,
+      "name": "NotRaising",
+      "msg": "vault is not raising"
+    },
+    {
+      "code": 6004,
+      "name": "RaiseExpired",
+      "msg": "raise deadline has passed"
+    },
+    {
+      "code": 6005,
+      "name": "NotExpired",
+      "msg": "raise deadline has not passed"
+    },
+    {
+      "code": 6006,
+      "name": "ZeroAmount",
+      "msg": "amount must be positive"
+    },
+    {
+      "code": 6007,
+      "name": "OverAsk",
+      "msg": "backing would exceed the ask"
+    },
+    {
+      "code": 6008,
+      "name": "NotFunded",
+      "msg": "vault is not funded"
+    },
+    {
+      "code": 6009,
+      "name": "BadIndex",
+      "msg": "bad milestone index"
+    },
+    {
+      "code": 6010,
+      "name": "NotVoting",
+      "msg": "milestone is not open for voting"
+    },
+    {
+      "code": 6011,
+      "name": "AlreadyVoted",
+      "msg": "already voted this round"
+    },
+    {
+      "code": 6012,
+      "name": "NotRejected",
+      "msg": "milestone is not rejected"
+    },
+    {
+      "code": 6013,
+      "name": "TooManyRounds",
+      "msg": "too many voting rounds"
+    },
+    {
+      "code": 6014,
+      "name": "NotABacker",
+      "msg": "not a backer of this vault"
+    },
+    {
+      "code": 6015,
+      "name": "NotStalled",
+      "msg": "vault has not stalled"
+    },
+    {
+      "code": 6016,
+      "name": "NotFailed",
+      "msg": "vault has not failed"
+    },
+    {
+      "code": 6017,
+      "name": "NothingToRefund",
+      "msg": "nothing to refund"
+    },
+    {
+      "code": 6018,
+      "name": "StillLive",
+      "msg": "vault or backing still live"
+    },
+    {
+      "code": 6019,
+      "name": "WrongMint",
+      "msg": "wrong token mint"
+    },
+    {
+      "code": 6020,
+      "name": "WrongOwner",
+      "msg": "wrong token account owner"
+    },
+    {
+      "code": 6021,
+      "name": "NotFounder",
+      "msg": "only the founder may do this"
+    }
+  ],
+  "types": [
+    {
+      "name": "Backed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "backer",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "raised",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Backing",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "backer",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "refunded",
+            "type": "bool"
+          },
+          {
+            "name": "voted_round",
+            "docs": [
+              "per-milestone: the voting round this backer last voted in (0 = never)"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MilestoneRejected",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "milestone",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MilestoneReleased",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "milestone",
+            "type": "u8"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MilestoneState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": "u8"
+          },
+          {
+            "name": "round",
+            "type": "u8"
+          },
+          {
+            "name": "votes_for",
+            "type": "u64"
+          },
+          {
+            "name": "votes_against",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RefundClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "backer",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Vault",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault_id",
+            "type": "u64"
+          },
+          {
+            "name": "founder",
+            "type": "pubkey"
+          },
+          {
+            "name": "usdc_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "ask",
+            "type": "u64"
+          },
+          {
+            "name": "raised",
+            "type": "u64"
+          },
+          {
+            "name": "released",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": "u8"
+          },
+          {
+            "name": "raise_deadline",
+            "type": "i64"
+          },
+          {
+            "name": "stall_seconds",
+            "type": "i64"
+          },
+          {
+            "name": "last_activity",
+            "type": "i64"
+          },
+          {
+            "name": "milestone_count",
+            "type": "u8"
+          },
+          {
+            "name": "milestones",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "MilestoneState"
+                  }
+                },
+                8
+              ]
+            }
+          },
+          {
+            "name": "backer_count",
+            "type": "u32"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VaultCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "founder",
+            "type": "pubkey"
+          },
+          {
+            "name": "ask",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VaultFailed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "reason",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}

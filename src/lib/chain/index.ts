@@ -11,8 +11,9 @@
  *   x402 protocol against a Coinbase-CDP-style facilitator. See ./solana.
  */
 
-import type { Attestation } from "../types";
+import type { Attestation, Proposal } from "../types";
 import { solanaSas, solanaX402, USDC_MINT_MAINNET } from "./solana";
+import * as vaultSolana from "./vaultSolana";
 
 /* -------------------------------- SAS seam ------------------------------------ */
 
@@ -126,3 +127,18 @@ export function x402PayConfig(): { payTo: string; asset: string; network: string
     network: process.env.NEUGRID_X402_NETWORK || "solana",      // v1 "solana" | CAIP-2 for CDP v2
   };
 }
+
+/* ------------------------------ Milestone vault ------------------------------- */
+// GenesisX escrow mirrored onto the real milestone_vault program (contracts/).
+// Fire-and-forget from genesis.ts: every call is guarded — a chain failure logs
+// and the Stage-1 ledger stands. Inactive unless NEUGRID_VAULT_PROGRAM_ID (+ the
+// solana chain mode + RPC + mint + payer secret) is configured.
+
+export const Vault = {
+  configured: (): boolean => !!vaultSolana.vaultConfig(),
+  create: (p: Proposal) => guard("vault.create", () => vaultSolana.mirrorCreate(p)),
+  back: (p: Proposal, amount: number) => guard("vault.back", () => vaultSolana.mirrorBack(p, amount)),
+  release: (p: Proposal, order: number) => guard("vault.release", () => vaultSolana.mirrorRelease(p, order)),
+  expire: (p: Proposal) => guard("vault.expire", () => vaultSolana.mirrorExpire(p)),
+  kill: (p: Proposal) => guard("vault.kill", () => vaultSolana.mirrorKill(p)),
+};
