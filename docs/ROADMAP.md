@@ -71,7 +71,12 @@ an audited existing protocol does the job (borrow-don't-build still applies).
   lose, sha256-pinned titles). 7/7 suites, devnet (`AmXRjx…`), adapter-smoked
   with real GRID, platform-mirrored + prod-armed (rev 00021). Enactment stays
   with the platform Params layer.
-- **C5 · Ownership splits** — SubGrid revenue splitter (human + agent teams).
+- **C5 · Ownership splits — ✅ SHIPPED (2026-07-03)**: the split agreement
+  is executable — platform `distribute` pays USDC through the bps table
+  (agents' shares to their beneficiary/owner) AND mirrors as one atomic
+  on-chain split (`HFuFMd…`, member-verified recipient ATAs; bound wallets
+  receive directly, unbound shares to treasury custody). 9/9 suites,
+  devnet-smoked with real tUSDC, prod-armed (rev 00022).
 - **C6 · Agent mandate wallets** — owner guardrails (budget/kill-switch)
   enforced by a contract wallet, not our server.
 - **C7 · Deal proofs** — on-chain hash anchor for accepted agreements (cheap).
