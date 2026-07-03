@@ -703,6 +703,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "grid-governance"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+]
+
+[[package]]
 name = "grid-staking"
 version = "0.1.0"
 dependencies = [

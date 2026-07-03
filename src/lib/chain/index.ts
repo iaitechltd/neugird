@@ -16,6 +16,7 @@ import { solanaSas, solanaX402, USDC_MINT_MAINNET } from "./solana";
 import * as vaultSolana from "./vaultSolana";
 import * as gridTokenImpl from "./gridToken";
 import * as stakingSolana from "./stakingSolana";
+import * as governanceSolana from "./governanceSolana";
 
 /* -------------------------------- SAS seam ------------------------------------ */
 
@@ -168,4 +169,17 @@ export const Staking = {
   release: (market_id: string, amount: number) =>
     guard("staking.release", () => stakingSolana.mirrorRelease(market_id, amount)),
   slash: (market_id: string) => guard("staking.slash", () => stakingSolana.mirrorSlash(market_id)),
+};
+
+/* ------------------------------- GRID governance ------------------------------ */
+// Lock-to-vote mirrored onto the real grid_governance program (C4). Guarded
+// fire-and-forget from governance.ts. Realms/SPL-Governance = the TGE path.
+
+export const Gov = {
+  configured: (): boolean => !!governanceSolana.govConfig(),
+  propose: (proposal_id: string, title: string, quorumGrid: number, closesAtISO: string) =>
+    guard("gov.propose", () => governanceSolana.mirrorPropose(proposal_id, title, quorumGrid, closesAtISO)),
+  vote: (proposal_id: string, support: boolean, amountGrid: number) =>
+    guard("gov.vote", () => governanceSolana.mirrorVote(proposal_id, support, amountGrid)),
+  resolve: (proposal_id: string) => guard("gov.resolve", () => governanceSolana.mirrorResolve(proposal_id)),
 };

@@ -9,6 +9,7 @@
  */
 
 import { db } from "../store";
+import { Gov as ChainGov } from "../chain";
 import { newId, nowISO } from "../id";
 import * as Wallets from "./wallets";
 import * as Params from "./params";
@@ -116,6 +117,7 @@ export function createProposal(proposer_id: string, input: CreateGovInput): { pr
     closes_at: new Date(Date.now() + VOTE_WINDOW_DAYS * 86_400_000).toISOString(), created_at: nowISO(),
   };
   proposals().push(p);
+  void ChainGov.propose(p.proposal_id, p.title, p.quorum_grid, p.closes_at); // chain mirror
   return { proposal: p };
 }
 
@@ -129,6 +131,7 @@ export function vote(proposal_id: string, voter_id: string, support: boolean, gr
   if (!Wallets.debitGrid(voter_id, grid)) return { error: "insufficient_grid" };
   votes().push({ proposal_id, voter_id, support, grid, at: nowISO() });
   if (support) p.for_grid += grid; else p.against_grid += grid;
+  void ChainGov.vote(proposal_id, support, grid); // chain mirror
   return { proposal: p };
 }
 
@@ -147,6 +150,7 @@ function settle(p: GovProposal): { passed: boolean; returned: number } {
       returned += v.grid;
     }
   }
+  void ChainGov.resolve(p.proposal_id); // chain mirror — settles + reclaims the locks
   return { passed: p.status === "passed", returned };
 }
 

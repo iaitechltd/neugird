@@ -1,0 +1,858 @@
+{
+  "address": "AmXRjxWNpzQs3Ca3AX1h2wdK61ytY2ZvPymiNDieWDYu",
+  "metadata": {
+    "name": "grid_governance",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "NeuGrid lock-to-vote governance: GRID locks vote, quorum + majority pass, locks return"
+  },
+  "instructions": [
+    {
+      "name": "propose",
+      "docs": [
+        "Open a proposal: quorum (atomic GRID), a deadline, and the title's hash",
+        "(the full text lives with the platform; the hash pins it immutably)."
+      ],
+      "discriminator": [
+        93,
+        253,
+        82,
+        168,
+        118,
+        33,
+        102,
+        90
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "proposal",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  111,
+                  118
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "proposal_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "grid_mint"
+        },
+        {
+          "name": "vote_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "proposal"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "grid_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "proposal_id",
+          "type": "u64"
+        },
+        {
+          "name": "quorum",
+          "type": "u64"
+        },
+        {
+          "name": "closes_at",
+          "type": "i64"
+        },
+        {
+          "name": "title_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "reclaim",
+      "docs": [
+        "After resolution every lock returns — win or lose. Closes the lock PDA."
+      ],
+      "discriminator": [
+        44,
+        177,
+        236,
+        249,
+        145,
+        109,
+        163,
+        186
+      ],
+      "accounts": [
+        {
+          "name": "voter",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "vote_lock"
+          ]
+        },
+        {
+          "name": "proposal",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  111,
+                  118
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "proposal.authority",
+                "account": "GovProposal"
+              },
+              {
+                "kind": "account",
+                "path": "proposal.proposal_id",
+                "account": "GovProposal"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vote_lock",
+          "writable": true
+        },
+        {
+          "name": "voter_grid",
+          "writable": true
+        },
+        {
+          "name": "vote_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "proposal"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "proposal.grid_mint",
+                "account": "GovProposal"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "resolve",
+      "docs": [
+        "Anyone settles a proposal past its deadline: FOR must reach quorum AND",
+        "beat AGAINST — the platform's exact rule."
+      ],
+      "discriminator": [
+        246,
+        150,
+        236,
+        206,
+        108,
+        63,
+        58,
+        10
+      ],
+      "accounts": [
+        {
+          "name": "proposal",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  111,
+                  118
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "proposal.authority",
+                "account": "GovProposal"
+              },
+              {
+                "kind": "account",
+                "path": "proposal.proposal_id",
+                "account": "GovProposal"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "vote",
+      "docs": [
+        "Lock GRID on a side. `side`: 1 = FOR, 0 = AGAINST. Additive per (voter, side)."
+      ],
+      "discriminator": [
+        227,
+        110,
+        155,
+        23,
+        136,
+        126,
+        172,
+        25
+      ],
+      "accounts": [
+        {
+          "name": "voter",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "proposal",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  111,
+                  118
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "proposal.authority",
+                "account": "GovProposal"
+              },
+              {
+                "kind": "account",
+                "path": "proposal.proposal_id",
+                "account": "GovProposal"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vote_lock",
+          "writable": true
+        },
+        {
+          "name": "voter_grid",
+          "writable": true
+        },
+        {
+          "name": "vote_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "proposal"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "proposal.grid_mint",
+                "account": "GovProposal"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "side",
+          "type": "u8"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "GovProposal",
+      "discriminator": [
+        182,
+        195,
+        27,
+        182,
+        25,
+        98,
+        22,
+        111
+      ]
+    },
+    {
+      "name": "VoteLock",
+      "discriminator": [
+        83,
+        95,
+        46,
+        43,
+        238,
+        13,
+        207,
+        97
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "Proposed",
+      "discriminator": [
+        216,
+        37,
+        138,
+        141,
+        130,
+        208,
+        180,
+        153
+      ]
+    },
+    {
+      "name": "Reclaimed",
+      "discriminator": [
+        230,
+        25,
+        32,
+        135,
+        40,
+        167,
+        137,
+        130
+      ]
+    },
+    {
+      "name": "Resolved",
+      "discriminator": [
+        148,
+        46,
+        187,
+        66,
+        35,
+        1,
+        255,
+        147
+      ]
+    },
+    {
+      "name": "Voted",
+      "discriminator": [
+        189,
+        74,
+        101,
+        127,
+        109,
+        214,
+        95,
+        130
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "BadInput",
+      "msg": "bad input"
+    },
+    {
+      "code": 6001,
+      "name": "Overflow",
+      "msg": "arithmetic overflow"
+    },
+    {
+      "code": 6002,
+      "name": "NotOpen",
+      "msg": "proposal is not open"
+    },
+    {
+      "code": 6003,
+      "name": "VotingClosed",
+      "msg": "voting has closed"
+    },
+    {
+      "code": 6004,
+      "name": "StillVoting",
+      "msg": "voting is still open"
+    },
+    {
+      "code": 6005,
+      "name": "WrongSide",
+      "msg": "lock is on the other side"
+    },
+    {
+      "code": 6006,
+      "name": "NothingLocked",
+      "msg": "nothing locked"
+    },
+    {
+      "code": 6007,
+      "name": "WrongMint",
+      "msg": "wrong token mint"
+    },
+    {
+      "code": 6008,
+      "name": "WrongOwner",
+      "msg": "wrong token account owner"
+    }
+  ],
+  "types": [
+    {
+      "name": "GovProposal",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "proposal_id",
+            "type": "u64"
+          },
+          {
+            "name": "grid_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "quorum",
+            "type": "u64"
+          },
+          {
+            "name": "closes_at",
+            "type": "i64"
+          },
+          {
+            "name": "title_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "for_locked",
+            "type": "u64"
+          },
+          {
+            "name": "against_locked",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Proposed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "proposal",
+            "type": "pubkey"
+          },
+          {
+            "name": "proposal_id",
+            "type": "u64"
+          },
+          {
+            "name": "quorum",
+            "type": "u64"
+          },
+          {
+            "name": "closes_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Reclaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "proposal",
+            "type": "pubkey"
+          },
+          {
+            "name": "voter",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Resolved",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "proposal",
+            "type": "pubkey"
+          },
+          {
+            "name": "passed",
+            "type": "bool"
+          },
+          {
+            "name": "for_locked",
+            "type": "u64"
+          },
+          {
+            "name": "against_locked",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VoteLock",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "proposal",
+            "type": "pubkey"
+          },
+          {
+            "name": "voter",
+            "type": "pubkey"
+          },
+          {
+            "name": "side",
+            "type": "u8"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Voted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "proposal",
+            "type": "pubkey"
+          },
+          {
+            "name": "voter",
+            "type": "pubkey"
+          },
+          {
+            "name": "side",
+            "type": "u8"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    }
+  ]
+}

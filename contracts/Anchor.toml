@@ -7,6 +7,7 @@ skip-lint = false
 [programs.devnet]
 milestone_vault = "DEnN1EEMFERLNmEkXnPMDPyj93SGEHXWuNjGWesALC4N"
 grid_staking = "3K6UCstVDp3yJazAs28b47Gftbqr28pZpPKX29G32d2m"
+grid_governance = "AmXRjxWNpzQs3Ca3AX1h2wdK61ytY2ZvPymiNDieWDYu"
 
 [programs.localnet]
 milestone_vault = "DEnN1EEMFERLNmEkXnPMDPyj93SGEHXWuNjGWesALC4N"

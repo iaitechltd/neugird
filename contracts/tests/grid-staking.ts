@@ -98,7 +98,7 @@ describe("grid_staking", () => {
 
   it("stake → fee share (exact pro-rata) → lock → unstake → slash", async () => {
     await program.methods
-      .initPool(MARKET, new BN(3)) // 3s lock for the test
+      .initPool(MARKET, new BN(10)) // 10s lock — wide margin for slow validator runs
       .accounts({
         authority: authority.publicKey, pool: poolPda(), gridMint: grid, usdcMint: usdc,
         stakeVault: getAssociatedTokenAddressSync(grid, poolPda(), true),
@@ -138,8 +138,10 @@ describe("grid_staking", () => {
     assert.equal((await bal(atas.alice.usdc)) - a0, 60e6, "no double pay");
 
     // early unstake blocked, then matures
-    try { await unstake(alice, U(100)); assert.fail("locked unstake should fail"); } catch { /* expected */ }
-    await sleep(3600);
+    let earlyFailed = false;
+    try { await unstake(alice, U(100)); } catch { earlyFailed = true; }
+    assert.isTrue(earlyFailed, "locked unstake must fail");
+    await sleep(11_000);
     const g0 = await bal(atas.alice.grid);
     await unstake(alice, U(100));
     assert.equal((await bal(atas.alice.grid)) - g0, 100e6, "principal back after lock");
@@ -161,7 +163,9 @@ describe("grid_staking", () => {
     assert.isTrue(pool.slashed);
 
     // post-slash: unstake forever blocked; earned rewards still claimable
-    try { await unstake(bob, U(1)); assert.fail("post-slash unstake should fail"); } catch { /* expected */ }
+    let postSlashFailed = false;
+    try { await unstake(bob, U(1)); } catch { postSlashFailed = true; }
+    assert.isTrue(postSlashFailed, "post-slash unstake must fail");
     await claim(bob); // no pending → no-op, must not throw
   });
 });
