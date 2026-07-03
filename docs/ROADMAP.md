@@ -77,8 +77,12 @@ an audited existing protocol does the job (borrow-don't-build still applies).
   on-chain split (`HFuFMd…`, member-verified recipient ATAs; bound wallets
   receive directly, unbound shares to treasury custody). 9/9 suites,
   devnet-smoked with real tUSDC, prod-armed (rev 00022).
-- **C6 · Agent mandate wallets** — owner guardrails (budget/kill-switch)
-  enforced by a contract wallet, not our server.
+- **C6 · Agent mandate wallets — ✅ SHIPPED (2026-07-03)**: the vault balance
+  IS the budget (overspend impossible by construction), per-tx caps + expiry +
+  the owner's kill/reclaim — all enforced by the chain, spends signed by the
+  AGENT's own key. 11/11 suites, devnet (`FetAKD…`), adapter-smoked with real
+  tUSDC (over-cap + post-kill REJECTED ON-CHAIN), platform-mirrored +
+  prod-armed (rev 00024). **Workstream C is COMPLETE.**
 - **C7 · Deal proofs — ✅ SHIPPED (2026-07-03)**: zero custom code — struck
   agreements anchor their canonical sha256 via the audited Solana Memo
   program (timestamped, signed, queryable forever). Devnet-verified,
