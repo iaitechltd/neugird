@@ -51,9 +51,12 @@ platform" map to bring to DFINITY.
 Order = the tiers from the 2026-07-03 review. Solana programs (Anchor) unless
 an audited existing protocol does the job (borrow-don't-build still applies).
 
-- **C1 · Milestone Vault** — THE contract: escrowed USDC vault with
-  backer-vote tranche release, expiry refund, stall kill-switch. Covers
-  GenesisX AND Jobs/CampaignX/hire escrow (same primitive, two lenses).
+- **C1 · Milestone Vault — ✅ SHIPPED (2026-07-03)**: the program (4/4 test
+  suites), devnet deploy (`DEnN1E…`), AND the platform rail — GenesisX raises
+  mirror create/back/release/expire/kill onto the real vault (env-gated,
+  fire-and-forget, prod-armed on devnet). v1 trust posture = platform-signed
+  mirror; next stages: user-signed backings (wallet adapter) + the ICP
+  canister as release authority (A3), then the Jobs-escrow lens.
 - **C2 · GRID token + vesting** — standard SPL mint + audited vesting tooling
   (TGE-ready; no custom code expected).
 - **C3 · Staking + slashing** — stake-to-list lockups, fee share, fraud slash.
