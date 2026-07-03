@@ -5,7 +5,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-milestone_vault = "6d3oYt6MTFyKnGeXTGdLg7tDAy2fYuYNVZ4uX2A2Wmp9"
+milestone_vault = "DEnN1EEMFERLNmEkXnPMDPyj93SGEHXWuNjGWesALC4N"
 
 [programs.localnet]
 milestone_vault = "DEnN1EEMFERLNmEkXnPMDPyj93SGEHXWuNjGWesALC4N"
