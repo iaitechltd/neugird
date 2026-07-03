@@ -4,7 +4,7 @@
  * POST → run an Echo build (REAL model codegen when the brain is active; stub otherwise).
  *
  * Building is permissionless — anyone can build to EARN builder reputation.
- * Listing (GridX) and funding (GenesisX) are what stay reputation-gated.
+ * Listing (GridX) and funding (Fund) are what stay reputation-gated.
  */
 
 import { NextResponse } from "next/server";

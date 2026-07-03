@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * GenesisX proposal detail — one fundable raise, in full.
+ * Fund proposal detail — one fundable raise, in full.
  * 3-panel: left = proposal summary + fund/share action, center = funding
  * progress + proof-of-build MVP + milestone roadmap, right = backers + spawned
  * Grid + trust. Reads /api/proposals/[id]; funds + drives milestones live.
@@ -11,7 +11,6 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import NeuHeader from "@/components/app/NeuHeader";
-import NeuGridDock from "@/components/app/NeuGridDock";
 import OrbPanel from "@/components/app/OrbPanel";
 import {
   Mark, Tag, Bracket, ProgressBar,
@@ -116,7 +115,7 @@ export default function ProposalDetail() {
   }
 
   const backBar = (
-    <div className="shrink-0 border-b border-neon/10 px-4 py-2 sm:px-6"><Link href="/genesis/board" className="inline-flex items-center gap-2 text-xs text-ink-dim transition hover:text-neon"><IconArrowRight className="h-3.5 w-3.5 rotate-180" />Back to GenesisX</Link></div>
+    <div className="shrink-0 border-b border-neon/10 px-4 py-2 sm:px-6"><Link href="/genesis/board" className="inline-flex items-center gap-2 text-xs text-ink-dim transition hover:text-neon"><IconArrowRight className="h-3.5 w-3.5 rotate-180" />Back to Fund</Link></div>
   );
 
   // loading / not-found — clean states
@@ -133,11 +132,10 @@ export default function ProposalDetail() {
               <IconRocket className="mx-auto h-10 w-10 text-neon/50" />
               <div className="mt-3 text-sm text-ink">Proposal not found.</div>
               <p className="mt-1 text-[11px] text-ink-dim">It may have been withdrawn, or never existed.</p>
-              <Link href="/genesis/board" className="ng-btn ng-btn-primary ng-btn--sm mt-4">Browse GenesisX</Link>
+              <Link href="/genesis/board" className="ng-btn ng-btn-primary ng-btn--sm mt-4">Browse Fund</Link>
             </div>
           )}
         </div>
-        <NeuGridDock />
       </div>
     );
   }
@@ -151,7 +149,7 @@ export default function ProposalDetail() {
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
-      <NeuHeader title="GenesisX" collapsed={!lOpen && !rOpen} onToggleCollapse={() => { const v = lOpen || rOpen; setLOpen(!v); setROpen(!v); }} />
+      <NeuHeader title="Fund" collapsed={!lOpen && !rOpen} onToggleCollapse={() => { const v = lOpen || rOpen; setLOpen(!v); setROpen(!v); }} />
       {backBar}
 
       <div className="flex flex-col gap-3 px-3 py-3 lg:min-h-0 lg:flex-1 lg:flex-row">
@@ -439,7 +437,6 @@ export default function ProposalDetail() {
       </div>
 
       {toast && <div className="fixed bottom-24 left-1/2 z-[80] -translate-x-1/2 rounded border border-neon/40 bg-black/90 px-4 py-2.5 text-sm text-neon" style={{ boxShadow: "0 0 20px rgba(0,255,0,0.3)" }}>{toast}</div>}
-      <NeuGridDock />
     </div>
   );
 }

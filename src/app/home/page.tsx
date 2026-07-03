@@ -2,16 +2,17 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import NeuGridDock from "@/components/app/NeuGridDock";
 import NeuHeader from "@/components/app/NeuHeader";
 import {
-  Panel, Mark, Tag, Bracket, ProgressBar,
+  Panel, Mark, Tag, Bracket,
   IconConnect, IconChevronDown, IconArrowRight,
   IconGrid, IconUser, IconBot, IconBolt, IconActivity, IconShield,
-  IconRocket, IconTarget, IconCoins, IconLayers, IconCheck,
+  IconRocket, IconTarget, IconCoins, IconLayers,
+  kpiColor,
 } from "@/components/app/ui";
 import { Decrypt, CountUp } from "@/components/app/typefx";
-import { MatrixAvatar } from "@/components/app/MatrixAvatar";
+import { TProc, TailLog, PanelChart, type LogLine } from "@/components/app/terminal";
+import { Area, Radar, Bars, Ring } from "@/components/app/charts";
 import OrbPanel from "@/components/app/OrbPanel";
 import type { Agent, Build, Grid, Job } from "@/lib/types";
 
@@ -32,7 +33,7 @@ export default function HomePage() {
   const closed = (lOpen ? 0 : 1) + (rOpen ? 0 : 1);
 
   /* real state */
-  const [me, setMe] = useState<{ username?: string; pulse?: number; reputation?: { total?: number; by_dimension?: Record<string, number> } | null; joined_grids?: string[] } | null>(null);
+  const [me, setMe] = useState<{ username?: string; pulse?: number; reputation?: { total?: number; by_dimension?: Record<string, number> } | null; joined_grids?: string[]; rep_series?: number[]; income?: { total?: number; series?: number[] } } | null>(null);
   const [builds, setBuilds] = useState<Build[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [openJobs, setOpenJobs] = useState<Job[]>([]);
@@ -56,6 +57,24 @@ export default function HomePage() {
   const fundedCount = builds.filter((b) => b.proposal_id).length;
   const agentEarn = agents.reduce((s, a) => s + (a.earnings ?? 0), 0);
   const repMax = Math.max(1, ...Object.values(repDims));
+  // reputation radar — canonical dimensions, normalized to the strongest
+  const RADAR_DIMS = ["builder", "creator", "backer", "reviewer", "agent"] as const;
+  const radarVals = RADAR_DIMS.map((d) => Math.round(((repDims[d] ?? 0) / repMax) * 100));
+  // activity bars — positive rep deltas across the recent curve (contribution cadence)
+  const repSeries = me?.rep_series ?? [];
+  const activity = repSeries.length > 1
+    ? repSeries.slice(1).map((v, i) => Math.max(0, v - repSeries[i])).slice(-14)
+    : [0];
+  const trustedPct = economy?.agents.total ? Math.round((economy.agents.trusted / economy.agents.total) * 100) : 0;
+  // recent builds → a tail -f style log (oldest first, so newest lands at the bottom)
+  const buildLog: LogLine[] = [...builds]
+    .sort((a, b) => Date.parse(a.created_at ?? "") - Date.parse(b.created_at ?? ""))
+    .slice(-6)
+    .map((b) => ({
+      at: (b.created_at ?? "").slice(11, 16) || "--:--",
+      text: `${b.status === "built" ? "built" : b.status} · ${b.title}`,
+      delta: b.status === "built" ? 40 : undefined,
+    }));
   const kpis: { Icon: (p: { className?: string }) => React.JSX.Element; title: string; v: number; sub: string }[] = [
     { Icon: IconBolt, title: "Reputation", v: rep, sub: "Pulse · soulbound" },
     { Icon: IconRocket, title: "Builds", v: builds.length, sub: "proof of build" },
@@ -90,6 +109,14 @@ export default function HomePage() {
               </div>
             </div>
 
+            {/* two live charts — the terminal readout (founder: charts on every rail) */}
+            <PanelChart title="Reputation · by dimension" read={`${rep} pulse`}>
+              <Radar axes={[...RADAR_DIMS]} values={radarVals} size={132} />
+            </PanelChart>
+            <PanelChart title="Activity · contribution cadence" read={`${activity.reduce((a, b) => a + b, 0)} pts`}>
+              <Bars data={activity.length ? activity : [0]} h={44} />
+            </PanelChart>
+
             <div className="mt-3 grid grid-cols-2 gap-2">
               <Link href="/echo" className="ng-btn ng-btn-primary ng-btn--sm ng-btn--block"><IconBolt className="h-3.5 w-3.5" /> Build</Link>
               <Link href="/agents" className="ng-btn ng-btn--sm ng-btn--block"><IconBot className="h-3.5 w-3.5" /> Agents</Link>
@@ -108,17 +135,19 @@ export default function HomePage() {
               </div>
             ) : <p className="text-[11px] text-ink-dim">No grids yet — <Link href="/grids/explore" className="text-neon">explore</Link> or start one.</p>}
 
-            <Section icon={<IconBot className="h-3.5 w-3.5" />} action={<Link href="/agents" className="text-[11px] text-ink-dim transition hover:text-neon">Manage</Link>}>Your Agents</Section>
+            <Section icon={<IconBot className="h-3.5 w-3.5" />} action={<Link href="/agents" className="text-[11px] text-ink-dim transition hover:text-neon">Manage</Link>}>Your Agents · ps aux</Section>
             {agents.length ? (
-              <div className="space-y-2">
-                {agents.slice(0, 4).map((a) => (
-                  <div key={a.agent_id} className="ng-card p-3">
-                    <div className="flex items-center gap-2.5">
-                      <MatrixAvatar seed={a.agent_id} size={32} />
-                      <div className="min-w-0 flex-1"><div className="truncate text-sm text-ink">{a.name}</div><div className="flex items-center gap-1.5 text-[10px] text-ink-dim"><Tag>{a.origin ?? "native"}</Tag><Mark plain accent={a.trust_tier === "trusted" ? "neon" : "amber"} className="!text-[9px]">{a.trust_tier ?? "trusted"}</Mark></div></div>
-                      <Mark plain className="!text-[11px]">{(a.earnings ?? 0).toLocaleString()}</Mark>
-                    </div>
-                  </div>
+              <div className="ng-card px-2.5 py-1.5">
+                {agents.slice(0, 6).map((a) => (
+                  <Link key={a.agent_id} href={`/agents/${a.agent_id}`} className="block">
+                    <TProc
+                      live={a.status === "active"}
+                      name={a.name}
+                      tag={a.trust_tier ?? "native"}
+                      tagColor={a.trust_tier === "trusted" ? "var(--ng-neon)" : "var(--ng-amber)"}
+                      meta={(a.earnings ?? 0).toLocaleString()}
+                    />
+                  </Link>
                 ))}
               </div>
             ) : <p className="text-[11px] text-ink-dim">No agents yet — <Link href="/agents" className="text-neon">create one</Link>.</p>}
@@ -129,15 +158,15 @@ export default function HomePage() {
         <main className="@container order-1 space-y-3 lg:order-2 lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
           <Bracket className="ng-panel p-5">
             <div className="ng-title text-2xl font-bold text-neon text-glow"><Decrypt text={`Welcome back, ${me?.username ?? "builder"}`} /></div>
-            <p className="text-[12px] text-ink-dim">Your command center — build with Echo, deploy agents, raise on GenesisX. Everything here is live.</p>
+            <p className="text-[12px] text-ink-dim">Your command center — build with Echo, deploy agents, raise on Fund. Everything here is live.</p>
           </Bracket>
 
           {/* live KPIs */}
           <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
-            {kpis.slice(0, 3 + closed).map((s) => (
+            {kpis.slice(0, 3 + closed).map((s, i) => (
               <div key={s.title} className="ng-card p-3">
-                <div className="ng-tag ng-tag--neon mb-2"><s.Icon className="h-3 w-3" />{s.title}</div>
-                <div className="ng-stat__v !text-2xl"><CountUp key={s.v} value={s.v} /></div>
+                <div className="ng-tag mb-2" style={{ color: kpiColor(i) }}><s.Icon className="h-3 w-3" />{s.title}</div>
+                <div className="ng-stat__v !text-2xl" style={{ color: kpiColor(i) }}><CountUp key={s.v} value={s.v} /></div>
                 <div className="mt-1 text-[11px] text-ink-dim">{s.sub}</div>
               </div>
             ))}
@@ -149,7 +178,7 @@ export default function HomePage() {
             <div className="ng-card p-3.5">
               <div className="ng-label mb-2 flex items-center gap-2 !text-ink-dim"><span className="text-neon"><IconRocket className="h-3.5 w-3.5" /></span>Echo Builds</div>
               {builds[0] ? <><div className="truncate text-[13px] text-ink">{builds[0].title}</div><div className="truncate text-[10px] text-ink-dim">{builds[0].stack.join(" · ")} · {builds[0].artifact.proof_of_build}</div></> : <div className="text-[11px] text-ink-dim">No builds yet — ship your first MVP with Echo.</div>}
-              <div className="mt-2 text-[11px] text-ink-dim">{builds.length} build{builds.length === 1 ? "" : "s"} · {listedCount} on GridX · {fundedCount} on GenesisX</div>
+              <div className="mt-2 text-[11px] text-ink-dim">{builds.length} build{builds.length === 1 ? "" : "s"} · {listedCount} on GridX · {fundedCount} on Fund</div>
               <div className="mt-2 flex flex-wrap gap-2"><Link href="/echo" className="ng-btn ng-btn-primary ng-btn--sm"><IconBolt className="h-3.5 w-3.5" /> Build with Echo</Link><Link href="/me" className="ng-btn ng-btn-ghost ng-btn--sm">Track record</Link></div>
             </div>
             <div className="ng-card p-3.5">
@@ -267,27 +296,20 @@ export default function HomePage() {
             <Section icon={<IconBolt className="h-3.5 w-3.5" />}>Reputation</Section>
             <div className="ng-card p-3.5">
               <div className="flex items-baseline justify-between"><span className="ng-stat__v !text-2xl">{rep}</span><span className="text-[11px] text-ink-dim">total Pulse</span></div>
-              {Object.keys(repDims).length ? (
-                <div className="mt-3 space-y-2">
-                  {Object.entries(repDims).map(([k, v]) => (
-                    <div key={k}>
-                      <div className="mb-0.5 flex items-center justify-between text-[11px]"><span className="capitalize text-ink-dim">{k}</span><Mark plain className="!text-[11px]">{Math.round(v as number)}</Mark></div>
-                      <ProgressBar percent={Math.round(((v as number) / repMax) * 100)} />
-                    </div>
-                  ))}
-                </div>
-              ) : <p className="mt-2 text-[11px] text-ink-dim">Earn reputation by shipping verified work.</p>}
             </div>
 
-            <Section icon={<IconRocket className="h-3.5 w-3.5" />} action={<Link href="/me" className="text-[11px] text-ink-dim transition hover:text-neon">All</Link>}>Recent Builds</Section>
+            {/* two live charts on the Signal rail */}
+            <PanelChart title="Agent economy · trust ring" read={`${economy?.agents.trusted ?? 0}/${economy?.agents.total ?? 0} trusted`}>
+              <div className="flex items-center justify-center py-1"><Ring percent={trustedPct} label="trusted" value={`${trustedPct}%`} size={86} stroke={6} /></div>
+            </PanelChart>
+            <PanelChart title="Income · lifetime" read={`$${(me?.income?.total ?? 0).toLocaleString()}`}>
+              <Area data={me?.income?.series && me.income.series.length > 1 ? me.income.series : [0, me?.income?.total ?? 0]} gid="home-income" color="var(--ng-cyan)" h={44} />
+            </PanelChart>
+
+            <Section icon={<IconRocket className="h-3.5 w-3.5" />} action={<Link href="/me" className="text-[11px] text-ink-dim transition hover:text-neon">All</Link>}>Recent Builds · tail -f</Section>
             {builds.length ? (
-              <div className="space-y-2">
-                {builds.slice(0, 4).map((b) => (
-                  <div key={b.build_id} className="ng-card p-3">
-                    <div className="flex items-center justify-between gap-2"><span className="truncate text-sm text-ink">{b.title}</span><Mark plain accent={b.status === "built" ? "amber" : "neon"} className="!text-[9px]">{b.status}</Mark></div>
-                    <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-ink-dim"><IconCheck className="h-3 w-3 text-neon" />{b.artifact.proof_of_build}</div>
-                  </div>
-                ))}
+              <div className="ng-card p-3">
+                <TailLog lines={buildLog} />
               </div>
             ) : <p className="text-[11px] text-ink-dim">No builds yet.</p>}
 
@@ -306,7 +328,7 @@ export default function HomePage() {
             <Section icon={<IconCoins className="h-3.5 w-3.5" />}>Pipeline</Section>
             <div className="ng-card p-3.5">
               <div className="divide-y divide-line text-[12px]">
-                {([["On GridX", listedCount, "/gridx", IconLayers], ["On GenesisX", fundedCount, "/genesis/board", IconCoins], ["Agents earning", agents.filter((a) => (a.earnings ?? 0) > 0).length, "/agents", IconBot]] as [string, number, string, (p: { className?: string }) => React.JSX.Element][]).map(([k, v, href, Ico]) => (
+                {([["On GridX", listedCount, "/gridx", IconLayers], ["On Fund", fundedCount, "/genesis/board", IconCoins], ["Agents earning", agents.filter((a) => (a.earnings ?? 0) > 0).length, "/agents", IconBot]] as [string, number, string, (p: { className?: string }) => React.JSX.Element][]).map(([k, v, href, Ico]) => (
                   <Link key={k} href={href} className="ng-row flex items-center !py-2 transition hover:text-neon"><span className="ng-row__k flex items-center gap-2 text-ink"><Ico className="h-3.5 w-3.5 text-neon/70" />{k}</span><span className="ng-row__v"><Mark plain>{v}</Mark></span></Link>
                 ))}
               </div>
@@ -314,8 +336,6 @@ export default function HomePage() {
           </Panel>
         </OrbPanel>
       </div>
-
-      <NeuGridDock />
     </div>
   );
 }

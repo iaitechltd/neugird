@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TalenX — the talent marketplace (rebuilt 2026-07-03 per founder direction):
+ * Talent — the talent marketplace (rebuilt 2026-07-03 per founder direction):
  * bigger info-dense portrait cards · self-serve skill listing · verified badges
  * earned by reputation · trending job requests · paid-to-talents KPI · a personal
  * GROWTH rail (what to improve + revenue/engagement trends). All from /api/talent.
@@ -10,11 +10,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import NeuHeader from "@/components/app/NeuHeader";
-import NeuGridDock from "@/components/app/NeuGridDock";
 import OrbPanel from "@/components/app/OrbPanel";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
-import { Panel, Tag, Mark, DataRow, IconActivity, IconBriefcase, IconUser, IconSparkle } from "@/components/app/ui";
-import { Area, Radar, Spark } from "@/components/app/charts";
+import { Panel, Tag, Mark, DataRow, IconActivity, IconBriefcase, IconUser, IconSparkle , kpiColor } from "@/components/app/ui";
+import { Area, Radar, Spark, Bars, Ring } from "@/components/app/charts";
+import { PanelChart } from "@/components/app/terminal";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 
 type Talent = {
@@ -88,6 +88,30 @@ export default function TalentDirectory() {
   const verifiedCount = list.filter((t) => t.verified).length;
   const avgRep = list.length ? Math.round(list.reduce((s, t) => s + t.reputation, 0) / list.length) : 0;
 
+  // ── side-rail chart data (derived, SSR-safe) ──────────────────────────────
+  const rankedByRep = useMemo(
+    () => [...list].sort((a, b) => (b.reputation ?? 0) - (a.reputation ?? 0)),
+    [list],
+  );
+  // LEFT-1 · reputation of the top talent
+  const repBars = rankedByRep.slice(0, 10).map((t) => t.reputation ?? 0);
+  const topRep = repBars[0] ?? 0;
+  // LEFT-2 · verified / badged share (verified flag OR reputation ≥ 100)
+  const badgedCount = list.filter((t) => t.verified || (t.reputation ?? 0) >= 100).length;
+  const badgedPct = list.length ? Math.round((badgedCount / list.length) * 100) : 0;
+  // RIGHT-1 · skill demand — top-5 most-listed skills (`skills` = [name, count] desc)
+  const topSkills = skills.slice(0, 5);
+  const maxSkill = Math.max(1, ...topSkills.map(([, n]) => n));
+  const skillAxes = topSkills.map(([s]) => s);
+  const skillVals = topSkills.map(([, n]) => Math.round((n / maxSkill) * 100));
+  const skillCounts = topSkills.map(([, n]) => n);
+  const radarOk = skillAxes.length >= 3 && skillVals.some((v) => v > 0);
+  // RIGHT-2 · cumulative reputation curve across ranked talent (running sum)
+  const repCumulative = rankedByRep.reduce<number[]>((acc, t) => {
+    acc.push((acc[acc.length - 1] ?? 0) + (t.reputation ?? 0));
+    return acc;
+  }, []);
+
   const kpis: [string, number, string?][] = [
     ["Talents", list.length],
     ["Paid to Talents", data?.paid_total ?? 0, "$"],
@@ -119,7 +143,7 @@ export default function TalentDirectory() {
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
-      <NeuHeader title="TalenX" collapsed={!lOpen && !rOpen} onToggleCollapse={() => { const v = lOpen || rOpen; setLOpen(!v); setROpen(!v); }} />
+      <NeuHeader title="Talent" collapsed={!lOpen && !rOpen} onToggleCollapse={() => { const v = lOpen || rOpen; setLOpen(!v); setROpen(!v); }} />
 
       <div className="flex flex-col gap-3 px-3 py-3 lg:min-h-0 lg:flex-1 lg:flex-row">
         {/* LEFT — market demand + filters */}
@@ -130,6 +154,20 @@ export default function TalentDirectory() {
               <DataRow k="Verified" v={verifiedCount} accent="cyan" />
               <DataRow k="Open roles" v={data?.open_roles ?? 0} />
             </div>
+
+            {/* reputation of the top-ranked talent */}
+            <PanelChart title="Reputation · top talent" read={topRep ? `hi ${topRep}` : "—"}>
+              {repBars.length > 0
+                ? <Bars data={repBars} h={44} />
+                : <p className="py-3 text-center text-[10px] text-ink-faint">No reputation data yet.</p>}
+            </PanelChart>
+
+            {/* share of talent carrying a verified badge / rep ≥ 100 */}
+            <PanelChart title="Trust · verified share" read={list.length ? `${badgedCount}/${list.length}` : "—"}>
+              {list.length > 0
+                ? <div className="flex justify-center py-1"><Ring percent={badgedPct} label="verified" size={80} stroke={6} color="var(--ng-cyan)" /></div>
+                : <p className="py-3 text-center text-[10px] text-ink-faint">No talent listed yet.</p>}
+            </PanelChart>
 
             <div className="mb-2 mt-5 flex items-center justify-between">
               <div className="ng-label !text-ink-dim">Trending requests</div>
@@ -184,9 +222,9 @@ export default function TalentDirectory() {
 
           {/* page KPIs — 3 by default, +1 per collapsed panel */}
           <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
-            {kpis.slice(0, 3 + closed).map(([k, v, unit]) => (
+            {kpis.slice(0, 3 + closed).map(([k, v, unit], i) => (
               <div key={k} className="ng-card p-4 text-center">
-                <div className="ng-stat__v">{unit === "$" && <span className="text-cyan">$</span>}<CountUp key={v} value={v} /></div>
+                <div className="ng-stat__v" style={{ color: kpiColor(i) }}>{unit === "$" && <span className="opacity-60">$</span>}<CountUp key={v} value={v} /></div>
                 <div className="ng-stat__k">{k}</div>
               </div>
             ))}
@@ -304,7 +342,25 @@ export default function TalentDirectory() {
               <p className="text-[11px] text-ink-faint">Loading…</p>
             ) : (
               <>
-                <div className="ng-label mb-1 !text-ink-dim">What to improve</div>
+                {/* skill demand — the top-5 most-listed skills across all talent */}
+                <PanelChart title="Skills · demand spread" read={skillAxes.length ? `${skillAxes.length} skills` : "—"}>
+                  {radarOk ? (
+                    <div className="flex justify-center py-1"><Radar axes={skillAxes} values={skillVals} size={180} /></div>
+                  ) : skillCounts.length > 0 ? (
+                    <Bars data={skillCounts} h={44} />
+                  ) : (
+                    <p className="py-3 text-center text-[10px] text-ink-faint">No skills listed yet.</p>
+                  )}
+                </PanelChart>
+
+                {/* cumulative reputation across ranked talent (running sum) */}
+                <PanelChart title="Reputation · cumulative" read={repCumulative.length ? `Σ ${repCumulative[repCumulative.length - 1]}` : "—"}>
+                  {repCumulative.length > 1
+                    ? <Area data={repCumulative} gid="tx-rep" color="var(--ng-cyan)" h={48} />
+                    : <p className="py-3 text-center text-[10px] text-ink-faint">Not enough talent to chart.</p>}
+                </PanelChart>
+
+                <div className="ng-label mb-1 mt-5 !text-ink-dim">What to improve</div>
                 <div className="flex justify-center">
                   <Radar axes={me.dims.map((d) => d.dim)} values={me.dims.map((d) => d.score / dimMax)} size={168} />
                 </div>
@@ -349,8 +405,6 @@ export default function TalentDirectory() {
           </Panel>
         </OrbPanel>
       </div>
-
-      <NeuGridDock />
     </div>
   );
 }

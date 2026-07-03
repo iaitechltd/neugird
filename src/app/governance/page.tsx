@@ -9,10 +9,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import NeuHeader from "@/components/app/NeuHeader";
-import NeuGridDock from "@/components/app/NeuGridDock";
 import OrbPanel from "@/components/app/OrbPanel";
-import { Panel, Mark, DataRow, ProgressBar, IconShield, IconActivity, IconLock, IconWallet, IconBolt, IconCheck, IconCoins } from "@/components/app/ui";
+import { Panel, Mark, DataRow, ProgressBar, IconShield, IconActivity, IconLock, IconWallet, IconBolt, IconCheck, IconCoins , kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
+import { PanelChart } from "@/components/app/terminal";
+import { Bars, Gauge, StackBars, Ring } from "@/components/app/charts";
 import type { GovProposal, GovProposalKind } from "@/lib/types";
 
 type GovView = GovProposal & { total_grid: number; for_pct: number; against_pct: number; quorum_pct: number; voters: number; my_vote: { support: boolean; grid: number } | null };
@@ -190,6 +191,25 @@ export default function GovernancePage() {
     rejected: list.filter((p) => p.status === "rejected").length,
     locked: list.reduce((s, p) => s + (p.status === "open" ? p.total_grid : 0), 0),
   }), [list]);
+  // Chart-derived values (SSR-safe, no randomness). Real fields: for_grid /
+  // against_grid / total_grid / quorum_grid / status.
+  const openProposals = useMemo(() => list.filter((p) => p.status === "open"), [list]);
+  const turnout = openProposals.map((p) => (p.for_grid ?? 0) + (p.against_grid ?? 0));
+  // "closest to passing" = highest quorum progress among open proposals.
+  const leading = useMemo(
+    () => openProposals.reduce<GovView | null>((best, p) => {
+      const prog = ((p.for_grid ?? 0) + (p.against_grid ?? 0)) / Math.max(1, p.quorum_grid);
+      const bestProg = best ? ((best.for_grid ?? 0) + (best.against_grid ?? 0)) / Math.max(1, best.quorum_grid) : -1;
+      return prog > bestProg ? p : best;
+    }, null),
+    [openProposals],
+  );
+  const leadingPct = leading
+    ? Math.round(Math.min(100, (((leading.for_grid ?? 0) + (leading.against_grid ?? 0)) / Math.max(1, leading.quorum_grid)) * 100))
+    : 0;
+  const forAgainst = list.slice(0, 8).map((p) => ({ values: [p.for_grid ?? 0, p.against_grid ?? 0] }));
+  const passedShare = list.length ? Math.round((stats.passed / list.length) * 100) : 0;
+
   const kpis: [string, number, string?][] = [
     ["Open Votes", stats.open],
     ["GRID Locked", Math.round(stats.locked)],
@@ -211,6 +231,27 @@ export default function GovernancePage() {
               <DataRow k="GRID Locked (open)" v={grid(stats.locked)} />
               <DataRow k="Your GRID" v={me ? grid(me.grid) : "—"} accent="cyan" />
             </div>
+
+            {/* Turnout — total GRID voted per open proposal */}
+            <PanelChart title="Turnout · GRID per proposal" read={`${openProposals.length} open`}>
+              {turnout.length > 0 ? (
+                <Bars data={turnout} h={46} />
+              ) : (
+                <p className="py-2 text-center text-[10px] text-ink-faint">No open proposals</p>
+              )}
+            </PanelChart>
+
+            {/* Quorum progress of the proposal closest to passing */}
+            <PanelChart title="Quorum · leading proposal" read={leading ? `${leadingPct}%` : "—"}>
+              {leading ? (
+                <div className="flex justify-center">
+                  <Gauge percent={leadingPct} color="#48f5ff" w={116} />
+                </div>
+              ) : (
+                <p className="py-2 text-center text-[10px] text-ink-faint">No open proposals</p>
+              )}
+            </PanelChart>
+
             <div className="ng-label mb-2 mt-4 !text-ink-dim">Type</div>
             <div className="space-y-1">
               {KINDS.map((k) => (
@@ -251,9 +292,9 @@ export default function GovernancePage() {
 
           {/* page KPIs — 3 by default, 4/5 as the side panels collapse */}
           <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
-            {kpis.slice(0, 3 + closed).map(([k, v, unit]) => (
+            {kpis.slice(0, 3 + closed).map(([k, v, unit], i) => (
               <div key={k} className="ng-card p-4 text-center">
-                <div className="ng-stat__v">{unit === "$" && <span className="text-cyan">$</span>}<CountUp key={v} value={v} /></div>
+                <div className="ng-stat__v" style={{ color: kpiColor(i) }}>{unit === "$" && <span className="opacity-60">$</span>}<CountUp key={v} value={v} /></div>
                 <div className="ng-stat__k">{k}</div>
               </div>
             ))}
@@ -306,11 +347,32 @@ export default function GovernancePage() {
         <OrbPanel side="right" label="GRID Utility" open={rOpen} onToggle={setROpen}>
           <Panel scroll title="GRID UTILITY" icon={<IconActivity className="h-4 w-4" />} bodyClass="p-3.5">
             <p className="text-[11px] leading-relaxed text-ink-dim">GRID is earned, not sold. Its jobs make it useful — not a security:</p>
+
+            {/* FOR vs AGAINST GRID, per proposal (green = for, cyan = against) */}
+            <PanelChart title="For / against · by proposal" read={`${forAgainst.length} shown`}>
+              {forAgainst.length > 0 ? (
+                <StackBars data={forAgainst} h={48} />
+              ) : (
+                <p className="py-2 text-center text-[10px] text-ink-faint">No proposals yet</p>
+              )}
+            </PanelChart>
+
+            {/* Share of resolved+open proposals that passed */}
+            <PanelChart title="Outcomes · passed share" read={`${stats.passed}/${list.length}`}>
+              {list.length > 0 ? (
+                <div className="flex justify-center">
+                  <Ring percent={passedShare} label="passed" size={86} />
+                </div>
+              ) : (
+                <p className="py-2 text-center text-[10px] text-ink-faint">No proposals yet</p>
+              )}
+            </PanelChart>
+
             <ul className="mt-3 space-y-2.5 text-[11px] text-ink-dim">
-              <li className="flex gap-2"><IconLock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neon" /><span><b className="text-ink">Stake-to-list</b> — lock GRID to graduate a market on TradeX.</span></li>
+              <li className="flex gap-2"><IconLock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neon" /><span><b className="text-ink">Stake-to-list</b> — lock GRID to graduate a market on Trade.</span></li>
               <li className="flex gap-2"><IconWallet className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan" /><span><b className="text-ink">Echo compute</b> — GRID meters every AI build.</span></li>
               <li className="flex gap-2"><IconShield className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber" /><span><b className="text-ink">Govern</b> — lock GRID to vote on the protocol itself.</span></li>
-              <li className="flex gap-2"><IconCoins className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neon" /><span><b className="text-ink">Fee discounts</b> — pay TradeX fees in GRID at a discount.</span></li>
+              <li className="flex gap-2"><IconCoins className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neon" /><span><b className="text-ink">Fee discounts</b> — pay Trade fees in GRID at a discount.</span></li>
             </ul>
             <div className="ng-label mb-2 mt-5 !text-ink-dim">Lock-to-vote</div>
             <ol className="space-y-1.5 text-[10px] leading-relaxed text-ink-faint">
@@ -322,7 +384,6 @@ export default function GovernancePage() {
           </Panel>
         </OrbPanel>
       </div>
-      <NeuGridDock />
     </div>
   );
 }

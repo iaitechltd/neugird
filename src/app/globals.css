@@ -18,19 +18,25 @@
   --ng-cyan: #48f5ff;
   --ng-amber: #ffb020;
   --ng-danger: #ff4d5e;
+  --ng-violet: #b388ff;
+  --ng-magenta: #ff5ecf;
+  /* TERMINAL ink (founder vision locked 2026-07-03): phosphor green on black.
+     Pure #00ff00 is the voice; ink/dim/faint are its quieter registers. */
   --ng-ink: #41ff41;
-  --ng-ink-dim: #2fc12f;
-  --ng-ink-faint: #1d801d;
+  --ng-ink-dim: #23b823;
+  --ng-ink-faint: #146e14;
 
   /* Lines, glows, overlays */
-  --ng-line: rgba(0, 255, 0, 0.2);
-  --ng-line-strong: rgba(0, 255, 0, 0.5);
+  --ng-line: rgba(0, 255, 0, 0.14);
+  --ng-line-strong: rgba(0, 255, 0, 0.4);
   --ng-grid: rgba(0, 255, 0, 0.07);
-  --ng-glow: 0 0 0 1px rgba(0, 255, 0, 0.18), 0 0 24px -6px rgba(0, 255, 0, 0.45);
-  --ng-glow-cyan: 0 0 24px -6px rgba(72, 245, 255, 0.4);
+  /* terminal = flat: glows exist only as no-ops for legacy references */
+  --ng-glow: none;
+  --ng-glow-cyan: none;
 
-  --ng-radius: 6px;
-  --ng-radius-lg: 11px;
+  /* terminal = squared. Everything. */
+  --ng-radius: 0px;
+  --ng-radius-lg: 0px;
 }
 
 @theme inline {
@@ -43,6 +49,8 @@
   --color-cyan: var(--ng-cyan);
   --color-amber: var(--ng-amber);
   --color-danger: var(--ng-danger);
+  --color-violet: var(--ng-violet);
+  --color-magenta: var(--ng-magenta);
   --color-ink: var(--ng-ink);
   --color-ink-dim: var(--ng-ink-dim);
   --color-ink-faint: var(--ng-ink-faint);
@@ -91,13 +99,10 @@ html {
 }
 
 body {
+  /* the room is BLACK — no gradients, no grid floor; a whisper of CRT scanline */
   background-color: var(--ng-bg);
-  background-image:
-    radial-gradient(1200px 600px at 80% -10%, rgba(0, 255, 0, 0.09), transparent 60%),
-    radial-gradient(900px 500px at -10% 110%, rgba(72, 245, 255, 0.05), transparent 55%),
-    linear-gradient(var(--ng-grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--ng-grid) 1px, transparent 1px);
-  background-size: 100% 100%, 100% 100%, 40px 40px, 40px 40px;
+  background-image: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0) 0 2px, rgba(0, 255, 0, 0.018) 2px 3px);
+  background-attachment: fixed;
   color: var(--ng-ink);
   font-family: var(--font-geist-mono), ui-monospace, monospace;
   -webkit-font-smoothing: antialiased;
@@ -108,48 +113,53 @@ body {
   color: #eafff5;
 }
 
-/* Scrollbar — thin, neon-tinted */
-* { scrollbar-width: thin; scrollbar-color: rgba(0, 255, 0, 0.35) transparent; }
-::-webkit-scrollbar { width: 6px; height: 6px; }
+/* Scrollbar — a barely-there hairline (thinner per founder, 2026-07-03) */
+* { scrollbar-width: thin; scrollbar-color: rgba(0, 255, 0, 0.16) transparent; }
+::-webkit-scrollbar { width: 3px; height: 3px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(0, 255, 0, 0.3); border-radius: 8px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(0, 255, 0, 0.6); }
+::-webkit-scrollbar-thumb { background: rgba(0, 255, 0, 0.16); border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0, 255, 0, 0.4); }
 
 /* ---------- Components ---------- */
 @layer components {
   /* Panel (side rails) — flat, thin stroke, subtle fill so the section reads. */
   .ng-panel {
-    background: rgba(5, 13, 9, 0.45);
-    border: 1px solid rgba(0, 255, 0, 0.14);
-    border-radius: 6px;
+    background: #000;
+    border: 1px solid rgba(0, 255, 0, 0.16);
+    border-radius: 0;
   }
 
   /* Card — flat, thin stroke + subtle fill. On hover the STROKE brightens
      (no glow / no shadow), so sections stay crisp and readable. */
+  /* Inner content group — a barely-there hairline + faint fill lift off pure
+     black, so nested content reads as a unit WITHOUT a hard box (de-boxed
+     2026-07-03: the pane's [ TITLE ] frame carries the structure, not this). */
   .ng-card {
     position: relative;
-    background: rgba(7, 17, 11, 0.5);
-    border: 1px solid rgba(0, 255, 0, 0.16);
-    border-radius: 6px;
+    background: rgba(0, 255, 0, 0.018);
+    border: 1px solid rgba(0, 255, 0, 0.07);
+    border-radius: 0;
     transition: border-color 0.18s ease;
   }
-  .ng-card:hover { border-color: rgba(0, 255, 0, 0.6); }
+  .ng-card:hover { border-color: rgba(0, 255, 0, 0.34); }
   /* Only the card directly under the cursor lights up — a parent card whose
      child card is being hovered stays at its resting stroke. */
-  .ng-card:has(.ng-card:hover) { border-color: rgba(0, 255, 0, 0.16); }
+  .ng-card:has(.ng-card:hover) { border-color: rgba(0, 255, 0, 0.07); }
 
   /* Section/module label — display font, gives sections a clean designed header */
   .ng-label {
-    font-family: var(--font-grotesk), ui-sans-serif, sans-serif;
+    font-family: var(--font-mono), ui-monospace, monospace;
     text-transform: uppercase;
-    letter-spacing: 0.16em;
+    letter-spacing: 0.1em;
     font-size: 0.7rem;
     font-weight: 600;
-    color: var(--ng-ink-dim);
+    color: var(--ng-neon);
   }
+  .ng-label::before { content: "[ "; color: var(--ng-ink-dim); }
+  .ng-label::after { content: " ]"; color: var(--ng-ink-dim); }
 
   /* Title helper — Space Grotesk for hero/page titles + entity headlines */
-  .ng-title { font-family: var(--font-grotesk), ui-sans-serif, sans-serif; letter-spacing: 0.005em; }
+  .ng-title { font-family: var(--font-mono), ui-monospace, monospace; letter-spacing: 0.01em; }
   /* Quiet subtitle that sits under a title */
   .ng-subtitle { font-family: var(--font-mono), ui-monospace, monospace; font-size: 0.8125rem; letter-spacing: 0.02em; color: var(--ng-ink-faint); }
 
@@ -163,14 +173,13 @@ body {
     display: inline-block;
     width: 7px;
     height: 7px;
-    border-radius: 999px;
+    border-radius: 0;
     background: var(--ng-neon);
-    box-shadow: 0 0 8px var(--ng-neon);
   }
-  .ng-led--amber { background: var(--ng-amber); box-shadow: 0 0 8px var(--ng-amber); }
-  .ng-led--cyan { background: var(--ng-cyan); box-shadow: 0 0 8px var(--ng-cyan); }
-  .ng-led--danger { background: var(--ng-danger); box-shadow: 0 0 8px var(--ng-danger); }
-  .ng-led--idle { background: var(--ng-ink-faint); box-shadow: none; }
+  .ng-led--amber { background: var(--ng-amber); }
+  .ng-led--cyan { background: var(--ng-cyan); }
+  .ng-led--danger { background: var(--ng-danger); }
+  .ng-led--idle { background: var(--ng-ink-faint); }
 
   /* Chips / badges */
   .ng-chip {
@@ -183,7 +192,7 @@ body {
     text-transform: uppercase;
     padding: 0.2rem 0.55rem;
     border: 1px solid var(--ng-line);
-    border-radius: 999px;
+    border-radius: 0;
     color: var(--ng-ink-dim);
     background: rgba(0, 255, 136, 0.04);
   }
@@ -206,7 +215,7 @@ body {
     font-size: 0.75rem;
     letter-spacing: 0.04em;
     border: 1px solid var(--btn-line, rgba(0, 255, 0, 0.3));
-    border-radius: 5px;
+    border-radius: 0;
     background: transparent;
     color: var(--btn-ink, var(--ng-neon));
     cursor: pointer;
@@ -216,7 +225,7 @@ body {
   }
   .ng-btn svg { width: 1em; height: 1em; }
   /* hover = fill with the button's color + black text (icons inherit currentColor) */
-  .ng-btn:hover { background: var(--btn-ink, var(--ng-neon)); border-color: var(--btn-ink, var(--ng-neon)); color: #021109; }
+  .ng-btn:hover { background: var(--btn-ink, var(--ng-neon)); border-color: var(--btn-ink, var(--ng-neon)); color: #000; }
   .ng-btn-cyan { --btn-ink: var(--ng-cyan); --btn-line: rgba(72, 245, 255, 0.32); }
   .ng-btn-danger { --btn-ink: var(--ng-danger); --btn-line: rgba(255, 77, 94, 0.34); }
   .ng-btn-primary { border-color: var(--btn-ink, var(--ng-neon)); font-weight: 700; }
@@ -282,6 +291,8 @@ body {
   .ng-mark--cyan { color: var(--ng-cyan); background: linear-gradient(transparent 62%, rgba(72,245,255,0.14) 0); }
   .ng-mark--amber { color: var(--ng-amber); background: linear-gradient(transparent 62%, rgba(255,176,32,0.14) 0); }
   .ng-mark--danger { color: var(--ng-danger); background: linear-gradient(transparent 62%, rgba(255,77,94,0.14) 0); }
+  .ng-mark--violet { color: var(--ng-violet); background: linear-gradient(transparent 62%, rgba(179,136,255,0.14) 0); }
+  .ng-mark--magenta { color: var(--ng-magenta); background: linear-gradient(transparent 62%, rgba(255,94,207,0.14) 0); }
   .ng-mark--plain { background: none; padding: 0; } /* colored bold text only */
 
   /* Mono micro-label with a leading neon tick instead of a box */
@@ -301,6 +312,8 @@ body {
   .ng-tag--cyan { color: var(--ng-cyan); } .ng-tag--cyan::before { color: var(--ng-cyan); }
   .ng-tag--amber { color: var(--ng-amber); } .ng-tag--amber::before { color: var(--ng-amber); }
   .ng-tag--danger { color: var(--ng-danger); } .ng-tag--danger::before { color: var(--ng-danger); }
+  .ng-tag--violet { color: var(--ng-violet); } .ng-tag--violet::before { color: var(--ng-violet); }
+  .ng-tag--magenta { color: var(--ng-magenta); } .ng-tag--magenta::before { color: var(--ng-magenta); }
 
   /* Hairline data row — label left, value right, divider beneath */
   .ng-row {
@@ -344,16 +357,31 @@ body {
   }
 
   /* Stat block — big tabular number + tiny label, no box */
-  .ng-stat__v { font-family: var(--font-grotesk), ui-sans-serif, sans-serif; font-size: 1.4rem; font-weight: 700; color: var(--ng-neon); font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .ng-stat__v { font-family: var(--font-mono), ui-monospace, monospace; font-size: 1.35rem; font-weight: 700; color: var(--ng-neon); font-variant-numeric: tabular-nums; line-height: 1.1; }
   .ng-stat__k { font-size: 0.625rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ng-ink-faint); }
 }
 
 /* Mono helper for inline IDs / wallet addresses / data */
 .mono { font-family: var(--font-mono), ui-monospace, monospace; }
 .tnum { font-variant-numeric: tabular-nums; }
-.text-glow { text-shadow: 0 0 7px rgba(0, 255, 0, 0.38); }
-.text-glow-cyan { text-shadow: 0 0 7px rgba(72, 245, 255, 0.38); }
-.text-glow-soft { text-shadow: 0 0 5px rgba(0, 255, 0, 0.25); }
+
+/* Terminal row hover = inverse video (the only selection effect a TUI has). */
+.thl { cursor: default; transition: background 0.1s ease; }
+.thl:hover { background: var(--ng-neon); }
+.thl:hover, .thl:hover * { color: #000 !important; }
+/* Blinking block cursor for tail-f logs / prompts. */
+/* thin blinking terminal caret — renders a 2px neon bar (its █ text is hidden via
+   font-size:0) so every existing usage becomes a slim cursor, not a fat block. */
+.ng-tcursor { display: inline-block; width: 2px; height: 0.95em; font-size: 0; background: var(--ng-neon); vertical-align: text-bottom; transform: translateY(-1px); animation: tcursor 1.06s steps(1) infinite; }
+@keyframes tcursor { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ng-tcursor { animation: none; } }
+
+/* Prompt inputs get a thin neon blinking caret at the end of the text (native). */
+.ng-input, input, textarea { caret-color: var(--ng-neon); }
+/* terminal = flat: the glow era is over; classes stay as no-ops */
+.text-glow { text-shadow: none; }
+.text-glow-cyan { text-shadow: none; }
+.text-glow-soft { text-shadow: none; }
 
 /* HUD background motion (HudBackground.tsx) */
 @keyframes hudFloor { from { background-position: 0 0; } to { background-position: 0 56px; } }
@@ -368,7 +396,10 @@ body {
 /* App shell: lock to the viewport on desktop so columns scroll independently.
    height is divided by the 0.9 zoom so the frame still fills the screen exactly. */
 @media (min-width: 1024px) {
-  .lg-frame-h { height: calc(100dvh / 0.9); }
+  /* reserve the fixed keybar's height (~30px visual) so page content — esp. the
+     messages composer — never hides behind the footer. /0.9 converts the visual
+     reserve into the zoomed frame's units. */
+  .lg-frame-h { height: calc((100dvh - 30px) / 0.9); }
 }
 
 /* Header Pulse monitor: a bright blip sweeps left -> right along the EKG. */

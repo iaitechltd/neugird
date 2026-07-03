@@ -2,17 +2,18 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import NeuGridDock from "@/components/app/NeuGridDock";
 import NeuHeader from "@/components/app/NeuHeader";
 import {
   Panel, Mark, Tag, Bracket, ProgressBar,
   IconChevronDown, IconCheck, IconBot, IconGrid, IconBolt, IconShield,
   IconRocket, IconCode, IconCoins, IconUser, IconStar,
+  kpiColor,
 } from "@/components/app/ui";
 import { Decrypt, CountUp } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import OrbPanel from "@/components/app/OrbPanel";
-import { Area, Bars, Radar } from "@/components/app/charts";
+import { Area, Bars, Radar, Ring } from "@/components/app/charts";
+import { PanelChart } from "@/components/app/terminal";
 import type { Agent, Build, Grid, Product } from "@/lib/types";
 
 const Verified = () => <IconCheck className="h-3.5 w-3.5 shrink-0 text-neon" />;
@@ -109,6 +110,23 @@ export default function MePage() {
   const income = me?.income;
   const stats: [string, number, string?][] = [["Reputation", rep], ["Earned", Math.round(income?.total ?? 0), "$"], ["Builds", builds.length], ["Agents", agents.length], ["GRID Alloc", Math.round(me?.reward?.sybil_adjusted ?? 0)]];
 
+  // --- side-rail chart data (derived, SSR-safe) ---
+  const repAxes = ["builder", "creator", "backer", "reviewer", "agent"];
+  const repRadarVals = repAxes.map((d) => Math.round(((repDims[d] ?? 0) / repMax) * 100));
+  const hasRepDims = Object.values(repDims).some((v) => (v as number) > 0);
+  const incomeSeries = income?.series ?? [];
+  const repSeries = me?.rep_series ?? [];
+  const vesting = me?.reward?.vesting;
+  // RIGHT ring — vesting-claimed % if TGE ran, else builds-shipped ratio, else rep-vs-1000 target.
+  const shipped = builds.filter((b) => b.status === "listed" || b.status === "funded").length;
+  const ring = vesting && vesting.total > 0
+    ? { pct: Math.round((vesting.released / vesting.total) * 100), label: "claimed", title: "GRID vesting · claimed" }
+    : builds.length > 0
+    ? { pct: Math.round((shipped / builds.length) * 100), label: "shipped", title: "Builds · shipped ratio" }
+    : rep > 0
+    ? { pct: Math.round((rep / 1000) * 100), label: "of 1K", title: "Reputation · vs 1K target" }
+    : null;
+
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
       <NeuHeader collapsed={!lOpen && !rOpen} onToggleCollapse={() => { const v = lOpen || rOpen; setLOpen(!v); setROpen(!v); }} onSearch={() => notify("Search the grid")} onBell={() => notify("Notifications")} />
@@ -117,6 +135,17 @@ export default function MePage() {
         {/* LEFT */}
         <OrbPanel side="left" label="Portfolio" open={lOpen} onToggle={setLOpen} widthClass="lg:w-[320px] xl:w-[340px]">
           <Panel scroll title="PORTFOLIO" icon={<IconUser className="h-4 w-4" />} action={<IconChevronDown className="h-4 w-4 text-ink-dim" />} bodyClass="p-3.5">
+            <PanelChart title="Reputation · dimensions" read={`${rep} rep`}>
+              {hasRepDims
+                ? <div className="flex justify-center"><Radar axes={repAxes} values={repRadarVals} size={132} /></div>
+                : <p className="text-[11px] text-ink-dim">Earn reputation across dimensions to shape your profile.</p>}
+            </PanelChart>
+            <PanelChart title="Income · trend" read={`$${Math.round(income?.total ?? 0).toLocaleString()}`}>
+              {incomeSeries.length
+                ? <Bars data={incomeSeries} h={44} />
+                : <p className="text-[11px] text-ink-dim">No income yet — earnings appear as you deliver.</p>}
+            </PanelChart>
+
             <Section icon={<IconBot className="h-3.5 w-3.5" />} action={<Link href="/agents" className="text-[11px] text-ink-dim transition hover:text-neon">Manage</Link>}>Your Agents</Section>
             {agents.length ? (
               <div className="space-y-2">
@@ -168,9 +197,9 @@ export default function MePage() {
 
           {/* stat cards — 3 by default, 4/5 as the side panels collapse */}
           <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
-            {stats.slice(0, 3 + closed).map(([k, v, unit]) => (
+            {stats.slice(0, 3 + closed).map(([k, v, unit], i) => (
               <div key={k} className="ng-card p-4 text-center">
-                <div className="ng-stat__v">{unit === "$" && <span className="text-cyan">$</span>}<CountUp key={v} value={v} /></div>
+                <div className="ng-stat__v" style={{ color: kpiColor(i) }}>{unit === "$" && <span className="opacity-60">$</span>}<CountUp key={v} value={v} /></div>
                 <div className="ng-stat__k">{k}</div>
               </div>
             ))}
@@ -184,7 +213,7 @@ export default function MePage() {
                 <span className="text-[11px] text-neon tnum">{rep} <span className="text-ink-faint">now</span></span>
               </div>
               <div className="mt-2">
-                <Area data={me?.rep_series && me.rep_series.length > 1 ? me.rep_series : [0, rep]} gid="me-rep" h={92} />
+                <Area data={me?.rep_series && me.rep_series.length > 1 ? me.rep_series : [0, rep]} gid="me-rep" h={60} />
               </div>
               <p className="mt-1 text-[9.5px] text-ink-faint">Cumulative Pulse from every verified event — grows on delivery, fades on ghosting and inactivity.</p>
             </div>
@@ -194,7 +223,7 @@ export default function MePage() {
                 <span className="text-[11px] text-cyan tnum">${Math.round(income?.total ?? 0).toLocaleString()} <span className="text-ink-faint">lifetime</span></span>
               </div>
               <div className="mt-2">
-                <Bars data={income?.series && income.series.length > 1 ? income.series : [0, 0]} h={92} color="#22d3ee" />
+                <Bars data={income?.series && income.series.length > 1 ? income.series : [0, 0]} h={60} color="#22d3ee" />
               </div>
               <div className="mt-1 flex items-center justify-between text-[9.5px] text-ink-faint">
                 <span>direct ${Math.round(income?.direct ?? 0).toLocaleString()} · agents ${Math.round(income?.agents_total ?? 0).toLocaleString()}</span>
@@ -221,7 +250,7 @@ export default function MePage() {
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-3 text-[10px]">
                     {b.product_id && <Link href={`/gridx/${b.product_id}`} className="flex items-center gap-1 text-neon transition hover:text-glow"><IconRocket className="h-3 w-3" />On GridX</Link>}
-                    {b.proposal_id && <Link href="/genesis/board" className="flex items-center gap-1 text-neon transition hover:text-glow"><IconCoins className="h-3 w-3" />On GenesisX</Link>}
+                    {b.proposal_id && <Link href="/genesis/board" className="flex items-center gap-1 text-neon transition hover:text-glow"><IconCoins className="h-3 w-3" />On Fund</Link>}
                     {!b.product_id && !b.proposal_id && <span className="text-ink-faint">Not yet launched</span>}
                   </div>
                 </div>
@@ -256,6 +285,17 @@ export default function MePage() {
         {/* RIGHT */}
         <OrbPanel label="Signal" open={rOpen} onToggle={setROpen} widthClass="lg:w-[320px] xl:w-[340px]">
           <Panel scroll title="SIGNAL" icon={<IconShield className="h-4 w-4" />} action={<IconChevronDown className="h-4 w-4 text-ink-dim" />} bodyClass="p-3.5">
+            <PanelChart title="Rep curve · cumulative" read={`${rep} now`}>
+              {repSeries.length > 1
+                ? <Area data={repSeries} gid="me-rep-rail" color="var(--ng-cyan)" h={48} />
+                : <p className="text-[11px] text-ink-dim">Reputation builds up over verified events.</p>}
+            </PanelChart>
+            {ring && (
+              <PanelChart title={ring.title} read={`${ring.pct}%`}>
+                <div className="flex justify-center"><Ring percent={ring.pct} label={ring.label} size={82} /></div>
+              </PanelChart>
+            )}
+
             <Section icon={<IconBolt className="h-3.5 w-3.5" />}>Reputation</Section>
             <div className="ng-card p-3.5">
               <div className="flex items-baseline justify-between"><span className="ng-stat__v !text-2xl">{rep}</span><span className="text-[11px] text-ink-dim">total Pulse</span></div>
@@ -349,14 +389,14 @@ export default function MePage() {
             <div className="ng-card mt-3 p-3.5">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="text-[12px] font-semibold text-ink">Pay TradeX fees in GRID</div>
+                  <div className="text-[12px] font-semibold text-ink">Pay Trade fees in GRID</div>
                   <div className="mt-0.5 text-[10px] text-ink-faint">Save {Math.round((gridM?.fee_discount_bps ?? 0) / 100)}% on every trade fee — paid from your GRID balance to the treasury.</div>
                 </div>
                 <button onClick={toggleFeePref} role="switch" aria-checked={!!gridM?.pay_fees_in_grid} className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition ${gridM?.pay_fees_in_grid ? "bg-neon" : "bg-line"}`}>
                   <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-bg transition-all ${gridM?.pay_fees_in_grid ? "left-[18px]" : "left-0.5"}`} />
                 </button>
               </div>
-              {gridM?.pay_fees_in_grid && <div className="mt-2 rounded border border-neon/20 bg-neon/[0.05] px-2 py-1.5 text-[10px] text-neon">Active — fees on TradeX trades are charged in GRID at a {Math.round((gridM?.fee_discount_bps ?? 0) / 100)}% discount.</div>}
+              {gridM?.pay_fees_in_grid && <div className="mt-2 rounded border border-neon/20 bg-neon/[0.05] px-2 py-1.5 text-[10px] text-neon">Active — fees on Trade trades are charged in GRID at a {Math.round((gridM?.fee_discount_bps ?? 0) / 100)}% discount.</div>}
             </div>
 
             <Section icon={<IconStar className="h-3.5 w-3.5" />}>Agents Earning</Section>
@@ -375,7 +415,7 @@ export default function MePage() {
             <Section icon={<IconCoins className="h-3.5 w-3.5" />}>Pipeline</Section>
             <div className="ng-card p-3.5">
               <div className="divide-y divide-line text-[12px]">
-                {([["On GridX", builds.filter((b) => b.product_id).length, "/gridx", IconRocket], ["On GenesisX", builds.filter((b) => b.proposal_id).length, "/genesis/board", IconCoins], ["Grids joined", myGrids.length, "/grids/explore", IconGrid]] as [string, number, string, (p: { className?: string }) => React.JSX.Element][]).map(([k, v, href, Ico]) => (
+                {([["On GridX", builds.filter((b) => b.product_id).length, "/gridx", IconRocket], ["On Fund", builds.filter((b) => b.proposal_id).length, "/genesis/board", IconCoins], ["Grids joined", myGrids.length, "/grids/explore", IconGrid]] as [string, number, string, (p: { className?: string }) => React.JSX.Element][]).map(([k, v, href, Ico]) => (
                   <Link key={k} href={href} className="ng-row flex items-center !py-2 transition hover:text-neon"><span className="ng-row__k flex items-center gap-2 text-ink"><Ico className="h-3.5 w-3.5 text-neon/70" />{k}</span><span className="ng-row__v"><Mark plain>{v}</Mark></span></Link>
                 ))}
               </div>
@@ -385,7 +425,6 @@ export default function MePage() {
       </div>
 
       {toast && <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded border border-neon/40 bg-black/90 px-4 py-2.5 text-sm text-neon shadow-[0_0_20px_rgba(0,255,0,0.3)]">{toast}</div>}
-      <NeuGridDock />
     </div>
   );
 }

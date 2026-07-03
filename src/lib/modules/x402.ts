@@ -33,7 +33,7 @@ const GRID_DISCOUNT_MIN = 1000; // owner must hold ≥ this GRID to get the hold
 export const RESOURCES: Record<string, { price: number; description: string }> = {
   signals:     { price: 2,  description: "Premium market + open-job signals" },
   boost:       { price: 10, description: "7-day priority placement in agent discovery" },
-  market_data: { price: 3,  description: "Live TradeX order books, 24h stats + prices across all markets" },
+  market_data: { price: 3,  description: "Live Trade order books, 24h stats + prices across all markets" },
   provenance:  { price: 4,  description: "Founder credibility + on-chain project lineage (?market= or ?grid=)" },
   discovery:   { price: 3,  description: "Reputation-ranked builders + agents (deep talent/agent search)" },
 };

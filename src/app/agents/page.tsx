@@ -2,16 +2,18 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import NeuGridDock from "@/components/app/NeuGridDock";
 import NeuHeader from "@/components/app/NeuHeader";
 import {
   Panel, Mark, Tag, Bracket,
   IconChevronDown, IconCheck, IconBot, IconGrid, IconStar, IconBolt,
   IconNetwork, IconRocket, IconUser, IconCoins, IconShield,
+  kpiColor,
 } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import OrbPanel from "@/components/app/OrbPanel";
+import { PanelChart } from "@/components/app/terminal";
+import { Bars, Ring } from "@/components/app/charts";
 import type { Agent, Job } from "@/lib/types";
 
 function Section({ icon, children, action }: { icon: React.ReactNode; children: React.ReactNode; action?: React.ReactNode }) {
@@ -53,20 +55,22 @@ export default function AgentsPage() {
   const [extBond, setExtBond] = useState("");
   const [registered, setRegistered] = useState<{ agent_id: string; api_key: string; trust_tier: string } | null>(null);
 
-  async function refresh() {
-    const [a, me, j, all] = await Promise.all([
+  function refresh() {
+    // .then (not await) so setState is inside a callback — satisfies react-hooks/set-state-in-effect
+    return Promise.all([
       fetch("/api/agents?mine=1").then((r) => r.json()).catch(() => ({})),
       fetch("/api/me").then((r) => r.json()).catch(() => ({})),
       fetch("/api/jobs?status=open").then((r) => r.json()).catch(() => ({})),
       fetch("/api/agents").then((r) => r.json()).catch(() => ({})),
-    ]);
-    const id = me?.id ?? "";
-    setMeId(id);
-    setMyAgents(a?.agents ?? []);
-    setOpenJobs((j?.jobs ?? []).filter((x: Job) => x.created_by !== id && x.executor_kind !== "human"));
-    setAllAgents(all?.agents ?? []);
+    ]).then(([a, me, j, all]) => {
+      const id = me?.id ?? "";
+      setMeId(id);
+      setMyAgents(a?.agents ?? []);
+      setOpenJobs((j?.jobs ?? []).filter((x: Job) => x.created_by !== id && x.executor_kind !== "human"));
+      setAllAgents(all?.agents ?? []);
+    });
   }
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => { void refresh(); }, []);
 
   async function createAgent() {
     const name = newName.trim();
@@ -110,6 +114,12 @@ export default function AgentsPage() {
   const trustedCount = allAgents.filter((a) => a.trust_tier === "trusted").length;
   const totalEarned = allAgents.reduce((s, a) => s + (a.earnings ?? 0), 0);
 
+  // derived chart series (rail data-viz) — computed from real agents
+  const topEarnings = [...allAgents].sort((a, b) => (b.earnings ?? 0) - (a.earnings ?? 0)).slice(0, 10).map((a) => a.earnings ?? 0);
+  const topRatings = [...allAgents].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0)).slice(0, 10).map((a) => (a.rating ?? 0) * 20);
+  const trustedPct = allAgents.length ? Math.round((trustedCount / allAgents.length) * 100) : 0;
+  const nativePct = allAgents.length ? Math.round((nativeCount / allAgents.length) * 100) : 0;
+
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
       <NeuHeader collapsed={!lOpen && !rOpen} onToggleCollapse={() => { const v = lOpen || rOpen; setLOpen(!v); setROpen(!v); }} onSearch={() => notify("Search the grid")} onBell={() => notify("Notifications")} />
@@ -124,6 +134,15 @@ export default function AgentsPage() {
               ))}
             </div>
             <div className="ng-card mt-2 flex items-center justify-between p-3 text-[12px]"><span className="text-ink-dim">Total earned</span><Mark plain accent="cyan">{totalEarned.toLocaleString()} Pulse</Mark></div>
+
+            <div className="mt-3 space-y-2">
+              <PanelChart title="Earnings · top agents" read={`${totalEarned.toLocaleString()} Pulse`}>
+                {topEarnings.length ? <Bars data={topEarnings} h={44} /> : <p className="text-[11px] text-ink-dim">No agents yet.</p>}
+              </PanelChart>
+              <PanelChart title="Trust · trusted share" read={`${trustedCount}/${allAgents.length} trusted`}>
+                {allAgents.length ? <div className="flex items-center justify-center py-1"><Ring percent={trustedPct} label="trusted" value={`${trustedPct}%`} size={86} stroke={6} /></div> : <p className="text-[11px] text-ink-dim">No agents yet.</p>}
+              </PanelChart>
+            </div>
 
             <Section icon={<IconStar className="h-3.5 w-3.5" />}>Top Agents</Section>
             <div className="divide-y divide-line">
@@ -155,9 +174,9 @@ export default function AgentsPage() {
 
           {/* page KPIs — 3 by default, 4/5 as the side panels collapse */}
           <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
-            {([["Agents", allAgents.length, undefined], ["Earned", Math.round(totalEarned), "$"], ["Trusted", trustedCount, undefined], ["Native", nativeCount, undefined], ["External", externalCount, undefined]] as [string, number, string?][]).slice(0, 3 + closed).map(([k, v, unit]) => (
+            {([["Agents", allAgents.length, undefined], ["Earned", Math.round(totalEarned), "$"], ["Trusted", trustedCount, undefined], ["Native", nativeCount, undefined], ["External", externalCount, undefined]] as [string, number, string?][]).slice(0, 3 + closed).map(([k, v, unit], i) => (
               <div key={k} className="ng-card p-4 text-center">
-                <div className="ng-stat__v">{unit === "$" && <span className="text-cyan">$</span>}<CountUp key={v} value={v} /></div>
+                <div className="ng-stat__v" style={{ color: kpiColor(i) }}>{unit === "$" && <span className="opacity-60">$</span>}<CountUp key={v} value={v} /></div>
                 <div className="ng-stat__k">{k}</div>
               </div>
             ))}
@@ -243,6 +262,15 @@ export default function AgentsPage() {
         {/* RIGHT */}
         <OrbPanel label="Network" open={rOpen} onToggle={setROpen} widthClass="lg:w-[320px] xl:w-[350px]">
           <Panel scroll title="NETWORK" icon={<IconUser className="h-4 w-4" />} action={<IconChevronDown className="h-4 w-4 text-ink-dim" />} bodyClass="p-3.5">
+            <div className="space-y-2">
+              <PanelChart title="Ratings · top agents" read={`${allAgents.length} rated`}>
+                {topRatings.length ? <Bars data={topRatings} h={44} color="var(--ng-cyan)" /> : <p className="text-[11px] text-ink-dim">No agents yet.</p>}
+              </PanelChart>
+              <PanelChart title="Composition · native share" read={`${nativeCount} native · ${externalCount} external`}>
+                {allAgents.length ? <div className="flex items-center justify-center py-1"><Ring percent={nativePct} label="native" value={`${nativePct}%`} size={86} stroke={6} /></div> : <p className="text-[11px] text-ink-dim">No agents yet.</p>}
+              </PanelChart>
+            </div>
+
             <Section icon={<IconStar className="h-3.5 w-3.5" />}>Leaderboard</Section>
             <div className="space-y-2">
               {leaderboard.length ? leaderboard.map((a, i) => (
@@ -283,7 +311,6 @@ export default function AgentsPage() {
       </div>
 
       {toast && <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded border border-neon/40 bg-black/90 px-4 py-2.5 text-sm text-neon shadow-[0_0_20px_rgba(0,255,0,0.3)]">{toast}</div>}
-      <NeuGridDock />
     </div>
   );
 }

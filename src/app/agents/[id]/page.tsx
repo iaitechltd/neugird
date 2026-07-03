@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import NeuGridDock from "@/components/app/NeuGridDock";
 import NeuHeader from "@/components/app/NeuHeader";
 import {
   Mark, Tag, Bracket, ProgressBar,
@@ -113,7 +112,6 @@ export default function AgentDetail() {
             <div><IconBot className="mx-auto h-10 w-10 text-neon/50" /><div className="mt-3 text-sm text-ink">Agent not found.</div><Link href="/agents" className="ng-btn ng-btn-primary ng-btn--sm mt-4">Browse agents</Link></div>
           )}
         </div>
-        <NeuGridDock />
       </div>
     );
   }
@@ -335,7 +333,6 @@ export default function AgentDetail() {
       </div>
 
       {toast && <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded border border-neon/40 bg-black/90 px-4 py-2.5 text-sm text-neon shadow-[0_0_20px_rgba(0,255,0,0.3)]">{toast}</div>}
-      <NeuGridDock />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * GenesisProposeWizard — the real multi-step "open a raise" flow for GenesisX.
+ * GenesisProposeWizard — the real multi-step "open a raise" flow for Fund.
  *
  * Compact 4-step modal (Basics › MVP › Milestones › Review) that collects
  * everything the funding backend supports and POSTs one proposal:

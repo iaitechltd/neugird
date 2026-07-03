@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { JetBrains_Mono, Space_Grotesk } from "next/font/google";
 import "./globals.css";
-import MatrixRain from "@/components/MatrixRain";
 import HudBackground from "@/components/HudBackground";
+import NeuGridDock from "@/components/app/NeuGridDock";
 
 // Mono for data/labels/body; Space Grotesk display for titles + headlines.
 const mono = JetBrains_Mono({
@@ -31,8 +31,13 @@ export default function RootLayout({
     <html lang="en" className={`${mono.variable} ${display.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
         <HudBackground />
-        <MatrixRain />
+        {/* MatrixRain retired 2026-07-03 — the terminal room is pure black */}
         {children}
+        {/* The terminal keybar lives OUTSIDE every page's `zoom: 0.9` frame — a
+            fixed element inside a zoomed ancestor has an offset click hit-region
+            in Chrome (looked clickable, wasn't). Rendered once here, it hides
+            itself on "/" and "/d/". */}
+        <NeuGridDock />
       </body>
     </html>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * GenesisX board — reputation-gated funding with milestone escrow.
+ * Fund board — reputation-gated funding with milestone escrow.
  * 3-panel: left = genesis stats + your reputation, center = propose + proposals
  * with funding + milestone actions, right = how-it-works.
  */
@@ -9,11 +9,12 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import NeuHeader from "@/components/app/NeuHeader";
-import NeuGridDock from "@/components/app/NeuGridDock";
 import OrbPanel from "@/components/app/OrbPanel";
-import { Panel, Tag, Mark, DataRow, ProgressBar, IconRocket, IconActivity, IconBolt, IconCheck, IconArrowRight } from "@/components/app/ui";
+import { Panel, Tag, Mark, DataRow, ProgressBar, IconRocket, IconActivity, IconBolt, IconCheck, IconArrowRight , kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import GenesisProposeWizard from "@/components/app/GenesisProposeWizard";
+import { PanelChart } from "@/components/app/terminal";
+import { Gauge, Bars, Ring } from "@/components/app/charts";
 import type { Milestone, Proposal } from "@/lib/types";
 
 type View = { proposal: Proposal; raised: number; backers: number; spawned_grid_slug: string | null; milestones: Milestone[]; i_backed: boolean; founder?: { username: string; reputation: number }; closes_at?: string; refunded?: number };
@@ -33,11 +34,14 @@ export default function GenesisBoard() {
   const closed = (lOpen ? 0 : 1) + (rOpen ? 0 : 1);
   const notify = (m: string) => { setToast(m); window.setTimeout(() => setToast(null), 2400); };
 
-  const reload = useCallback(async () => {
-    const r = await fetch("/api/proposals").then((x) => x.json()).catch(() => null);
-    if (r) { setViews(r.proposals ?? []); setMe(r.me ?? null); }
+  const reload = useCallback(() => {
+    // .then chain (not async/await) so setState sits inside a callback — the
+    // react-hooks/set-state-in-effect rule accepts this, flags the await form.
+    return fetch("/api/proposals").then((x) => x.json()).catch(() => null).then((r) => {
+      if (r) { setViews(r.proposals ?? []); setMe(r.me ?? null); }
+    });
   }, []);
-  useEffect(() => { reload(); const h = () => reload(); window.addEventListener("neugrid:refresh-me", h); return () => window.removeEventListener("neugrid:refresh-me", h); }, [reload]);
+  useEffect(() => { void reload(); const h = () => { void reload(); }; window.addEventListener("neugrid:refresh-me", h); return () => window.removeEventListener("neugrid:refresh-me", h); }, [reload]);
 
   const list = views ?? [];
   const open = list.filter((v) => v.proposal.status === "open");
@@ -50,6 +54,17 @@ export default function GenesisBoard() {
     ["Funded Raises", list.filter((v) => v.proposal.status === "funded").length],
   ];
 
+  // ---- side-rail chart data (derived from real raise fields) ----
+  const raisedSeries = list.map((v) => v.raised ?? 0);
+  const backerSeries = list.map((v) => v.backers ?? 0);
+  // leading open raise = the most-funded still-open round
+  const leader = open.length ? [...open].sort((a, b) => b.raised - a.raised)[0] : null;
+  const leaderPct = leader ? Math.round(Math.min(100, (leader.raised / (leader.proposal.ask_amount || 1)) * 100)) : 0;
+  const fundedCount = list.filter((v) => v.proposal.status === "funded").length;
+  const fundedSharePct = list.length ? Math.round((fundedCount / list.length) * 100) : 0;
+  const hasRaised = raisedSeries.some((n) => n > 0);
+  const hasBackers = backerSeries.some((n) => n > 0);
+
   async function act(url: string, body?: object, msg?: string) {
     if (busy) return; setBusy(true);
     try { const r = await fetch(url, { method: "POST", headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined }); if (!r.ok) throw new Error(); if (msg) notify(msg); window.dispatchEvent(new Event("neugrid:refresh-me")); await reload(); }
@@ -59,7 +74,7 @@ export default function GenesisBoard() {
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
-      <NeuHeader title="GenesisX" collapsed={!lOpen && !rOpen} onToggleCollapse={() => { const v = lOpen || rOpen; setLOpen(!v); setROpen(!v); }} />
+      <NeuHeader title="Fund" collapsed={!lOpen && !rOpen} onToggleCollapse={() => { const v = lOpen || rOpen; setLOpen(!v); setROpen(!v); }} />
       <div className="flex flex-col gap-3 px-3 py-3 lg:min-h-0 lg:flex-1 lg:flex-row">
         {/* LEFT */}
         <OrbPanel side="left" label="Genesis" open={lOpen} onToggle={setLOpen} widthClass="lg:w-[300px] xl:w-[320px]">
@@ -69,6 +84,18 @@ export default function GenesisBoard() {
               <DataRow k="Total Raised" v={`${totals.raised}`} />
               <DataRow k="Open Ask" v={`${totals.ask}`} />
             </div>
+            {leader ? (
+              <PanelChart title="Funding · leading raise" read={`${leaderPct}%`}>
+                <div className="flex justify-center py-1"><Gauge percent={leaderPct} value={`${leaderPct}%`} w={116} /></div>
+              </PanelChart>
+            ) : <p className="mt-3 text-[10px] text-ink-faint">No open raise to chart yet.</p>}
+
+            {hasRaised ? (
+              <PanelChart title="Raised · by project" read={`$${Math.round(totals.raised).toLocaleString()}`}>
+                <Bars data={raisedSeries} h={44} />
+              </PanelChart>
+            ) : <p className="mt-3 text-[10px] text-ink-faint">No funding raised yet.</p>}
+
             <div className="ng-card mt-4 p-3">
               <div className="text-[11px] text-ink-dim">Your reputation</div>
               <div className="ng-stat__v !text-xl text-neon">{me?.reputation ?? 0}</div>
@@ -81,7 +108,7 @@ export default function GenesisBoard() {
         <main className="@container order-1 space-y-4 lg:order-2 lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
           <div className="flex items-end justify-between gap-4">
             <div>
-              <h1 className="ng-title text-2xl font-bold text-neon text-glow-soft"><Decrypt text="GenesisX" /></h1>
+              <h1 className="ng-title text-2xl font-bold text-neon text-glow-soft"><Decrypt text="Fund" /></h1>
               <p className="mt-1 text-sm text-ink-dim">Reputation earns the right to raise. Funds release as milestones land.</p>
             </div>
             {me?.can_propose
@@ -91,9 +118,9 @@ export default function GenesisBoard() {
 
           {/* page KPIs — 3 by default, 4/5 as the side panels collapse */}
           <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
-            {kpis.slice(0, 3 + closed).map(([k, v, unit]) => (
+            {kpis.slice(0, 3 + closed).map(([k, v, unit], i) => (
               <div key={k} className="ng-card p-4 text-center">
-                <div className="ng-stat__v">{unit === "$" && <span className="text-cyan">$</span>}<CountUp key={v} value={v} /></div>
+                <div className="ng-stat__v" style={{ color: kpiColor(i) }}>{unit === "$" && <span className="opacity-60">$</span>}<CountUp key={v} value={v} /></div>
                 <div className="ng-stat__k">{k}</div>
               </div>
             ))}
@@ -162,7 +189,19 @@ export default function GenesisBoard() {
         {/* RIGHT */}
         <OrbPanel side="right" label="How it works" open={rOpen} onToggle={setROpen}>
           <Panel scroll title="HOW IT WORKS" icon={<IconActivity className="h-4 w-4" />} bodyClass="p-3.5">
-            <ol className="space-y-2 text-[11px] text-ink-dim">
+            {list.length ? (
+              <PanelChart title="Outcomes · funded share" read={`${fundedCount}/${list.length}`}>
+                <div className="flex justify-center py-1"><Ring percent={fundedSharePct} label="funded" value={`${fundedSharePct}%`} /></div>
+              </PanelChart>
+            ) : <p className="text-[10px] text-ink-faint">No raises to chart yet.</p>}
+
+            {hasBackers ? (
+              <PanelChart title="Backers · by project" read={`${backerSeries.reduce((s, n) => s + n, 0)} total`}>
+                <Bars data={backerSeries} color="#48f5ff" h={44} />
+              </PanelChart>
+            ) : <p className="mt-3 text-[10px] text-ink-faint">No backers yet.</p>}
+
+            <ol className="mt-4 space-y-2 text-[11px] text-ink-dim">
               {["Earn reputation through verified work", "Propose with your MVP + track record", "Backers fund — money locks in escrow", "A project Grid spawns to build in", "Deliver milestones → backers release funds"].map((s, i) => (
                 <li key={i} className="flex gap-2"><span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-neon/15 text-[9px] text-neon">{i + 1}</span>{s}</li>
               ))}
@@ -179,7 +218,6 @@ export default function GenesisBoard() {
         />
       )}
       {toast && <div className="fixed bottom-24 left-1/2 z-[80] -translate-x-1/2 rounded border border-neon/40 bg-black/90 px-4 py-2.5 text-sm text-neon" style={{ boxShadow: "0 0 20px rgba(0,255,0,0.3)" }}>{toast}</div>}
-      <NeuGridDock />
     </div>
   );
 }

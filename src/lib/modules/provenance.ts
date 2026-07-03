@@ -1,7 +1,7 @@
 /**
  * Provenance — the credibility story behind a market, assembled from existing
  * verified state. This is NeuGrid's thesis made visible at the point of trade:
- * WHERE a project came from (Grid/SubGrid + the Echo→GenesisX→milestones→audit
+ * WHERE a project came from (Grid/SubGrid + the Echo→Fund→milestones→audit
  * lineage) and WHO built it (the founder's reputation + soulbound credentials +
  * track record) + WHO backed it. Pure read-aggregation; no new state.
  */
@@ -13,6 +13,25 @@ import * as Attestations from "./attestations";
 function repOf(user_id: string): number {
   const u = db.users.find((x) => x.id === user_id);
   return Math.max(u?.pulse_score ?? 0, u?.reputation?.total ?? 0);
+}
+
+/** The one-line credibility chip for market CARDS (the /markets list) — founder +
+ *  reputation + credential count + origin. Deliberately light: reads existing
+ *  attestations only (no reconcile-on-read mints on a list endpoint). */
+export function credibilityFor(grid_id: string) {
+  const grid = db.grids.find((g) => g.grid_id === grid_id);
+  if (!grid) return null;
+  const fid = grid.owner_id;
+  const founder = db.users.find((u) => u.id === fid);
+  if (!founder) return null;
+  const credentials = Attestations.activeFor(fid).length;
+  const audit = [...db.audits].reverse().find((a) => a.grid_id === grid_id);
+  return {
+    founder: { id: fid, username: founder.username, reputation: Math.round(repOf(fid)) },
+    credentials,
+    audit_passed: audit?.status === "passed",
+    origin: grid.spawned_from?.origin ?? "direct", // proposal | product | direct
+  };
 }
 
 export function provenanceFor(grid_id: string) {

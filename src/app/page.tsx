@@ -210,7 +210,7 @@ export default function Landing() {
           <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5">
             <Link href="/markets" className="transition hover:text-neon">Markets</Link>
             <Link href="/echo" className="transition hover:text-neon">Echo</Link>
-            <Link href="/genesis/board" className="transition hover:text-neon">GenesisX</Link>
+            <Link href="/genesis/board" className="transition hover:text-neon">Fund</Link>
             <Link href="/leaderboard" className="transition hover:text-neon">Leaderboard</Link>
             <Link href="/home" className="inline-flex items-center gap-1 text-neon/80 transition hover:text-neon">Enter <IconExternal className="h-3 w-3" /></Link>
           </nav>

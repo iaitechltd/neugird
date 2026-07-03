@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 type Note = { kind: "message" | "review" | "applicants" | "governance" | "fill" | "position" | "market" | "social"; text: string; sub?: string; href: string };
 
-const RECENT_MS = 48 * 3600 * 1000; // TradeX event window — old fills/closes age out of the bell
+const RECENT_MS = 48 * 3600 * 1000; // Trade event window — old fills/closes age out of the bell
 const recent = (iso?: string) => !!iso && Date.now() - Date.parse(iso) <= RECENT_MS;
 const sym = (market_id: string) => db.markets.find((m) => m.market_id === market_id)?.base_symbol ?? market_id;
 
@@ -41,13 +41,13 @@ export async function GET() {
     if (pending > 0) notes.push({ kind: "applicants", text: `${pending} applicant${pending === 1 ? "" : "s"} waiting`, sub: j.title.slice(0, 60), href: "/campaignx/board" });
   }
 
-  // 4 · TradeX — my limit orders that filled recently
+  // 4 · Trade — my limit orders that filled recently
   const fills = db.orders.filter((o) => o.user_id === uid && o.status === "filled" && recent(o.filled_at));
   for (const o of fills.slice(0, 3)) {
     notes.push({ kind: "fill", text: `Limit ${o.side} filled — ${sym(o.market_id)}`, sub: `${o.qty} @ $${o.price}`, href: `/market/${o.market_id}` });
   }
 
-  // 5 · TradeX — my positions closed by the engine (liquidation / TP / SL)
+  // 5 · Trade — my positions closed by the engine (liquidation / TP / SL)
   const closes = db.positions.filter((p) => p.user_id === uid && recent(p.closed_at) && (p.close_reason === "liquidation" || p.close_reason === "take_profit" || p.close_reason === "stop_loss"));
   for (const p of closes.slice(0, 3)) {
     const label = p.close_reason === "liquidation" ? "Position liquidated" : p.close_reason === "take_profit" ? "Take-profit hit" : "Stop-loss hit";
@@ -55,7 +55,7 @@ export async function GET() {
     notes.push({ kind: "position", text: `${label} — ${sym(p.market_id)}`, sub: `${p.side} ${p.leverage}x · PnL ${pnl >= 0 ? "+" : ""}$${Math.round(pnl)}`, href: `/market/${p.market_id}` });
   }
 
-  // 6 · TradeX — a market I own is ready to graduate (actionable), or one I hold just did
+  // 6 · Trade — a market I own is ready to graduate (actionable), or one I hold just did
   const myGridIds = new Set(db.grids.filter((g) => g.owner_id === uid).map((g) => g.grid_id));
   for (const m of db.markets) {
     if (myGridIds.has(m.grid_id) && m.stage !== "futures") {

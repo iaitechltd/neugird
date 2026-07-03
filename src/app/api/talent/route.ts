@@ -1,5 +1,5 @@
 /**
- * /api/talent — the TalenX marketplace surface.
+ * /api/talent — the Talent marketplace surface.
  * GET  → the talent directory (listing · verified badge · earned · followers) +
  *        market rollups (paid-to-talents, open roles, trending job requests) +
  *        the session user's GROWTH block (dimension gaps · revenue · engagement).
@@ -41,7 +41,7 @@ function trendingRequests(sinceMs: number) {
 
 /** What the session user should do next, per weakest reputation dimensions. */
 const GROW_ACTIONS: Record<string, string> = {
-  builder: "Deliver jobs or ship an Echo build — builder rep gates GenesisX raises.",
+  builder: "Deliver jobs or ship an Echo build — builder rep gates Fund raises.",
   backer: "Back a raise you believe in — backer weight compounds your milestone voice.",
   reviewer: "Review audits and verify milestones — reviewer rep is scarce and trusted.",
   creator: "Post in your grids and run promo campaigns — creator rep drives discovery.",

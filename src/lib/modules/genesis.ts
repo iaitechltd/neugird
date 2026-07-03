@@ -1,5 +1,5 @@
 /**
- * GenesisX — reputation-gated funding with milestone-escrowed treasuries.
+ * Fund — reputation-gated funding with milestone-escrowed treasuries.
  *
  *   propose (must have earned reputation) → backers fund → on a FULL raise a
  *   PROJECT Grid spawns with a treasury + milestones → founder delivers each

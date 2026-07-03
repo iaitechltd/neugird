@@ -10,6 +10,9 @@ import { newId, nowISO } from "../id";
 import type { Message } from "../types";
 
 const MAX_LEN = 500;
+const MIN_POST_INTERVAL_MS = 5_000; // per-user cooldown between messages
+const HOURLY_CAP = 20; // per-user messages per grid per hour
+const GUEST_MIN_REP = 25; // guests (no stake in the project) need earned reputation
 
 function store(): Message[] {
   return (db.messages ??= []);
@@ -39,6 +42,20 @@ export function post(grid_id: string, user_id: string, text: string): { message?
   const t = (text ?? "").trim();
   if (!t) return { error: "empty" };
   if (!db.grids.find((g) => g.grid_id === grid_id)) return { error: "no_grid" };
+
+  // Sybil/spam gate: anyone with standing in the project (founder/backer/holder/
+  // member) may post; a guest needs earned reputation. Everyone is rate-limited.
+  if (roleOf(grid_id, user_id) === "guest") {
+    const u = db.users.find((x) => x.id === user_id);
+    const rep = Math.max(u?.pulse_score ?? 0, u?.reputation?.total ?? 0);
+    if (rep < GUEST_MIN_REP) return { error: "reputation_gate" };
+  }
+  const mine = store().filter((m) => m.grid_id === grid_id && m.user_id === user_id);
+  const last = mine[mine.length - 1];
+  if (last && Date.now() - Date.parse(last.created_at) < MIN_POST_INTERVAL_MS) return { error: "rate_limited" };
+  const hourAgo = Date.now() - 3_600_000;
+  if (mine.filter((m) => Date.parse(m.created_at) >= hourAgo).length >= HOURLY_CAP) return { error: "hourly_cap" };
+
   const msg: Message = { message_id: newId("msg"), grid_id, user_id, text: t.slice(0, MAX_LEN), likes: [], created_at: nowISO() };
   store().push(msg);
   return { message: msg };

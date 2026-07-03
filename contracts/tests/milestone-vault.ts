@@ -53,10 +53,10 @@ describe("milestone_vault", () => {
     await mintTo(conn, founder, usdc, backer2Ata, founder, 1_000_000_000);
   });
 
-  const create = async (id: BN, tranches: BN[], raiseSecs: number, stallSecs: number) => {
+  const create = async (id: BN, tranches: BN[], raiseSecs: number, stallSecs: number, releaseAuthority: PublicKey | null = null) => {
     const vault = vaultPda(founder.publicKey, id);
     await program.methods
-      .createVault(id, tranches, new BN(raiseSecs), new BN(stallSecs))
+      .createVault(id, tranches, new BN(raiseSecs), new BN(stallSecs), releaseAuthority)
       .accounts({
         founder: founder.publicKey,
         vault,
@@ -86,7 +86,7 @@ describe("milestone_vault", () => {
       .signers([backer])
       .rpc();
 
-  const vote = (vault: PublicKey, backer: Keypair, idx: number, approve: boolean) =>
+  const vote = (vault: PublicKey, backer: Keypair, idx: number, approve: boolean, ra: Keypair | null = null) =>
     program.methods
       .vote(idx, approve)
       .accounts({
@@ -95,9 +95,10 @@ describe("milestone_vault", () => {
         backing: backingPda(vault, backer.publicKey),
         vaultToken: vaultAta(vault),
         founderToken: founderAta,
+        releaseAuthority: ra ? ra.publicKey : null,
         tokenProgram: TOKEN_PROGRAM_ID,
       })
-      .signers([backer])
+      .signers(ra ? [backer, ra] : [backer])
       .rpc();
 
   it("full GenesisX lifecycle: fund → release → reject/reopen → stall → pro-rata refund", async () => {
@@ -215,6 +216,45 @@ describe("milestone_vault", () => {
     assert.equal((await bal(founderAta)) - before, 120e6, "worker paid on approval");
     const v: any = await (program.account as any).vault.fetch(vault);
     assert.equal(v.status, 3, "vault completed");
+  });
+
+  it("release authority: releasing votes need the co-signature (the ICP-canister lens)", async () => {
+    // The vault names a release authority (in prod: the neugrid_signer canister's
+    // threshold-Ed25519 Solana address). Backer votes stay free — only the vote
+    // that EXECUTES a release must carry the co-signature.
+    const authority = Keypair.generate();
+    const wrong = Keypair.generate();
+    const sig = await conn.requestAirdrop(authority.publicKey, LAMPORTS_PER_SOL);
+    await conn.confirmTransaction(sig);
+    const vault = await create(new BN(5), [U(80), U(40)], 3600, 3600, authority.publicKey);
+    await back(vault, backer1, backer1Ata, U(120)); // sole backer → funded
+
+    // releasing vote WITHOUT the co-signer → MissingReleaseAuthority
+    let failed = false;
+    try { await vote(vault, backer1, 0, true); } catch { failed = true; }
+    assert.isTrue(failed, "release without the authority must fail");
+
+    // releasing vote with the WRONG co-signer → WrongReleaseAuthority
+    failed = false;
+    try { await vote(vault, backer1, 0, true, wrong); } catch { failed = true; }
+    assert.isTrue(failed, "release with a wrong authority must fail");
+
+    // vote is round-gated per backer — the failed txs never landed, so round 1 is
+    // still open; the properly co-signed vote releases the tranche
+    const before = await bal(founderAta);
+    await vote(vault, backer1, 0, true, authority);
+    assert.equal((await bal(founderAta)) - before, 80e6, "co-signed release paid the tranche");
+    const v: any = await (program.account as any).vault.fetch(vault);
+    assert.equal(v.milestones[0].status, 2, "m0 released");
+    assert.equal(v.milestones[1].status, 1, "m1 voting");
+
+    // a non-releasing vote on m1 needs NO co-signature (backer2 at 0 weight can't
+    // join — use the sole backer crossing the threshold as the only release; so
+    // instead prove the negative path: the AGAINST vote passes without authority)
+    // backer1 already voted m1? No — fresh milestone, fresh round.
+    await vote(vault, backer1, 1, false); // 100% AGAINST → rejects, no transfer, no co-sign needed
+    const v2: any = await (program.account as any).vault.fetch(vault);
+    assert.equal(v2.milestones[1].status, 3, "m1 rejected without any co-signature");
   });
 
   it("guards: over-ask, double vote, non-backer vote", async () => {

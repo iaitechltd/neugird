@@ -197,7 +197,7 @@ export function enrich(product: Product) {
 }
 
 /** Read model: a product plus its home Grid, the build it came from, and its
- *  TradeX state (the market if tokenized, else launch eligibility — a shipped
+ *  Trade state (the market if tokenized, else launch eligibility — a shipped
  *  product can tokenize via the GridX path). */
 export function productView(id: string) {
   const product = getProduct(id);

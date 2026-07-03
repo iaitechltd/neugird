@@ -11,7 +11,7 @@
  *   x402 protocol against a Coinbase-CDP-style facilitator. See ./solana.
  */
 
-import type { Attestation, ContributorSplit, Proposal, Agreement as AgreementT } from "../types";
+import type { Attestation, Build, ContributorSplit, Proposal, Agreement as AgreementT } from "../types";
 import { solanaSas, solanaX402, USDC_MINT_MAINNET } from "./solana";
 import * as vaultSolana from "./vaultSolana";
 import * as gridTokenImpl from "./gridToken";
@@ -20,6 +20,7 @@ import * as governanceSolana from "./governanceSolana";
 import * as splitsSolana from "./splitsSolana";
 import * as proofsSolana from "./proofsSolana";
 import * as mandateSolana from "./mandateSolana";
+import * as icpHosting from "./icpHosting";
 
 /* -------------------------------- SAS seam ------------------------------------ */
 
@@ -135,7 +136,7 @@ export function x402PayConfig(): { payTo: string; asset: string; network: string
 }
 
 /* ------------------------------ Milestone vault ------------------------------- */
-// GenesisX escrow mirrored onto the real milestone_vault program (contracts/).
+// Fund escrow mirrored onto the real milestone_vault program (contracts/).
 // Fire-and-forget from genesis.ts: every call is guarded — a chain failure logs
 // and the Stage-1 ledger stands. Inactive unless NEUGRID_VAULT_PROGRAM_ID (+ the
 // solana chain mode + RPC + mint + payer secret) is configured.
@@ -218,4 +219,14 @@ export const MandateChain = {
   spend: (mandate_id: string, amountUsd: number) =>
     guard("mandate.spend", () => mandateSolana.mirrorSpend(mandate_id, amountUsd)),
   kill: (mandate_id: string) => guard("mandate.kill", () => mandateSolana.mirrorKill(mandate_id)),
+};
+
+/* -------------------------------- ICP hosting ---------------------------------- */
+// A3 — /d/ deployments mirrored onto the ICP asset canister (the unstoppable URL).
+// Guarded fire-and-forget from echo.ts deployBuild. Gated on its OWN env (an ICP
+// rail, not a NEUGRID_CHAIN_MODE one); fills `deployment.icp` on success.
+
+export const IcpHosting = {
+  configured: (): boolean => !!icpHosting.icpHostingConfig(),
+  deploy: (build: Build) => guard("icpHosting.deploy", () => icpHosting.mirrorDeploy(build)),
 };

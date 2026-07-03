@@ -20,7 +20,7 @@ export function listGrids(opts?: { visibility?: Visibility }): Grid[] {
 
 /** Total value flowing through a Grid's activity — campaign reward pools + agent
  *  earnings (its own + its SubGrids') + delivered (paid) job rewards (which include
- *  CampaignX promo postings). A gross activity-value headline, not net profit. */
+ *  Campaign promo postings). A gross activity-value headline, not net profit. */
 export function gridEarnings(grid_id: string): number {
   const subs = db.subgrids.filter((s) => s.parent_grid_id === grid_id);
   const subIds = new Set(subs.map((s) => s.subgrid_id));
@@ -187,7 +187,7 @@ export function createGrid(input: CreateGridInput): Grid {
     category: input.category,
     description: input.description,
     visual_theme: { accent: input.accent ?? "#00ff88", glyph: "▦" },
-    modules_enabled: input.modules_enabled ?? ["Grid", "SubGrid", "CampaignX", "TalenX", "Pulse"],
+    modules_enabled: input.modules_enabled ?? ["Grid", "SubGrid", "Campaign", "Talent", "Pulse"],
     visibility: input.visibility ?? "public",
     treasury_config: { enabled: false },
     pulse_score: 0,

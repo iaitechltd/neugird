@@ -15,7 +15,7 @@ const str = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.
 
 export interface ListingInput { headline?: unknown; rate_usdc?: unknown; available?: unknown; skills?: unknown }
 
-/** Self-serve TalenX listing: headline · rate · availability (+ replaces skills when given). */
+/** Self-serve Talent listing: headline · rate · availability (+ replaces skills when given). */
 export function updateListing(user_id: string, input: ListingInput): { user?: UserProfile; error?: string } {
   const user = getUser(user_id);
   if (!user) return { error: "user_not_found" };

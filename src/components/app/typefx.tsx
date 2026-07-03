@@ -118,11 +118,11 @@ export function Typewriter({
 /* -------------------------------- Cursor ------------------------------- */
 
 export function Cursor({ className = "" }: { className?: string }) {
+  // thin flat terminal caret (2026-07-03: thinner + no glow per founder)
   return (
     <span
       aria-hidden
-      className={`ml-0.5 inline-block h-[1em] w-[0.5ch] translate-y-[0.1em] bg-neon align-baseline animate-blink ${className}`}
-      style={{ boxShadow: "0 0 8px var(--ng-neon)" }}
+      className={`ml-0.5 inline-block h-[1em] w-[2px] translate-y-[0.1em] bg-neon align-baseline animate-blink ${className}`}
     />
   );
 }

@@ -23,6 +23,13 @@ Design notes:
 - Classic SPL token (USDC). Max 8 milestones. No vote changes within a round.
 - `last_activity` moves on funding, release, rejection, and reopen — the stall
   clock measures true inactivity, mirroring the platform's rule.
+- **Release authority (A3, 2026-07-03):** `create_vault` optionally names a
+  `release_authority` pubkey that must CO-SIGN any vote that executes a release
+  (non-releasing votes stay free). NeuGrid wires the `icp/neugrid_signer`
+  canister's threshold-Ed25519 address here — no tranche can leave escrow
+  without the ICP canister's policy approving the exact transaction shape.
+  ⚠️ Devnet still runs the pre-authority binary: upgrading needs ~2 SOL buffer
+  (303KB); pre-upgrade vault accounts (old layout) won't deserialize after.
 
 ## Workflow
 

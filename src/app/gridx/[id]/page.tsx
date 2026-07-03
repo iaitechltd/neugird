@@ -11,7 +11,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import NeuGridDock from "@/components/app/NeuGridDock";
 import NeuHeader from "@/components/app/NeuHeader";
 import {
   Mark, Bracket,
@@ -133,7 +132,6 @@ export default function GridXDetail() {
             </div>
           )}
         </div>
-        <NeuGridDock />
       </div>
     );
   }
@@ -200,9 +198,9 @@ export default function GridXDetail() {
             {market ? (
               <Link href={`/market/${market.market_id}`} className="ng-btn ng-btn-cyan ng-btn--block mt-2"><IconBolt className="h-3.5 w-3.5" /> Trading on {market.stage} →</Link>
             ) : grid && launch ? (
-              <Link href={`/grid/${grid.slug}`} className="ng-btn ng-btn-cyan ng-btn--block mt-2"><IconRocket className="h-3.5 w-3.5" /> Tokenize on TradeX</Link>
+              <Link href={`/grid/${grid.slug}`} className="ng-btn ng-btn-cyan ng-btn--block mt-2"><IconRocket className="h-3.5 w-3.5" /> Tokenize on Trade</Link>
             ) : null}
-            {build?.proposal_id && <Link href="/genesis/board" className="ng-btn ng-btn--block mt-2"><IconCoins className="h-3.5 w-3.5" /> View on GenesisX</Link>}
+            {build?.proposal_id && <Link href="/genesis/board" className="ng-btn ng-btn--block mt-2"><IconCoins className="h-3.5 w-3.5" /> View on Fund</Link>}
           </div>
         </OrbPanel>
 
@@ -310,7 +308,7 @@ export default function GridXDetail() {
                 <div className="ng-label mb-2 !text-ink-dim">Provenance</div>
                 {owner && <Link href={`/talent/${owner.id}`} className="flex items-center justify-between text-[12px] text-ink transition hover:text-neon">Builder <span className="flex items-center gap-1 text-neon">{owner.username} · {owner.reputation} rep<IconArrowRight className="h-3 w-3" /></span></Link>}
                 {grid && <Link href={`/grid/${grid.slug}`} className="mt-2 flex items-center justify-between text-[12px] text-ink transition hover:text-neon">Home Grid <span className="flex items-center gap-1 text-neon">{grid.name}<IconArrowRight className="h-3 w-3" /></span></Link>}
-                {build?.proposal_id ? <Link href="/genesis/board" className="mt-2 flex items-center gap-1 text-[11px] text-neon transition hover:text-glow"><IconCoins className="h-3 w-3" />Raising on GenesisX</Link> : <div className="mt-2 text-[11px] text-ink-faint">Not raising</div>}
+                {build?.proposal_id ? <Link href="/genesis/board" className="mt-2 flex items-center gap-1 text-[11px] text-neon transition hover:text-glow"><IconCoins className="h-3 w-3" />Raising on Fund</Link> : <div className="mt-2 text-[11px] text-ink-faint">Not raising</div>}
                 {market ? <Link href={`/market/${market.market_id}`} className="mt-2 flex items-center gap-1 text-[11px] text-cyan"><IconBolt className="h-3 w-3" />Tokenized — trading on {market.stage}</Link> : <div className="mt-1 text-[11px] text-ink-faint">Not tokenized yet</div>}
               </div>
             </div>
@@ -369,7 +367,6 @@ export default function GridXDetail() {
       </div>
 
       {toast && <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded border border-neon/40 bg-black/90 px-4 py-2.5 text-sm text-neon shadow-[0_0_20px_rgba(0,255,0,0.3)]">{toast}</div>}
-      <NeuGridDock />
     </div>
   );
 }

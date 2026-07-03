@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Markets (TradeX) — gated token markets from real data (GET /api/markets).
+ * Markets (Trade) — gated token markets from real data (GET /api/markets).
  * Masonry of vertical market tiles. Markets are EARNED: a token only appears
  * here after its project delivered and launched on Alpha.
  */
@@ -9,15 +9,16 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import NeuHeader from "@/components/app/NeuHeader";
-import NeuGridDock from "@/components/app/NeuGridDock";
 import OrbPanel from "@/components/app/OrbPanel";
 import MarketTicker from "@/components/app/MarketTicker";
-import { Panel, Mark, DataRow, IconChart, IconActivity } from "@/components/app/ui";
-import { Area, Gauge } from "@/components/app/charts";
+import { Panel, Mark, DataRow, IconChart, IconActivity , kpiColor } from "@/components/app/ui";
+import { PanelChart } from "@/components/app/terminal";
+import { Area, Gauge, Bars, Ring, LineMulti } from "@/components/app/charts";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import type { Market, MarketStage } from "@/lib/types";
 
-type Mkt = Market & { grid_name: string; grid_slug: string; marketcap?: number; cap_target?: number; cap_pct?: number; vol24h?: number; volTotal?: number; series?: number[] };
+type Credibility = { founder: { id: string; username: string; reputation: number }; credentials: number; audit_passed: boolean; origin: string } | null;
+type Mkt = Market & { grid_name: string; grid_slug: string; marketcap?: number; cap_target?: number; cap_pct?: number; vol24h?: number; volTotal?: number; series?: number[]; credibility?: Credibility };
 const STAGES: (MarketStage | "all")[] = ["all", "alpha", "spot", "futures"];
 
 const money = (n: number) => (n >= 1e6 ? `$${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${Math.round(n)}`);
@@ -54,6 +55,18 @@ function MarketCard({ m }: { m: Mkt }) {
         </div>
         <Mark plain accent={ascended ? "neon" : "amber"} className="!text-[9px] shrink-0">{ascended ? "Ascended" : "Ascending"}</Mark>
       </div>
+      {/* credibility chip — WHO earned this market (the thesis, at discovery time).
+          No "audited" badge: every launched market passed the gate; funded is the differentiator. */}
+      {m.credibility?.founder && (
+        <div className="mt-2 flex items-center gap-1.5 rounded border border-line bg-neon/[0.03] px-2 py-1.5 text-[10px]">
+          <span className="max-w-[45%] shrink-0 truncate font-bold text-ink">{m.credibility.founder.username}</span>
+          <span className="min-w-0 flex-1 truncate text-right">
+            <span className="text-neon tnum">{m.credibility.founder.reputation.toLocaleString()} rep</span>
+            <span className="text-ink-dim tnum"> · {m.credibility.credentials}✓</span>
+            {m.credibility.origin === "proposal" && <span className="text-amber"> · funded</span>}
+          </span>
+        </div>
+      )}
       {/* ROI headline + witnessed arc */}
       <div className="mt-3 ng-stat__v !text-2xl tnum" style={{ color }}>{up ? "+" : ""}{roi.toFixed(2)}%</div>
       <div className="flex items-center justify-between text-[9px] uppercase tracking-wide text-ink-faint"><span>ROI</span><span>30D</span></div>
@@ -104,9 +117,17 @@ export default function MarketsPage() {
     ["Futures", list.filter((m) => m.stage === "futures").length],
   ];
 
+  // side-rail chart data (all guarded; rendered only when list.length > 0)
+  const vols = list.map((m) => m.vol24h ?? 0);                                    // LEFT bars: 24h volume per market
+  const futuresCount = list.filter((m) => m.stage === "futures").length;
+  const futuresPct = list.length ? Math.round((futuresCount / list.length) * 100) : 0; // LEFT ring: % ascended to futures
+  const priceSeries = list.map((m) => m.series ?? []).filter((s) => s.length > 1).slice(0, 3); // RIGHT lines: top markets' closes
+  const nextCapPct = list.filter((m) => m.stage !== "futures").reduce((mx, m) => Math.max(mx, m.cap_pct ?? 0), 0); // RIGHT gauge: leader's cap %
+  const nextCapRounded = Math.min(100, Math.round(nextCapPct));
+
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
-      <NeuHeader title="TradeX" collapsed={!lOpen && !rOpen} onToggleCollapse={() => { const v = lOpen || rOpen; setLOpen(!v); setROpen(!v); }} />
+      <NeuHeader title="Trade" collapsed={!lOpen && !rOpen} onToggleCollapse={() => { const v = lOpen || rOpen; setLOpen(!v); setROpen(!v); }} />
       <MarketTicker />
       <div className="flex flex-col gap-3 px-3 py-3 lg:min-h-0 lg:flex-1 lg:flex-row">
         {/* LEFT */}
@@ -117,6 +138,19 @@ export default function MarketsPage() {
               <DataRow k="Total Liquidity" v={`$${Math.round(totals.liq)}`} />
               <DataRow k="Holders" v={totals.holders} />
             </div>
+
+            <PanelChart title="Volume · 24h by market" read={`${list.length} mkts`}>
+              {list.length > 0
+                ? <Bars data={vols} h={46} />
+                : <p className="py-2 text-[11px] text-ink-dim">No markets yet.</p>}
+            </PanelChart>
+
+            <PanelChart title="Ascension · futures reached" read={`${futuresCount}/${list.length}`}>
+              {list.length > 0
+                ? <div className="flex items-center justify-center py-1"><Ring percent={futuresPct} label="futures" value={`${futuresPct}%`} size={86} stroke={6} /></div>
+                : <p className="py-2 text-[11px] text-ink-dim">No markets yet.</p>}
+            </PanelChart>
+
             <div className="ng-label mb-2 mt-4 !text-ink-dim">Stage</div>
             <div className="space-y-1">
               {STAGES.map((s) => (
@@ -132,7 +166,7 @@ export default function MarketsPage() {
         <main className="@container order-1 space-y-4 lg:order-2 lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
           <div className="flex items-end justify-between gap-4">
             <div>
-              <h1 className="ng-title text-2xl font-bold text-neon text-glow-soft"><Decrypt text="TradeX" /></h1>
+              <h1 className="ng-title text-2xl font-bold text-neon text-glow-soft"><Decrypt text="Trade" /></h1>
               <p className="mt-1 text-sm text-ink-dim">Markets you can&apos;t buy your way onto — only delivery graduates a project here.</p>
             </div>
             <Mark plain className="shrink-0 text-xs">{filtered.length} markets</Mark>
@@ -153,9 +187,9 @@ export default function MarketsPage() {
 
           {/* page KPIs — 3 by default, 4/5 as the side panels collapse */}
           <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
-            {kpis.slice(0, 3 + closed).map(([k, v, unit]) => (
+            {kpis.slice(0, 3 + closed).map(([k, v, unit], i) => (
               <div key={k} className="ng-card p-4 text-center">
-                <div className="ng-stat__v">{unit === "$" && <span className="text-cyan">$</span>}<CountUp key={v} value={v} /></div>
+                <div className="ng-stat__v" style={{ color: kpiColor(i) }}>{unit === "$" && <span className="opacity-60">$</span>}<CountUp key={v} value={v} /></div>
                 <div className="ng-stat__k">{k}</div>
               </div>
             ))}
@@ -181,6 +215,18 @@ export default function MarketsPage() {
               <li className="flex gap-2"><Mark plain accent="neon" className="!text-[9px]">spot</Mark> unlocked by real traction (holders)</li>
               <li className="flex gap-2"><Mark plain accent="cyan" className="!text-[9px]">futures</Mark> deep liquidity + licensing, last</li>
             </ol>
+
+            <PanelChart title="Price · top markets" read={`${priceSeries.length} series`}>
+              {priceSeries.length > 0
+                ? <LineMulti series={priceSeries} gid="mk-price" h={48} />
+                : <p className="py-2 text-[11px] text-ink-dim">No price history yet.</p>}
+            </PanelChart>
+
+            <PanelChart title="Next graduation · cap %" read={`${nextCapRounded}%`}>
+              {list.filter((m) => m.stage !== "futures").length > 0
+                ? <div className="flex items-center justify-center py-1"><Gauge percent={nextCapRounded} w={116} color="var(--ng-cyan)" /></div>
+                : <p className="py-2 text-[11px] text-ink-dim">All markets ascended.</p>}
+            </PanelChart>
 
             {/* live ranking — real cap progress toward each market's next stage */}
             <div className="ng-label mb-2 mt-5 !text-ink-dim">Next to graduate</div>
@@ -209,11 +255,10 @@ export default function MarketsPage() {
               )}
             </div>
 
-            <p className="mt-4 text-[10px] leading-relaxed text-ink-faint">A token reaches TradeX only after its project delivered its milestones — markets are earned, not bought.</p>
+            <p className="mt-4 text-[10px] leading-relaxed text-ink-faint">A token reaches Trade only after its project delivered its milestones — markets are earned, not bought.</p>
           </Panel>
         </OrbPanel>
       </div>
-      <NeuGridDock />
     </div>
   );
 }

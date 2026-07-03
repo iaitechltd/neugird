@@ -4,6 +4,16 @@
       "candid": "src/neugrid_signer/neugrid_signer.did",
       "package": "neugrid_signer",
       "type": "rust"
+    },
+    "neugrid_hosting": {
+      "type": "assets",
+      "source": ["assets-seed"],
+      "build": []
+    },
+    "neugrid_cron": {
+      "candid": "src/neugrid_cron/neugrid_cron.did",
+      "package": "neugrid_cron",
+      "type": "rust"
     }
   },
   "defaults": {

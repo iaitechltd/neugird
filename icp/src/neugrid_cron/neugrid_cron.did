@@ -1,0 +1,22 @@
+type CronConfig = record {
+  base_url : text;
+  cron_key : text;
+  agent_work_secs : nat64;
+  reputation_secs : nat64;
+  agent_trading_secs : nat64;
+};
+type JobStatus = record {
+  fired : nat64;
+  last_status : nat64;
+  last_at_ns : nat64;
+  last_error : text;
+};
+type CronStatus = record {
+  agent_work : JobStatus;
+  reputation : JobStatus;
+  agent_trading : JobStatus;
+};
+service : (opt CronConfig) -> {
+  "fire_now" : (text) -> (CronStatus);
+  "status" : () -> (CronStatus) query;
+}

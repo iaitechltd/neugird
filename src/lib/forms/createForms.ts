@@ -28,7 +28,7 @@ export type FormConfig = {
   icon: string;
   submit: string;
   fields: Field[];
-  wizard?: string[]; // step labels, for multi-step forms (GenesisX)
+  wizard?: string[]; // step labels, for multi-step forms (Fund)
 };
 
 export const CREATE_FORMS: Record<string, FormConfig> = {
@@ -93,7 +93,7 @@ export const CREATE_FORMS: Record<string, FormConfig> = {
   },
   campaign: {
     key: "campaign",
-    title: "Post Promo Job (CampaignX)",
+    title: "Post Promo Job (Campaign)",
     subtitle: "Hire humans or AI agents for promotional work — reward locks in escrow when you pick",
     icon: "◇",
     submit: "Post Promo Job",
@@ -107,7 +107,7 @@ export const CREATE_FORMS: Record<string, FormConfig> = {
   },
   funding: {
     key: "funding",
-    title: "GenesisX – Create Project",
+    title: "Fund – Create Project",
     subtitle: "Every idea on NeuGrid begins as a project",
     icon: "◉",
     submit: "Next",
@@ -129,7 +129,7 @@ export const CREATE_FORMS: Record<string, FormConfig> = {
   },
   talent: {
     key: "talent",
-    title: "Create Talent Listing (TalenX)",
+    title: "Create Talent Listing (Talent)",
     subtitle: "Offer your skills and services",
     icon: "◈",
     submit: "Create Listing",
@@ -198,9 +198,9 @@ export const CREATE_MENU: { section: string; items: MenuItem[] }[] = [
   {
     section: "Professional",
     items: [
-      { key: "talent", label: "Talent Listing (TalenX)", desc: "Offer your skills and services", icon: "◈" },
-      { key: "campaign", label: "Promo Job (CampaignX)", desc: "Hire humans or AI agents for promotional work", icon: "◆" },
-      { key: "funding", label: "Project Funding (GenesisX)", desc: "Start funding round for your project", icon: "◉" },
+      { key: "talent", label: "Talent Listing (Talent)", desc: "Offer your skills and services", icon: "◈" },
+      { key: "campaign", label: "Promo Job (Campaign)", desc: "Hire humans or AI agents for promotional work", icon: "◆" },
+      { key: "funding", label: "Project Funding (Fund)", desc: "Start funding round for your project", icon: "◉" },
     ],
   },
 ];

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * CampaignX board — the promotional-work marketplace (GET/POST /api/campaignx).
+ * Campaign board — the promotional-work marketplace (GET/POST /api/campaignx).
  * A project posts promotional Jobs (context "campaign_task") from a Grid it owns,
  * declaring who it wants (humans / AI agents / either) + required skills. Workers
  * (human or agent) APPLY with a pitch; the poster REVIEWS + SELECTS one, which LOCKS
@@ -11,10 +11,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import NeuHeader from "@/components/app/NeuHeader";
-import NeuGridDock from "@/components/app/NeuGridDock";
 import OrbPanel from "@/components/app/OrbPanel";
-import { Panel, Tag, Mark, DataRow, IconSparkle, IconActivity, IconUser } from "@/components/app/ui";
+import { Panel, Tag, Mark, DataRow, IconSparkle, IconActivity, IconUser , kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
+import { PanelChart } from "@/components/app/terminal";
+import { Bars, Ring, Area } from "@/components/app/charts";
 import type { Job } from "@/lib/types";
 
 type J = Job & { project_name: string; project_slug: string; applicant_count: number; applied: boolean; assignee_name: string | null };
@@ -49,11 +50,13 @@ export default function CampaignXBoard() {
   const closed = (lOpen ? 0 : 1) + (rOpen ? 0 : 1);
   const notify = (m: string) => { setToast(m); window.setTimeout(() => setToast(null), 2600); };
 
-  async function reload() {
-    const r = await fetch("/api/campaignx").then((x) => x.json()).catch(() => null);
-    if (r) { setJobs(r.jobs ?? []); setMeId(r.me?.id ?? null); setMyGrids(r.my_grids ?? []); setSuggested(r.suggested ?? []); }
+  function reload() {
+    // .then (not await) so setState is inside a callback — satisfies react-hooks/set-state-in-effect
+    return fetch("/api/campaignx").then((x) => x.json()).catch(() => null).then((r) => {
+      if (r) { setJobs(r.jobs ?? []); setMeId(r.me?.id ?? null); setMyGrids(r.my_grids ?? []); setSuggested(r.suggested ?? []); }
+    });
   }
-  useEffect(() => { reload(); const h = () => reload(); window.addEventListener("neugrid:refresh-me", h); return () => window.removeEventListener("neugrid:refresh-me", h); }, []);
+  useEffect(() => { void reload(); const h = () => { void reload(); }; window.addEventListener("neugrid:refresh-me", h); return () => window.removeEventListener("neugrid:refresh-me", h); }, []);
 
   const list = useMemo(() => jobs ?? [], [jobs]);
   const filtered = list.filter((j) =>
@@ -71,6 +74,23 @@ export default function CampaignXBoard() {
     ["Applications", list.reduce((s, j) => s + (j.applicant_count || 0), 0)],
     ["Delivered", list.filter((j) => j.status === "paid").length],
   ], [list, totals]);
+
+  // ── side-rail chart data (derived, SSR-safe) ─────────────────────────
+  const totalCount = list.length;
+  const rewardBars = list.map((j) => j.reward_amount ?? 0);                        // LEFT · Bars — reward per campaign
+  const activeCount = useMemo(() => list.filter((j) => j.status === "open").length, [list]); // LEFT · Ring — active/open share
+  const activePct = totalCount ? Math.round((activeCount / totalCount) * 100) : 0;
+  const applicantBars = list.map((j) => j.applicant_count ?? 0);                   // RIGHT · Bars — applicants per campaign
+  const hasApplicants = applicantBars.some((n) => n > 0);
+  const skillDemand = useMemo(() => {                                              // RIGHT · Bars fallback — count per top skill
+    const tally: Record<string, number> = {};
+    for (const j of list) for (const s of (j.required_skills ?? [])) tally[s] = (tally[s] ?? 0) + 1;
+    return Object.entries(tally).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  }, [list]);
+  const rewardPool = useMemo(() => {                                               // RIGHT · Area — cumulative reward pool
+    const sorted = list.map((j) => j.reward_amount ?? 0).sort((a, b) => a - b);
+    return sorted.reduce<number[]>((acc, v) => [...acc, (acc[acc.length - 1] ?? 0) + v], []);
+  }, [list]);
 
   function addChip(role: string) {
     const cur = skills.split(",").map((s) => s.trim()).filter(Boolean);
@@ -147,15 +167,27 @@ export default function CampaignXBoard() {
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
-      <NeuHeader title="CampaignX" collapsed={!lOpen && !rOpen} onToggleCollapse={() => { const v = lOpen || rOpen; setLOpen(!v); setROpen(!v); }} />
+      <NeuHeader title="Campaign" collapsed={!lOpen && !rOpen} onToggleCollapse={() => { const v = lOpen || rOpen; setLOpen(!v); setROpen(!v); }} />
       <div className="flex flex-col gap-3 px-3 py-3 lg:min-h-0 lg:flex-1 lg:flex-row">
         {/* LEFT */}
-        <OrbPanel side="left" label="CampaignX" open={lOpen} onToggle={setLOpen} widthClass="lg:w-[300px] xl:w-[320px]">
+        <OrbPanel side="left" label="Campaign" open={lOpen} onToggle={setLOpen} widthClass="lg:w-[300px] xl:w-[320px]">
           <Panel scroll title="CAMPAIGNX" icon={<IconSparkle className="h-4 w-4" />} bodyClass="p-3.5">
             <div className="divide-y divide-line">
               <DataRow k="Open Postings" v={totals.open} accent="neon" />
               <DataRow k="Reward Offered" v={`${totals.reward} USDC`} />
             </div>
+
+            <PanelChart title="Rewards · by campaign" read={`${totalCount} posts`}>
+              {rewardBars.length > 0
+                ? <Bars data={rewardBars} h={46} />
+                : <p className="py-3 text-center text-[10px] text-ink-faint">no campaigns yet</p>}
+            </PanelChart>
+            <PanelChart title="Pipeline · active share" read={`${activeCount}/${totalCount}`}>
+              {totalCount > 0
+                ? <div className="flex justify-center py-1"><Ring percent={activePct} label="active" size={80} stroke={6} /></div>
+                : <p className="py-3 text-center text-[10px] text-ink-faint">no campaigns yet</p>}
+            </PanelChart>
+
             <div className="ng-label mb-2 mt-4 !text-ink-dim">View</div>
             <div className="space-y-1">
               {([["open", "Open postings"], ["as_project", "My project’s posts"], ["all", "All"]] as [View, string][]).map(([v, label]) => (
@@ -172,7 +204,7 @@ export default function CampaignXBoard() {
         <main className="@container order-1 space-y-4 lg:order-2 lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
           <div className="flex items-end justify-between gap-4">
             <div>
-              <h1 className="ng-title text-2xl font-bold text-neon text-glow-soft"><Decrypt text="CampaignX" /></h1>
+              <h1 className="ng-title text-2xl font-bold text-neon text-glow-soft"><Decrypt text="Campaign" /></h1>
               <p className="mt-1 text-sm text-ink-dim">Projects post promotional work — hire humans or AI agents by skill. Apply, pick, escrow, deliver, pay.</p>
             </div>
             {myGrids.length > 0 && <button onClick={() => setCreating((c) => !c)} className="ng-btn ng-btn-primary shrink-0">{creating ? "Cancel" : "+ Post promo job"}</button>}
@@ -180,9 +212,9 @@ export default function CampaignXBoard() {
 
           {/* page KPIs — 3 by default, 4/5 as the side panels collapse */}
           <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
-            {kpis.slice(0, 3 + closed).map(([k, v, unit]) => (
+            {kpis.slice(0, 3 + closed).map(([k, v, unit], i) => (
               <div key={k} className="ng-card p-4 text-center">
-                <div className="ng-stat__v">{unit === "$" && <span className="text-cyan">$</span>}<CountUp key={v} value={v} /></div>
+                <div className="ng-stat__v" style={{ color: kpiColor(i) }}>{unit === "$" && <span className="opacity-60">$</span>}<CountUp key={v} value={v} /></div>
                 <div className="ng-stat__k">{k}</div>
               </div>
             ))}
@@ -346,7 +378,20 @@ export default function CampaignXBoard() {
         {/* RIGHT — Echo matchmaking + how it works */}
         <OrbPanel side="right" label="Echo match" open={rOpen} onToggle={setROpen}>
           <Panel scroll title="ECHO · SUGGESTED GRIDS" icon={<IconActivity className="h-4 w-4" />} bodyClass="p-3.5">
-            <p className="mb-3 text-[11px] text-ink-dim">Communities Echo would approach first, by audience size:</p>
+            <PanelChart title={hasApplicants ? "Applicants · by campaign" : "Demand · by skill"} read={hasApplicants ? `${totalCount} posts` : `top ${skillDemand.length}`} className="!mt-0">
+              {hasApplicants
+                ? <Bars data={applicantBars} h={46} />
+                : skillDemand.length > 0
+                  ? <Bars data={skillDemand.map(([, n]) => n)} h={46} />
+                  : <p className="py-3 text-center text-[10px] text-ink-faint">no applicants yet</p>}
+            </PanelChart>
+            <PanelChart title="Reward pool · cumulative" read={`${Math.round(rewardPool[rewardPool.length - 1] ?? 0)} USDC`}>
+              {rewardPool.length > 1
+                ? <Area data={rewardPool} gid="cx-pool" color="var(--ng-cyan)" h={48} />
+                : <p className="py-3 text-center text-[10px] text-ink-faint">not enough campaigns</p>}
+            </PanelChart>
+
+            <p className="mb-3 mt-4 text-[11px] text-ink-dim">Communities Echo would approach first, by audience size:</p>
             <div className="space-y-2">
               {suggested.map((g, i) => (
                 <div key={g.grid_id} className="ng-card flex items-center gap-2.5 p-2.5">
@@ -362,7 +407,6 @@ export default function CampaignXBoard() {
         </OrbPanel>
       </div>
       {toast && <div className="fixed bottom-24 left-1/2 z-[80] -translate-x-1/2 rounded border border-neon/40 bg-black/90 px-4 py-2.5 text-sm text-neon" style={{ boxShadow: "0 0 20px rgba(0,255,0,0.3)" }}>{toast}</div>}
-      <NeuGridDock />
     </div>
   );
 }

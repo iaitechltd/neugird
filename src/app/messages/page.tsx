@@ -10,7 +10,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import NeuHeader from "@/components/app/NeuHeader";
-import NeuGridDock from "@/components/app/NeuGridDock";
 import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, Mark, Tag, DataRow, IconMessage, IconBot, IconUser, IconCoins, IconArrowRight, IconCheck, IconClose, IconPlus } from "@/components/app/ui";
 import { CountUp } from "@/components/app/typefx";
@@ -42,7 +41,16 @@ export default function MessagesPage() {
   const [rOpen, setROpen] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const loadConvos = () => fetch("/api/messages").then((r) => r.json()).then((d) => { setConvos(d.conversations ?? []); setDirectory(d.directory ?? []); }).catch(() => {});
+  const loadConvos = () => fetch("/api/messages").then((r) => r.json()).then((d) => {
+    const list = d.conversations ?? [];
+    setConvos(list);
+    setDirectory(d.directory ?? []);
+    // default to the LATEST conversation on first load (unless a ?to= deep-link
+    // is opening a specific one). `cur ?? …` only fills the initial null, so
+    // polling never yanks the user off the thread they're reading.
+    const deepLink = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("to");
+    if (!deepLink) setActiveId((cur) => cur ?? (list[0]?.conversation_id ?? null));
+  }).catch(() => {});
   useEffect(() => {
     loadConvos();
     const iv = window.setInterval(loadConvos, 5000);
@@ -305,7 +313,6 @@ export default function MessagesPage() {
           </Panel>
         </OrbPanel>
       </div>
-      <NeuGridDock />
     </div>
   );
 }

@@ -32,6 +32,39 @@ platform" map to bring to DFINITY.
   (every Echo build gets an unstoppable URL — a killer demo), the NeuGrid
   frontend itself on ICP, ICP timers replacing Cloud Scheduler, phase-2
   treasury control via Chain Fusion.
+  - **`/d/` on ICP — ✅ BUILT (2026-07-03, local-replica-proven):** every Echo
+    deploy now mirrors its version-pinned snapshot onto the `neugrid_hosting`
+    asset canister (`icp/dfx.json`) at the same `/d/<slug>/` path — the
+    unstoppable second URL, shown in the Echo deploy UI ("ICP mirror").
+    Adapter `src/lib/chain/icpHosting.ts` (guarded fire-and-forget from
+    `Echo.deployBuild`, env-gated on `NEUGRID_ICP_HOSTING_CANISTER_ID` +
+    `NEUGRID_ICP_UPLOADER_SECRET`). E2E verified on the local replica: API
+    deploy → canister served the exact snapshot. **Mainnet flip = deploy the
+    canister with cycles (founder buys ICP) + point the two envs at icp0.io.**
+  - **Vault release authority — ✅ BUILT (2026-07-03, e2e-proven locally):**
+    the trustless-custody centerpiece (Rank 1 in docs/ICP_INTEGRATION.md).
+    `milestone_vault` gained an optional `release_authority` that must CO-SIGN
+    any releasing vote (12/12 suites); `neugrid_signer` gained the policy layer
+    (`set_vault_program` + `sign_vault_release` — parses the Solana message and
+    signs ONLY single-purpose `vote` transactions; `sign_solana_message` is now
+    controller-only); `vaultSolana.ts` names the canister's threshold-Ed25519
+    address on every new vault and routes `mirrorRelease` through the canister.
+    E2E on localnet + local replica: create→back→co-signed release paid the
+    tranche to the cent; a plain-transfer message was REJECTED by policy.
+    **Devnet flip:** faucet ~2 SOL to `Ea7JhE9s…` (the 303KB upgrade buffer;
+    CLI airdrop was rate-limited) → `anchor upgrade` → set
+    `NEUGRID_ICP_SIGNER_CANISTER_ID` (+ re-run `set_vault_program` after any
+    canister upgrade — thread_local state wipes). Pre-upgrade devnet vaults
+    (old account layout) will fail the guarded mirror; the ledger stands.
+  - **ICP timers → crons — ✅ BUILT (2026-07-03, proven locally):** the new
+    `neugrid_cron` canister replaces Cloud Scheduler — `ic_cdk_timers` fire
+    HTTPS outcalls (`is_replicated=false`, one request per tick) at
+    `/api/cron/{agent-work,reputation}` with the cron key; both returned 200
+    from the canister; the routes also dedupe on `x-ng-cron-tick` (defense in
+    depth). **Mainnet flip = deploy with cycles, init with the prod base_url +
+    cron key, then pause the Cloud Scheduler jobs.**
+    Still open in A3: nothing buildable — SSR/frontend-on-ICP stays killed by
+    the A1 research (pitch the hybrid). Remaining flips are cycles-gated.
 
 ## Workstream B — Product depth: TalentX + GridX (founder: "weak now")
 

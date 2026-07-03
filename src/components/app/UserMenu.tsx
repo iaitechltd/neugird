@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { IconCoins, IconUser, IconSettings, IconCheck, IconLock, IconConnect } from "./ui";
+import { IconCoins, IconUser, IconSettings, IconLock, IconConnect } from "./ui";
 
 type Me = { id: string; username: string; wallet: string | null; pulse: number } | null;
 
@@ -70,36 +70,38 @@ export default function UserMenu() {
   }
 
   return (
-    <div className="relative">
-      <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 rounded border border-neon/25 py-1 pl-1 pr-2.5 transition hover:border-neon/50 hover:bg-neon/5">
-        <span className="grid h-7 w-7 place-items-center rounded-full bg-neon text-xs font-bold text-bg">{initial}</span>
-        <span className="hidden text-sm text-neon sm:inline">{name}</span>
-        <IconCheck className="h-3.5 w-3.5 text-neon" />
+    <div className="relative font-mono">
+      <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 border border-neon/20 py-1 pl-1 pr-2 transition hover:border-neon/40">
+        <span className="grid h-6 w-6 place-items-center bg-neon text-[11px] font-bold text-black">{initial}</span>
+        <span className="hidden text-[12px] text-neon sm:inline">{name}</span>
+        <span className="text-[9px] text-ink-faint">▾</span>
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full z-50 mt-2 w-60 rounded-md border border-neon/30 bg-black/95 p-1.5 shadow-[0_0_24px_-6px_rgba(0,255,0,0.55)] backdrop-blur">
-            <div className="mb-1 flex items-center gap-2.5 border-b border-neon/15 px-2 py-2.5">
-              <span className="grid h-9 w-9 place-items-center rounded-full bg-neon text-sm font-bold text-bg">{initial}</span>
+          <div className="absolute right-0 top-full z-50 mt-2 w-60 border border-neon/16 bg-black">
+            <div className="flex items-center gap-2.5 border-b border-neon/10 px-3 py-2.5">
+              <span className="grid h-8 w-8 place-items-center bg-neon text-[13px] font-bold text-black">{initial}</span>
               <div className="min-w-0">
-                <div className="flex items-center gap-1 text-sm font-semibold text-neon">{name} <IconCheck className="h-3 w-3" /></div>
-                <div className="truncate text-[10px] text-ink-dim">{handle} · {me?.pulse ?? 0} Pulse</div>
+                <div className="truncate text-[13px] font-semibold text-neon">{name}</div>
+                <div className="truncate text-[10px] text-ink-dim">{handle} · {me?.pulse ?? 0} pulse</div>
               </div>
             </div>
-            {ITEMS.map(([g, label, href]) => (
-              <Link key={label} href={href} onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded px-2.5 py-2 text-[13px] text-ink-dim transition hover:bg-neon/10 hover:text-neon">
-                <span className="grid w-4 place-items-center text-neon">{g}</span>{label}
-              </Link>
-            ))}
-            <div className="my-1 border-t border-neon/15" />
-            <button onClick={connect} className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-[13px] text-ink-dim transition hover:bg-neon/10 hover:text-neon">
-              <span className="grid w-4 place-items-center text-neon"><IconConnect className="h-4 w-4" /></span>Connect Wallet
-            </button>
-            <button onClick={logout} className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-[13px] text-ink-dim transition hover:bg-danger/10 hover:text-danger">
-              <IconLock className="h-4 w-4" />Sign out
-            </button>
-            {msg && <div className="px-2.5 py-1.5 text-[10px] text-ink-dim">{msg}</div>}
+            <div className="py-1">
+              {ITEMS.map(([g, label, href]) => (
+                <Link key={label} href={href} onClick={() => setOpen(false)} className="thl flex items-center gap-2.5 px-3 py-1.5 text-[12px] text-ink">
+                  <span className="grid w-4 place-items-center text-neon">{g}</span>{label}
+                </Link>
+              ))}
+              <div className="my-1 border-t border-neon/[0.07]" />
+              <button onClick={connect} className="thl flex w-full items-center gap-2.5 px-3 py-1.5 text-[12px] text-ink">
+                <span className="grid w-4 place-items-center text-neon"><IconConnect className="h-4 w-4" /></span>connect wallet
+              </button>
+              <button onClick={logout} className="flex w-full items-center gap-2.5 px-3 py-1.5 text-[12px] text-danger transition hover:bg-danger hover:text-black">
+                <span className="grid w-4 place-items-center"><IconLock className="h-4 w-4" /></span>sign out
+              </button>
+              {msg && <div className="px-3 py-1.5 text-[10px] text-ink-dim">{"// "}{msg}</div>}
+            </div>
           </div>
         </>
       )}

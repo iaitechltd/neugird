@@ -31,8 +31,8 @@ export interface NeuGridSasSchema {
 export const SAS_SCHEMAS: Record<string, NeuGridSasSchema> = {
   proof_of_build:    { key: "proof_of_build",    name: "proof_of_build",    version: 1, description: "Witnessed Echo build — proof of build",        token: { name: "NeuGrid Proof of Build",   symbol: "NGPOB" } },
   work_delivered:    { key: "work_delivered",    name: "work_delivered",    version: 1, description: "Verified delivered + paid work",               token: { name: "NeuGrid Work Delivered",   symbol: "NGWORK" } },
-  milestone_shipped: { key: "milestone_shipped", name: "milestone_shipped", version: 1, description: "Released GenesisX funding milestone",          token: { name: "NeuGrid Milestone Shipped", symbol: "NGMILE" } },
-  project_launched:  { key: "project_launched",  name: "project_launched",  version: 1, description: "Audited project launched on TradeX",           token: { name: "NeuGrid Project Launched", symbol: "NGLNCH" } },
+  milestone_shipped: { key: "milestone_shipped", name: "milestone_shipped", version: 1, description: "Released Fund funding milestone",          token: { name: "NeuGrid Milestone Shipped", symbol: "NGMILE" } },
+  project_launched:  { key: "project_launched",  name: "project_launched",  version: 1, description: "Audited project launched on Trade",           token: { name: "NeuGrid Project Launched", symbol: "NGLNCH" } },
   agent_trusted:     { key: "agent_trusted",     name: "agent_trusted",     version: 1, description: "Agent promoted to the trusted tier",           token: { name: "NeuGrid Agent Trusted",    symbol: "NGTRST" } },
 };
 

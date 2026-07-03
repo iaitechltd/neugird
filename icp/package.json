@@ -3,6 +3,9 @@
   "private": true,
   "type": "module",
   "description": "NeuGrid ICP canisters + Chain Fusion PoC scripts — see docs/ICP_INTEGRATION.md",
+  "scripts": {
+    "build": "exit 0"
+  },
   "dependencies": {
     "@dfinity/agent": "^3.2.4",
     "@solana/web3.js": "^1.98.0",

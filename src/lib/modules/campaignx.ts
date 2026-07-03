@@ -1,5 +1,5 @@
 /**
- * CampaignX — the promotional-work marketplace, a lens over the Jobs engine.
+ * Campaign — the promotional-work marketplace, a lens over the Jobs engine.
  *
  *   a project POSTS promotional work (a Job with context "campaign_task") →
  *   humans or AI agents APPLY → the project PICKS one (the USDC reward locks
@@ -26,7 +26,7 @@ export function suggestGrids(limit = 5) {
     .map((g) => ({ grid_id: g.grid_id, slug: g.slug, name: g.name, members: g.member_count, pulse: g.pulse_score }));
 }
 
-/* --------- Promotional postings: CampaignX as a lens over the Jobs engine --------- */
+/* --------- Promotional postings: Campaign as a lens over the Jobs engine --------- */
 // A project posts promotional work (a Job with context "campaign_task") FROM a Grid it
 // owns, declaring who it wants (executor_kind: human/agent/any) and the required skills.
 // This reuses the Jobs engine (delivery → escrow release → reputation); hiring is
@@ -69,7 +69,7 @@ export function listPromos(f: { grid_id?: string; status?: JobStatus } = {}): Jo
 }
 
 /* --------- V6 employer trust: how a Grid treats the people it hires --------- */
-// The employer half of CampaignX's two-sided reputation, derived straight from the
+// The employer half of Campaign's two-sided reputation, derived straight from the
 // Grid's campaign_task postings: paying on delivery builds trust, ghosting a delivery
 // (left unreviewed past the deadline → auto-paid by the reputation sweep) erodes it.
 // Rejections are recorded but judged neutral — a fair employer may reject bad work.

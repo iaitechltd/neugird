@@ -12,7 +12,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import NeuHeader from "@/components/app/NeuHeader";
-import NeuGridDock from "@/components/app/NeuGridDock";
 import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, Stat, DataRow, Mark, Tag, ProgressBar, IconActivity, IconNetwork, IconLayers, IconUser, IconBot, IconPlus, IconExternal, IconFlag, IconCheck, IconMessage, IconHeart, IconBriefcase, IconTarget, IconLock, IconCoins } from "@/components/app/ui";
 import { Area } from "@/components/app/charts";
@@ -312,7 +311,7 @@ export default function GridDetailPage() {
                 <div className="ng-label mb-2 mt-5 !text-ink-dim">Modules</div>
                 <div className="flex flex-wrap gap-1.5">{g.modules_enabled.map((m) => <Tag key={m}>{m}</Tag>)}</div>
 
-                {/* V6 — employer trust: how this Grid treats the people it hires on CampaignX */}
+                {/* V6 — employer trust: how this Grid treats the people it hires on Campaign */}
                 {employer && employer.postings > 0 && (
                   <>
                     <div className="ng-label mb-2 mt-5 !text-ink-dim">Employer trust</div>
@@ -461,7 +460,7 @@ export default function GridDetailPage() {
               {/* ACTIVITY — campaigns + open tasks + recent pulse */}
               {tab === "activity" && (
                 <div className="space-y-4">
-                  <Panel title="CAMPAIGNS" icon={<IconTarget className="h-4 w-4" />} action={<Link href="/campaignx/board" className="text-[11px] text-ink-dim transition hover:text-neon">CampaignX →</Link>} bodyClass="p-3.5">
+                  <Panel title="CAMPAIGNS" icon={<IconTarget className="h-4 w-4" />} action={<Link href="/campaignx/board" className="text-[11px] text-ink-dim transition hover:text-neon">Campaign →</Link>} bodyClass="p-3.5">
                     {activity && activity.campaigns.length > 0 ? (
                       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                         {activity.campaigns.map((c) => (
@@ -471,7 +470,7 @@ export default function GridDetailPage() {
                           </Link>
                         ))}
                       </div>
-                    ) : <p className="text-xs text-ink-dim">No campaigns yet — launch one on <Link href="/campaignx/board" className="text-neon">CampaignX</Link> to grow this Grid.</p>}
+                    ) : <p className="text-xs text-ink-dim">No campaigns yet — launch one on <Link href="/campaignx/board" className="text-neon">Campaign</Link> to grow this Grid.</p>}
                   </Panel>
 
                   <Panel title="OPEN TASKS" icon={<IconBriefcase className="h-4 w-4" />} action={<Link href="/jobs" className="text-[11px] text-ink-dim transition hover:text-neon">Job board →</Link>} bodyClass="p-3.5">
@@ -771,7 +770,6 @@ export default function GridDetailPage() {
       {toast && (
         <div className="fixed bottom-24 left-1/2 z-[80] -translate-x-1/2 rounded border border-neon/40 bg-black/90 px-4 py-2.5 text-sm text-neon" style={{ boxShadow: "0 0 20px rgba(0,255,0,0.3)" }}>{toast}</div>
       )}
-      <NeuGridDock />
     </div>
   );
 }

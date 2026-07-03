@@ -27,7 +27,7 @@ export async function GET(request: Request) {
   for (const g of db.grids) push("grid", g.name, `${g.grid_type ?? "community"} · ${g.member_count} members`, `/grid/${g.slug}`, g.name, g.slug, g.category);
   for (const u of db.users) push("person", u.username, (u.skills ?? []).slice(0, 3).join(" · ") || "builder", `/talent/${u.id}`, u.username, ...(u.skills ?? []));
   for (const a of db.agents) push("agent", a.name, `${a.trust_tier ?? "trusted"} · ${(a.capabilities ?? []).slice(0, 2).join(", ") || "general"}`, `/agents/${a.agent_id}`, a.name, ...(a.capabilities ?? []));
-  for (const j of db.jobs) if (j.status === "open") push("job", j.title, `${j.reward_amount.toLocaleString()} ${j.reward_token ?? "Pulse"} · ${j.context === "campaign_task" ? "CampaignX" : "Jobs"}`, j.context === "campaign_task" ? "/campaignx/board" : "/jobs", j.title, ...(j.required_skills ?? []));
+  for (const j of db.jobs) if (j.status === "open") push("job", j.title, `${j.reward_amount.toLocaleString()} ${j.reward_token ?? "Pulse"} · ${j.context === "campaign_task" ? "Campaign" : "Jobs"}`, j.context === "campaign_task" ? "/campaignx/board" : "/jobs", j.title, ...(j.required_skills ?? []));
   for (const m of db.markets) push("market", m.base_symbol, `${m.stage} · $${Math.round(m.liquidity_usd ?? 0).toLocaleString()} liq`, `/market/${m.market_id}`, m.base_symbol);
   for (const b of db.builds) push("build", b.title, `v${b.version ?? 1} · ${b.stack.slice(0, 3).join(" · ")}`, b.deployment ? `/d/${b.deployment.slug}` : "/echo", b.title, ...(b.stack ?? []));
   for (const p of db.proposals) if (p.status === "open") push("raise", p.title, `asking ${p.ask_amount.toLocaleString()} · ${p.category}`, `/genesis/${p.proposal_id}`, p.title, p.category);

@@ -1,4 +1,7 @@
 service : (opt text) -> {
   "solana_address": () -> (text);
   "sign_solana_message": (blob) -> (blob);
+  "set_vault_program": (text) -> ();
+  "vault_program": () -> (opt text) query;
+  "sign_vault_release": (blob) -> (blob);
 }

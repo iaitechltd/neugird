@@ -10,11 +10,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import NeuHeader from "@/components/app/NeuHeader";
-import NeuGridDock from "@/components/app/NeuGridDock";
 import OrbPanel from "@/components/app/OrbPanel";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
-import { Panel, Mark, DataRow, IconCoins, IconSparkle, IconUser, IconActivity } from "@/components/app/ui";
-import { Area, Bars } from "@/components/app/charts";
+import { Panel, Mark, DataRow, IconCoins, IconSparkle, IconUser, IconActivity , kpiColor } from "@/components/app/ui";
+import { Area, Bars, Ring } from "@/components/app/charts";
+import { PanelChart } from "@/components/app/terminal";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 
 type ScheduleRow = { action: string; pulse: number | null; formula?: string; dimension: string };
@@ -60,6 +60,20 @@ export default function RewardsPage() {
   };
 
   const l = data?.ledger;
+
+  // ── side-rail chart data (all derived from the real ledger/event log) ──
+  const accrual = data?.accrual ?? [];
+  const weekly = data?.weekly ?? [];
+  const weeklyTotal = weekly.reduce((a, b) => a + b, 0);
+  const breakdown = l?.breakdown ?? [];
+  const srcUnits = breakdown.map((b) => b.units);
+  const srcTotal = srcUnits.reduce((a, b) => a + b, 0);
+  // claim/vesting progress: claimed vs allocation if present, else vested_pct
+  const claimPct = l && (l.total_allocation ?? 0) > 0
+    ? Math.round(((l.claimed ?? 0) / l.total_allocation) * 100)
+    : (l?.vesting ? Math.round(l.vesting.vested_pct) : 0);
+  const hasClaimData = !!l && ((l.total_allocation ?? 0) > 0 || !!l.vesting);
+
   const kpis: [string, number, string?][] = [
     ["GRID Allocation", l?.total_allocation ?? 0],
     ["Claimable Now", l?.vesting?.claimable ?? 0],
@@ -77,7 +91,20 @@ export default function RewardsPage() {
         <OrbPanel side="left" label="How to earn" open={lOpen} onToggle={setLOpen} widthClass="lg:w-[320px] xl:w-[340px]">
           <Panel scroll title="THE EARNING SCHEDULE" icon={<IconCoins className="h-4 w-4" />} bodyClass="p-3.5">
             <p className="mb-3 text-[10.5px] leading-relaxed text-ink-dim">Every verified action earns Pulse; each Pulse point = <Mark plain>{l?.rate ?? 10} GRID</Mark> allocation, sybil-filtered, vesting at TGE. Earned, never sold.</p>
-            <div className="divide-y divide-line">
+
+            <PanelChart title="Accrual · cumulative GRID" read={accrual.length > 1 ? `${(accrual[accrual.length - 1] ?? 0).toLocaleString()} GRID` : undefined}>
+              {accrual.length > 1
+                ? <Area data={accrual} gid="rw-acc" h={48} />
+                : <p className="py-3 text-center text-[10px] text-ink-faint">No accrual yet</p>}
+            </PanelChart>
+
+            <PanelChart title="Weekly · earning events" read={weekly.length ? `${weeklyTotal} events` : undefined}>
+              {weekly.some((v) => v > 0)
+                ? <Bars data={weekly} h={46} color="#48f5ff" />
+                : <p className="py-3 text-center text-[10px] text-ink-faint">No activity yet</p>}
+            </PanelChart>
+
+            <div className="mt-4 divide-y divide-line">
               {(data?.schedule ?? []).map((r) => (
                 <div key={r.action} className="py-2">
                   <div className="flex items-baseline justify-between gap-2">
@@ -105,9 +132,9 @@ export default function RewardsPage() {
 
           {/* KPIs — 3 by default, +1 per collapsed panel */}
           <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
-            {kpis.slice(0, 3 + closed).map(([k, v, unit]) => (
+            {kpis.slice(0, 3 + closed).map(([k, v, unit], i) => (
               <div key={k} className="ng-card p-4 text-center">
-                <div className="ng-stat__v">{unit === "$" && <span className="text-cyan">$</span>}<CountUp key={v} value={v} /></div>
+                <div className="ng-stat__v" style={{ color: kpiColor(i) }}>{unit === "$" && <span className="opacity-60">$</span>}<CountUp key={v} value={v} /></div>
                 <div className="ng-stat__k">{k}</div>
               </div>
             ))}
@@ -170,6 +197,19 @@ export default function RewardsPage() {
         <OrbPanel side="right" label="Referrals" open={rOpen} onToggle={setROpen} widthClass="lg:w-[320px] xl:w-[340px]">
           <Panel scroll title="REFER & EARN" icon={<IconUser className="h-4 w-4" />} bodyClass="p-3.5">
             <p className="text-[10.5px] leading-relaxed text-ink-dim">Share your link. When someone you invited completes their <Mark plain>first verified work</Mark>, you earn +15 Pulse (150 GRID), they earn +5 — plus {((data?.referrals.affiliate.share_bps ?? 1000) / 100)}% of the protocol fees they generate for 12 months.</p>
+
+            <PanelChart title="Sources · by dimension" read={srcTotal > 0 ? `${srcTotal.toLocaleString()} units` : undefined}>
+              {srcUnits.some((v) => v > 0)
+                ? <Bars data={srcUnits} h={46} />
+                : <p className="py-3 text-center text-[10px] text-ink-faint">No sources yet</p>}
+            </PanelChart>
+
+            <PanelChart title={l?.vesting ? "Vesting · % vested" : "Claim · % of allocation"} read={hasClaimData ? `${claimPct}%` : undefined}>
+              {hasClaimData
+                ? <div className="flex justify-center py-1"><Ring percent={claimPct} label={l?.vesting ? "vested" : "claimed"} size={78} stroke={6} /></div>
+                : <p className="py-3 text-center text-[10px] text-ink-faint">Pre-TGE — nothing vested</p>}
+            </PanelChart>
+
             <div className="mt-3 flex gap-2">
               <input readOnly value={refLink} className="ng-input flex-1 !text-[10.5px]" />
               <button onClick={copyLink} className="ng-btn ng-btn-primary ng-btn--sm shrink-0">{copied ? "Copied ✓" : "Copy"}</button>
@@ -221,8 +261,6 @@ export default function RewardsPage() {
           </Panel>
         </OrbPanel>
       </div>
-
-      <NeuGridDock />
     </div>
   );
 }

@@ -82,7 +82,7 @@ function ensureSeeded() {
   const closes = new Date(Date.now() + VOTE_WINDOW_DAYS * 86_400_000).toISOString();
   const q = quorum();
   proposals().push(
-    { proposal_id: "gov_seed1", kind: "param", title: "Lower the TradeX trade fee to 0.50%", summary: "Halve the 1% AMM trade fee to deepen liquidity and tighten spreads on graduated markets. If this passes, the next trade is charged 0.50%.", proposer_id: "usr_neo", status: "open", for_grid: 0, against_grid: 0, quorum_grid: q, action: { type: "set_param", key: "tradex_fee_bps", value: 50 }, closes_at: closes, created_at: at },
+    { proposal_id: "gov_seed1", kind: "param", title: "Lower the Trade trade fee to 0.50%", summary: "Halve the 1% AMM trade fee to deepen liquidity and tighten spreads on graduated markets. If this passes, the next trade is charged 0.50%.", proposer_id: "usr_neo", status: "open", for_grid: 0, against_grid: 0, quorum_grid: q, action: { type: "set_param", key: "tradex_fee_bps", value: 50 }, closes_at: closes, created_at: at },
     { proposal_id: "gov_seed2", kind: "treasury", title: "Fund a 1,500 USDC community build bounty", summary: "Release 1,500 USDC from the protocol treasury (accrued fees) to a public grants pool that rewards open-source builds on NeuGrid.", proposer_id: "usr_trinity", status: "open", for_grid: 0, against_grid: 0, quorum_grid: q, action: { type: "treasury_transfer", asset: "usdc", amount: 1500, to: "neugrid:grants" }, closes_at: closes, created_at: at },
   );
 }

@@ -21,6 +21,7 @@ import * as Wallets from "./wallets";
 import * as Rewards from "./rewards";
 import * as Params from "./params";
 import * as Brain from "../brain";
+import { IcpHosting } from "../chain";
 import type { Build, BuildArtifactRef, BuildDeployment, BuildFile, BuildStatus, BuildStep } from "../types";
 
 /** Reputation a witnessed build is worth (builder dimension). Tunable. */
@@ -380,6 +381,7 @@ export function deployBuild(build_id: string, owner_id: string): { deployment?: 
     deployed_at: nowISO(),
     redeploys: prior ? prior.redeploys + 1 : 0,
   };
+  void IcpHosting.deploy(build); // chain mirror (A3) — guarded, platform hosting stands on failure
   return { deployment: build.deployment, url: `/d/${build.deployment.slug}`, cost };
 }
 
@@ -389,7 +391,7 @@ export function deploymentBySlug(slug: string): { build: Build; deployment: Buil
   return build?.deployment ? { build, deployment: build.deployment } : undefined;
 }
 
-/** The founder journey: Echo drafts a GenesisX funding proposal from a REAL build —
+/** The founder journey: Echo drafts a Fund funding proposal from a REAL build —
  *  pitch + realistic ask + next-phase milestone tranches, grounded in the actual
  *  files. Review-then-submit; drafting itself is free (it drives funding). */
 export async function draftProposal(build_id: string, owner_id: string): Promise<{ draft?: Brain.ProposalDraft; error?: string }> {
@@ -434,7 +436,7 @@ export function markListed(build_id: string, product_id: string, grid_id: string
   if (b.status === "built") b.status = "listed";
 }
 
-/** Called by GenesisX when a proposal is opened from a build (links proof-of-build). */
+/** Called by Fund when a proposal is opened from a build (links proof-of-build). */
 export function attachProposal(build_id: string, proposal_id: string): void {
   const b = getBuild(build_id);
   if (b) b.proposal_id = proposal_id;

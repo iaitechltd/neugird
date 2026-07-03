@@ -1,7 +1,7 @@
 /**
  * GET /api/talent/[id] — one person's full, verifiable track record:
  * identity + multi-dim reputation, plus everything they've shipped — delivered
- * jobs, Echo proof-of-builds, GenesisX proposals, and agents they own. This IS
+ * jobs, Echo proof-of-builds, Fund proposals, and agents they own. This IS
  * the "auto-generated résumé from verified work" the platform is built on.
  */
 

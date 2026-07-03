@@ -9,7 +9,7 @@
  * The agent acts on the OWNER's wallet — this is non-custodial scoped authority,
  * never pooling (the mandate is the consent boundary; `memory/crypto-rails.md`).
  * Every action is enforced server-side BEFORE touching `Markets`/`Perps` and is
- * recorded to an attributed activity feed. Fuses SentientX with TradeX.
+ * recorded to an attributed activity feed. Fuses SentientX with Trade.
  *
  * The RUNNER is tick-based: each `runTick` evaluates the strategy and executes at
  * most one guardrailed action. Today ticks are driven by the open market terminal
@@ -289,6 +289,26 @@ export function runTick(mandate_id: string): { action?: AgentAction; skipped?: s
   if (breaker) return { action: breaker, mandate: m };
 
   return { action: actOn(m, decide(m)), mandate: m };
+}
+
+/**
+ * The 24/7 sweep: advance every active NATIVE mandate one step. The scheduler
+ * sibling of the terminal-driven `/agent/tick` — an armed agent keeps trading
+ * with the terminal closed. External-strategy mandates are skipped (the outside
+ * agent drives itself via the gateway; a recorded "hold" would be pure noise).
+ * `runTick`'s own throttles/breakers make this safe to run on any cadence.
+ */
+export function tickAll(): { scanned: number; acted: number; traded: number; skipped: number } {
+  const active = mandates().filter((m) => m.status === "active" && m.strategy !== "external");
+  let acted = 0, traded = 0, skipped = 0;
+  for (const m of active) {
+    const r = runTick(m.mandate_id);
+    if (r.action) {
+      acted++;
+      if (r.action.kind !== "hold" && r.action.ok) traded++;
+    } else skipped++;
+  }
+  return { scanned: active.length, acted, traded, skipped };
 }
 
 /** Close any agent position whose loss has breached the mandate stop-loss, and on
@@ -597,5 +617,37 @@ export function externalTrade(agent_id: string, market_id: string, body: Externa
     return { error: "bad_action" as const };
   }
 
-  return { action: actOn(m, plan), mandate: enrichMandate(m).mandate };
+  const action = actOn(m, plan);
+  if (!action.ok) {
+    const breach = maybeSlashBreach(m);
+    if (breach) return { action: breach, mandate: enrichMandate(m).mandate };
+  }
+  return { action, mandate: enrichMandate(m).mandate };
+}
+
+/* --------------------- breach — trust-slashing (external) --------------------- */
+// The guardrails BLOCK every violating trade, so the mandate itself can't leak —
+// but an external agent that keeps ASKING for out-of-mandate trades is signaling
+// bad faith (or a broken model). Repeated blocked attempts are a BREACH: the
+// agent's trust is slashed (bond + tier + trading rating, mirroring the jobs-side
+// rejection penalty) and the mandate is killed. Violations are DERIVED from the
+// attributed action feed (ok:false rows) — no new state to persist.
+
+const BREACH_LIMIT = 3; // blocked attempts on one mandate before it's a breach
+
+function maybeSlashBreach(m: Mandate): AgentAction | undefined {
+  const violations = actions().filter((a) => a.mandate_id === m.mandate_id && a.ok === false).length;
+  if (violations < BREACH_LIMIT) return undefined;
+  const agent = db.agents.find((a) => a.agent_id === m.agent_id);
+  if (agent) {
+    agent.bond_amount = Math.max(0, (agent.bond_amount ?? 0) - Agents.REJECT_SLASH);
+    if (agent.trust_tier === "trusted") agent.trust_tier = "probation";
+    agent.trading_rating = Math.round(Math.min(5, (agent.trading_rating || 0) * 0.7) * 10) / 10;
+  }
+  const a = record(m, {
+    kind: "stop", ok: true,
+    rationale: `Mandate BREACH — ${violations} guardrail violations; trust slashed (bond −${Agents.REJECT_SLASH}, tier demoted), mandate killed`,
+  });
+  stopMandate(m.mandate_id, m.owner_id, "breach");
+  return a;
 }

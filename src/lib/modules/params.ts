@@ -16,7 +16,7 @@ export type ParamKey = "tradex_fee_bps" | "echo_build_cost_grid" | "grid_market_
 export type ParamUnit = "bps" | "grid" | "days" | "count";
 
 export const DEFAULTS: Record<ParamKey, number> = {
-  tradex_fee_bps: 100, // TradeX AMM trade fee (1%)
+  tradex_fee_bps: 100, // Trade AMM trade fee (1%)
   echo_build_cost_grid: 500, // GRID metered per Echo build
   grid_market_fee_bps: 100, // GRID/USDC swap fee (1%)
   gov_quorum_grid: 50_000, // FOR-GRID a new proposal needs to pass
@@ -35,7 +35,7 @@ export const DEFAULTS: Record<ParamKey, number> = {
 
 /** UI labels + validation bounds (so a malicious proposal can't set fee = 10000%). */
 export const META: Record<ParamKey, { label: string; unit: ParamUnit; min: number; max: number }> = {
-  tradex_fee_bps: { label: "TradeX trade fee", unit: "bps", min: 0, max: 500 }, // ≤5%
+  tradex_fee_bps: { label: "Trade trade fee", unit: "bps", min: 0, max: 500 }, // ≤5%
   echo_build_cost_grid: { label: "Echo build cost", unit: "grid", min: 0, max: 10_000 },
   grid_market_fee_bps: { label: "GRID market fee", unit: "bps", min: 0, max: 500 },
   gov_quorum_grid: { label: "Governance quorum", unit: "grid", min: 1_000, max: 5_000_000 },
@@ -46,8 +46,8 @@ export const META: Record<ParamKey, { label: string; unit: ParamUnit; min: numbe
   echo_deploy_cost_grid: { label: "Echo deploy cost", unit: "grid", min: 0, max: 5_000 },
   fraud_flag_quorum: { label: "Fraud-flag quorum", unit: "count", min: 1, max: 7 },
   agent_perf_fee_bps: { label: "Agent performance fee", unit: "bps", min: 0, max: 5_000 }, // ≤50% of positive PnL
-  genesis_raise_days: { label: "GenesisX raise window", unit: "days", min: 7, max: 120 },
-  genesis_stall_days: { label: "GenesisX stall deadline", unit: "days", min: 14, max: 365 },
+  genesis_raise_days: { label: "Fund raise window", unit: "days", min: 7, max: 120 },
+  genesis_stall_days: { label: "Fund stall deadline", unit: "days", min: 14, max: 365 },
   gridx_fee_bps: { label: "GridX purchase fee", unit: "bps", min: 0, max: 1_000 }, // ≤10%
   affiliate_fee_share_bps: { label: "Affiliate fee share", unit: "bps", min: 0, max: 5_000 }, // ≤50%
 };

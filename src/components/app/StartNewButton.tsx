@@ -45,7 +45,7 @@ function Tags({ name, options }: { name?: string; options: string[] }) {
             onClick={() => setOn((s) => { const n = new Set(s); if (n.has(o)) n.delete(o); else n.add(o); return n; })}
             className={`inline-flex items-center gap-2 text-xs transition ${active ? "text-neon text-glow-soft" : "text-ink-dim hover:text-neon"}`}
           >
-            <span className={`grid h-4 w-4 place-items-center rounded-[3px] transition ${active ? "bg-neon" : "bg-neon/10"}`}>{active && <Check />}</span>
+            <span className={`grid h-4 w-4 place-items-center border transition ${active ? "border-neon bg-neon" : "border-line bg-neon/[0.06]"}`}>{active && <Check />}</span>
             {o}
           </button>
         );
@@ -57,7 +57,7 @@ function Tags({ name, options }: { name?: string; options: string[] }) {
 function Toggle({ name, label, hint }: { name?: string; label: string; hint?: string }) {
   const [on, setOn] = useState(false);
   return (
-    <div className="col-span-2 mt-1 flex items-start justify-between gap-3 border-t border-neon/10 pt-4">
+    <div className="col-span-2 mt-1 flex items-start justify-between gap-3 border-t border-neon/[0.07] pt-4">
       <div>
         <div className="text-sm text-ink">{label}</div>
         {hint && <div className="text-[11px] text-ink-dim">{hint}</div>}
@@ -66,9 +66,9 @@ function Toggle({ name, label, hint }: { name?: string; label: string; hint?: st
       <button
         type="button"
         onClick={() => setOn((v) => !v)}
-        className={`relative h-5 w-9 shrink-0 rounded-full transition ${on ? "bg-neon/40" : "bg-neon/12"}`}
+        className={`relative h-5 w-9 shrink-0 border transition ${on ? "border-neon/50 bg-neon/25" : "border-line bg-neon/[0.06]"}`}
       >
-        <span className={`absolute top-0.5 h-4 w-4 rounded-full transition-all ${on ? "left-[18px] bg-neon" : "left-0.5 bg-neon/50"}`} />
+        <span className={`absolute top-[3px] h-3 w-3 transition-all ${on ? "left-[19px] bg-neon" : "left-[3px] bg-neon/50"}`} />
       </button>
     </div>
   );
@@ -168,27 +168,24 @@ function FormModal({ form, onClose, onSubmit }: { form: FormConfig; onClose: () 
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/75 backdrop-blur-[2px]" onClick={onClose} />
-      <div ref={boxRef} className="relative z-10 flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-neon/25 bg-[#040d07]">
-        <div className="flex items-start justify-between border-b border-neon/15 px-6 py-4">
-          <div className="flex items-center gap-3">
-            <span className="grid h-10 w-10 place-items-center rounded-lg border border-neon/25 bg-neon/[0.06] text-lg text-neon">{form.icon}</span>
-            <div>
-              <div className="text-lg font-bold text-neon">{form.title}</div>
-              <div className="text-xs text-ink-dim">{form.subtitle}</div>
-            </div>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 font-mono">
+      <div className="absolute inset-0 bg-black/80" onClick={onClose} />
+      <div ref={boxRef} className="relative z-10 flex max-h-[88vh] w-full max-w-2xl flex-col border border-neon/16 bg-black">
+        <div className="flex items-start justify-between border-b border-neon/10 px-5 py-3">
+          <div className="min-w-0">
+            <div className="ng-label !text-[13px] !text-neon">{form.title}</div>
+            <div className="mt-0.5 text-[11px] text-ink-dim">{"// "}{form.subtitle}</div>
           </div>
-          <button onClick={onClose} aria-label="Close" className="ng-btn ng-btn--sm ng-btn-ghost !px-2">✕</button>
+          <button onClick={onClose} aria-label="Close" className="shrink-0 px-2 text-ink-dim transition hover:text-neon">✕</button>
         </div>
-        <div className="overflow-y-auto px-6 pb-6">
+        <div className="overflow-y-auto px-5 pb-5">
 
         {form.wizard && (
-          <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-y border-neon/10 py-3 text-[10px] uppercase tracking-wider">
+          <div className="mt-4 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 border-y border-neon/[0.07] py-2.5 text-[10px] uppercase tracking-wider">
             {form.wizard.map((s, i) => (
-              <span key={s} className="flex items-center gap-3">
-                <span className={i === 0 ? "text-neon text-glow-soft" : "text-ink-faint"}>{s}</span>
-                {i < form.wizard!.length - 1 && <span className="text-neon/25">›</span>}
+              <span key={s} className="flex items-center gap-2.5">
+                <span className={i === 0 ? "text-neon" : "text-ink-faint"}>{i === 0 ? "▸ " : ""}{s}</span>
+                {i < form.wizard!.length - 1 && <span className="text-neon/25">·</span>}
               </span>
             ))}
           </div>
@@ -199,11 +196,11 @@ function FormModal({ form, onClose, onSubmit }: { form: FormConfig; onClose: () 
             {form.fields.map((f, i) => <FieldView key={i} field={f} />)}
           </div>
 
-          <div className="mt-6 flex items-center justify-between border-t border-neon/10 pt-4">
-            <span className="text-[11px] text-ink-faint">{form.wizard ? "Step 1 of " + form.wizard.length : ""}</span>
+          <div className="mt-6 flex items-center justify-between border-t border-neon/[0.07] pt-4">
+            <span className="text-[11px] text-ink-faint">{form.wizard ? `step 1/${form.wizard.length}` : ""}</span>
             <div className="flex gap-2">
-              <button type="button" onClick={onClose} className="ng-btn ng-btn-ghost">Cancel</button>
-              <button type="submit" className="ng-btn ng-btn-primary">{form.submit}</button>
+              <button type="button" onClick={onClose} className="ng-btn ng-btn-ghost ng-btn--sm">cancel</button>
+              <button type="submit" className="ng-btn ng-btn-primary ng-btn--sm">{form.submit}</button>
             </div>
           </div>
         </form>
@@ -296,7 +293,7 @@ export default function StartNewButton() {
       return;
     }
 
-    // Talent listing → the self-serve TalenX listing
+    // Talent listing → the self-serve Talent listing
     if (form.key === "talent") {
       const skills = get("Skills & Expertise").split(",").map((s) => s.trim()).filter(Boolean);
       try {
@@ -311,7 +308,7 @@ export default function StartNewButton() {
         });
         if (!res.ok) throw new Error();
         window.dispatchEvent(new Event("neugrid:refresh-me"));
-        setForm(null); flash("You're listed on TalenX ✓"); router.push("/talent");
+        setForm(null); flash("You're listed on Talent ✓"); router.push("/talent");
       } catch { setForm(null); flash("Could not save your listing — try again"); }
       return;
     }
@@ -324,37 +321,35 @@ export default function StartNewButton() {
     <>
       <div className="relative">
         <button onClick={() => setMenuOpen((o) => !o)} className="ng-btn ng-btn-primary h-9">
-          <IconPlus className="h-4 w-4" /> Start New
+          <IconPlus className="h-4 w-4" /> new
         </button>
 
         {menuOpen && (
           <>
             <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-            <div className="absolute right-0 top-[calc(100%+8px)] z-50 max-h-[80vh] w-[330px] overflow-y-auto rounded-xl border border-neon/25 bg-[#040d07]">
-              <div className="border-b border-neon/15 px-4 py-3">
-                <div className="text-base font-bold text-neon">Start New</div>
-                <div className="text-[11px] text-ink-dim">Everything here creates something real</div>
+            <div className="absolute right-0 top-[calc(100%+8px)] z-50 max-h-[80vh] w-[320px] overflow-y-auto border border-neon/16 bg-black font-mono">
+              <div className="flex items-center justify-between border-b border-neon/10 px-3 py-2">
+                <span className="ng-label !text-[10px]">start new</span>
+                <span className="text-[9px] text-ink-faint">{"// creates something real"}</span>
               </div>
-              <div className="p-2">
+              <div className="py-1">
                 {CREATE_MENU.map((group) => (
-                  <div key={group.section} className="mt-3 first:mt-1">
-                    <div className="mb-1 px-2 text-[10px] font-bold uppercase tracking-[0.14em] text-ink-faint">{group.section}</div>
-                    <div className="space-y-0.5">
-                      {group.items.map((m) => (
-                        <button
-                          key={m.key}
-                          onClick={() => openForm(m.key)}
-                          className="group block w-full rounded-lg p-2.5 text-left transition hover:bg-neon/[0.07]"
-                        >
-                          <span className="flex items-center gap-2.5">
-                            <span className="shrink-0 text-base leading-none text-neon/80">{m.icon}</span>
-                            <span className="flex-1 text-sm font-semibold text-ink transition group-hover:text-neon">{m.label}</span>
-                            <span className="shrink-0 text-ink-faint transition group-hover:translate-x-0.5 group-hover:text-neon">›</span>
-                          </span>
-                          <span className="mt-0.5 block pl-[26px] text-[11px] leading-relaxed text-ink-dim">{m.desc}</span>
-                        </button>
-                      ))}
-                    </div>
+                  <div key={group.section} className="mt-1.5 first:mt-0.5">
+                    <div className="px-3 py-1 text-[9px] uppercase tracking-[0.16em] text-ink-faint">## {group.section}</div>
+                    {group.items.map((m) => (
+                      <button
+                        key={m.key}
+                        onClick={() => openForm(m.key)}
+                        className="thl group block w-full px-3 py-1.5 text-left"
+                      >
+                        <span className="flex items-baseline gap-2 text-[12px]">
+                          <span className="shrink-0 text-neon">›</span>
+                          <span className="flex-1 text-ink">{m.label}</span>
+                          <span className="shrink-0 text-ink-faint">↵</span>
+                        </span>
+                        <span className="mt-0.5 block pl-[14px] text-[10px] leading-snug text-ink-dim">{m.desc}</span>
+                      </button>
+                    ))}
                   </div>
                 ))}
               </div>
@@ -366,8 +361,8 @@ export default function StartNewButton() {
       {form && createPortal(<FormModal form={form} onClose={() => setForm(null)} onSubmit={submit} />, document.body)}
       {toast &&
         createPortal(
-          <div className="fixed bottom-24 left-1/2 z-[80] -translate-x-1/2 rounded border border-neon/40 bg-[#040d07] px-4 py-2.5 text-sm text-neon">
-            {toast}
+          <div className="fixed bottom-24 left-1/2 z-[80] -translate-x-1/2 border border-neon/40 bg-black px-4 py-2 font-mono text-[13px] text-neon">
+            <span className="text-ink-faint">$ </span>{toast}
           </div>,
           document.body,
         )}

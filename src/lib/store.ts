@@ -81,7 +81,7 @@ export interface DB {
   productEvents: ProductEvent[]; // GridX — real usage: opens + purchases (drives active-users/trending)
   attestations: Attestation[]; // soulbound credential layer (SAS-bound; Stage 1 in-platform mirror)
   settlements: Settlement[]; // x402 agent-to-protocol payments (Stage 1 accounting; Solana USDC later)
-  wallets: Wallet[]; // USDC + GRID balances (TradeX; accounting units pre-mainnet)
+  wallets: Wallet[]; // USDC + GRID balances (Trade; accounting units pre-mainnet)
   listingStakes: ListingStake[]; // GRID locked to graduate a market to the next stage
   positions: Position[]; // futures (perp) leverage positions
   orders: LimitOrder[]; // spot/futures resting limit orders
@@ -147,7 +147,7 @@ function seed(): DB {
     description:
       "A coordination network for builders escaping the noise. Campaigns, talent, and reputation in one Grid.",
     visual_theme: { accent: "#00ff88", glyph: "▦" },
-    modules_enabled: ["Grid", "SubGrid", "CampaignX", "TalenX", "Pulse"],
+    modules_enabled: ["Grid", "SubGrid", "Campaign", "Talent", "Pulse"],
     visibility: "public",
     treasury_config: { enabled: false },
     pulse_score: 1730,
@@ -298,7 +298,7 @@ function seed(): DB {
       grid_id: "grid_zion",
       subgrid_id: "sub_growth",
       title: "Write 3 explainer threads",
-      description: "Threads on Grids, Pulse, and GenesisX. Post and submit the links.",
+      description: "Threads on Grids, Pulse, and Fund. Post and submit the links.",
       required_skills: ["content", "writing"],
       executor_kind: "human",
       reward_amount: 80,

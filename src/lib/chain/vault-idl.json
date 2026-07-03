@@ -460,7 +460,11 @@
     {
       "name": "create_vault",
       "docs": [
-        "Founder opens a raise. `ask` is derived on-chain as the tranche sum."
+        "Founder opens a raise. `ask` is derived on-chain as the tranche sum.",
+        "`release_authority` (optional) is a key that must CO-SIGN any vote that",
+        "executes a tranche release — NeuGrid wires the ICP signer canister's",
+        "threshold-Ed25519 address here, so no payout can leave the vault without",
+        "the canister's policy approving it (A3: trustless release authority)."
       ],
       "discriminator": [
         29,
@@ -628,6 +632,12 @@
         {
           "name": "stall_seconds",
           "type": "i64"
+        },
+        {
+          "name": "release_authority",
+          "type": {
+            "option": "pubkey"
+          }
         }
       ]
     },
@@ -993,6 +1003,14 @@
           "writable": true
         },
         {
+          "name": "release_authority",
+          "docs": [
+            "co-signer for the releasing vote — required only when the vault set one"
+          ],
+          "signer": true,
+          "optional": true
+        },
+        {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
@@ -1227,6 +1245,16 @@
       "code": 6021,
       "name": "NotFounder",
       "msg": "only the founder may do this"
+    },
+    {
+      "code": 6022,
+      "name": "MissingReleaseAuthority",
+      "msg": "release authority must co-sign this release"
+    },
+    {
+      "code": 6023,
+      "name": "WrongReleaseAuthority",
+      "msg": "wrong release authority"
     }
   ],
   "types": [
@@ -1443,6 +1471,13 @@
           {
             "name": "backer_count",
             "type": "u32"
+          },
+          {
+            "name": "release_authority",
+            "docs": [
+              "must co-sign releasing votes when set (Pubkey::default() = unset)"
+            ],
+            "type": "pubkey"
           },
           {
             "name": "bump",

@@ -103,7 +103,7 @@ export async function echoAsk(mode: EchoAskMode, question: string, context: stri
 }
 
 /**
- * Ask the configured model brain to draft a GenesisX funding proposal from a REAL
+ * Ask the configured model brain to draft a Fund funding proposal from a REAL
  * build (the founder journey): pitch + ask + next-phase milestones. Null on failure.
  */
 export async function draftProposal(build: {

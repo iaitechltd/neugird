@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import NeuGridDock from "@/components/app/NeuGridDock";
 import NeuHeader from "@/components/app/NeuHeader";
 import {
   Mark, Tag, Tabs, Bracket, DataRow, ProgressBar,
@@ -13,7 +12,8 @@ import {
   IconArrowRight, IconArrowUp, IconArrowDown, IconPlus, IconAlert,
   IconRefresh, IconExternal, IconSparkle, IconMessage,
 } from "@/components/app/ui";
-import { Ring } from "@/components/app/charts";
+import { Ring, Bars, Radar } from "@/components/app/charts";
+import { PanelChart } from "@/components/app/terminal";
 import { Decrypt, CountUp, Typewriter } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import OrbPanel from "@/components/app/OrbPanel";
@@ -122,7 +122,7 @@ export default function EchoPage() {
   const DEPLOY_COST = 50; // Echo deploy cost in GRID (= Params echo_deploy_cost_grid default)
   const [depBusy, setDepBusy] = useState(false);
   const [depSteps, setDepSteps] = useState(0);
-  /* the founder journey — Echo drafts the GenesisX proposal from the build (review → submit) */
+  /* the founder journey — Echo drafts the Fund proposal from the build (review → submit) */
   const [gx, setGx] = useState<{ draft: ProposalDraft; submitting?: boolean } | null>(null);
   /* resume a past build — the Builder can re-open any real build to keep iterating */
   const [pastBuilds, setPastBuilds] = useState<Build[]>([]);
@@ -187,7 +187,7 @@ export default function EchoPage() {
       setExecRun(false); setMode("executor");
       notify(bBuild ? "Launchpad — launch this build" : "Launchpad — resume a build in Builder first");
     } else if (cmd("/fund")) {
-      if (bBuild) { setExecRun(false); setMode("executor"); notify("Launchpad — “Apply to GenesisX” drafts your raise"); }
+      if (bBuild) { setExecRun(false); setMode("executor"); notify("Launchpad — “Apply to Fund” drafts your raise"); }
       else { setMode("builder"); notify("Pick a build to fund — Continue one, then open its Launchpad"); }
     } else if (cmd("/analyze") || cmd("/analyst")) {
       setMode("analyst"); setAskMode("analyst");
@@ -231,6 +231,16 @@ export default function EchoPage() {
       setDepSteps(4);
       setBBuild({ ...bBuild, deployment: { ...data.deployment, html: "" } });
       notify(`LIVE at ${data.url} — share it`);
+      // the ICP asset-canister mirror fills in AFTER the deploy returns — pick it up shortly
+      const id = bBuild.build_id;
+      window.setTimeout(async () => {
+        try {
+          const r = await fetch(`/api/echo/builds/${id}`);
+          const d = await r.json();
+          const icp: NonNullable<Build["deployment"]>["icp"] = d?.build?.deployment?.icp;
+          if (icp) setBBuild((cur) => cur?.build_id === id && cur.deployment ? { ...cur, deployment: { ...cur.deployment, icp } } : cur);
+        } catch { /* mirror is best-effort */ }
+      }, 4000);
     } else {
       setDepSteps(0);
       if (data?.error === "insufficient_grid") notify(`Not enough GRID — deploying costs ${data.cost ?? DEPLOY_COST} GRID`);
@@ -305,7 +315,7 @@ export default function EchoPage() {
     notify(`v${data.build.version ?? 2} sealed · proof re-signed · ${data.build.revisions?.[data.build.revisions.length - 1]?.files_changed ?? 0} file(s) changed`);
   }
 
-  /* Launchpad — wire the build into real Grids / GridX / GenesisX. */
+  /* Launchpad — wire the build into real Grids / GridX / Fund. */
   async function createProjectGrid() {
     if (!bBuild || lp.busy) return;
     setLp((s) => ({ ...s, busy: "grid" }));
@@ -356,9 +366,9 @@ export default function EchoPage() {
     try {
       const res = await fetch("/api/proposals", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: d.title, summary: d.pitch, category: d.category, ask_amount: d.ask_usdc, roadmap, build_id: bBuild.build_id }) });
       const j = await res.json();
-      if (j.proposal) { setLp((s) => ({ ...s, proposalId: j.proposal.proposal_id })); setGx(null); notify("GenesisX raise opened — pitch, ask and milestones drafted by Echo, backed by your proof of build"); }
-      else { setGx((s) => (s ? { ...s, submitting: false } : s)); notify("GenesisX: " + (j.error === "insufficient_reputation" ? "need 100+ reputation" : j.error || "failed")); }
-    } catch { setGx((s) => (s ? { ...s, submitting: false } : s)); notify("GenesisX failed"); }
+      if (j.proposal) { setLp((s) => ({ ...s, proposalId: j.proposal.proposal_id })); setGx(null); notify("Fund raise opened — pitch, ask and milestones drafted by Echo, backed by your proof of build"); }
+      else { setGx((s) => (s ? { ...s, submitting: false } : s)); notify("Fund: " + (j.error === "insufficient_reputation" ? "need 100+ reputation" : j.error || "failed")); }
+    } catch { setGx((s) => (s ? { ...s, submitting: false } : s)); notify("Fund failed"); }
   }
 
   async function applyGenesis() {
@@ -367,12 +377,23 @@ export default function EchoPage() {
     try {
       const res = await fetch("/api/proposals", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: bBuild.title, summary: bBuild.summary, category: bBuild.stack[0] || "Project", ask_amount: 50000, build_id: bBuild.build_id }) });
       const d = await res.json();
-      if (d.proposal) { setLp((s) => ({ ...s, busy: undefined, proposalId: d.proposal.proposal_id })); notify("GenesisX proposal opened — backed by your proof of build"); }
-      else { setLp((s) => ({ ...s, busy: undefined })); notify("GenesisX: " + (d.error === "insufficient_reputation" ? "need 100+ reputation" : d.error || "failed")); }
-    } catch { setLp((s) => ({ ...s, busy: undefined })); notify("GenesisX failed"); }
+      if (d.proposal) { setLp((s) => ({ ...s, busy: undefined, proposalId: d.proposal.proposal_id })); notify("Fund proposal opened — backed by your proof of build"); }
+      else { setLp((s) => ({ ...s, busy: undefined })); notify("Fund: " + (d.error === "insufficient_reputation" ? "need 100+ reputation" : d.error || "failed")); }
+    } catch { setLp((s) => ({ ...s, busy: undefined })); notify("Fund failed"); }
   }
 
   const cap = capability[sel];
+
+  // --- side-rail chart data (derived, SSR-safe) ---
+  const buildSizes = pastBuilds.map((b) => b.artifact?.files?.length ?? 0).filter((n) => n > 0);
+  const deployedCount = pastBuilds.filter((b) => b.deployment).length;
+  const deployedShare = pastBuilds.length ? Math.round((deployedCount / pastBuilds.length) * 100) : 0;
+  const revisionCounts = pastBuilds.map((b) => (b.revisions?.length ?? 0) + 1);
+  const snapAxes = ["builds", "agents", "raises", "markets", "jobs"];
+  const snapRaw = [askSnap?.builds ?? 0, askSnap?.agents ?? 0, askSnap?.open_raises ?? askSnap?.raises ?? 0, askSnap?.markets?.length ?? 0, askSnap?.open_jobs ?? 0];
+  const snapMax = Math.max(1, ...snapRaw);
+  const snapVals = snapRaw.map((v) => Math.round((v / snapMax) * 100));
+  const hasSnap = snapRaw.some((v) => v > 0);
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
@@ -381,6 +402,15 @@ export default function EchoPage() {
       <div className="flex flex-col gap-3 px-3 py-3 lg:min-h-0 lg:flex-1 lg:flex-row">
         {/* ============ LEFT ============ */}
         <OrbPanel side="left" label="Scope" open={lOpen} onToggle={setLOpen} widthClass="lg:w-[300px] xl:w-[320px]" className="space-y-3 lg:overflow-y-auto">
+          {/* live rail charts — Echo's build output */}
+          {buildSizes.length > 0
+            ? <PanelChart title="Builds · output size" read={`${pastBuilds.length} builds`}><Bars data={buildSizes} h={44} /></PanelChart>
+            : <PanelChart title="Builds · output size" read="0 builds"><p className="py-2 text-[11px] text-ink-dim">No builds yet — ship one in Builder mode.</p></PanelChart>}
+          {pastBuilds.length > 0 && (
+            <PanelChart title="Deployed · share" read={`${deployedCount}/${pastBuilds.length} live`}>
+              <div className="flex items-center justify-center py-1"><Ring percent={deployedShare} label="deployed" value={`${deployedShare}%`} size={86} stroke={6} color="var(--ng-cyan)" /></div>
+            </PanelChart>
+          )}
           {/* profile */}
           {mode === "executor" && !execRun ? (
             <Card>
@@ -454,7 +484,7 @@ export default function EchoPage() {
             <Card>
               <SecLabel icon={<IconGrid className="h-3.5 w-3.5" />}>WHAT ECHO KNOWS</SecLabel>
               <div className="divide-y divide-line">
-                {([["Your reputation", "live"], ["Your wallet + GRID allocation", "live"], ["Your builds + revisions", "live"], ["Your agents + their work", "live"], ["Your raises on GenesisX", "live"], ["Your recent reputation events", "live"]] as [string, string][]).map(([k, v]) => (
+                {([["Your reputation", "live"], ["Your wallet + GRID allocation", "live"], ["Your builds + revisions", "live"], ["Your agents + their work", "live"], ["Your raises on Fund", "live"], ["Your recent reputation events", "live"]] as [string, string][]).map(([k, v]) => (
                   <div key={k} className="ng-row !text-[12px]"><span className="ng-row__k flex items-center gap-2 text-ink"><span className="ng-led" />{k}</span><span className="ng-row__v"><Mark plain className="!text-[9px]">{v}</Mark></span></div>
                 ))}
               </div>
@@ -491,7 +521,7 @@ export default function EchoPage() {
           {mode === "executor" && !execRun && bBuild && (
             <Card>
               <SecLabel icon={<IconRocket className="h-3.5 w-3.5" />}>LAUNCH STATUS</SecLabel>
-              <div className="divide-y divide-line">{([["Project Grid", lp.gridSlug], ["GridX product", lp.productId], ["GenesisX raise", lp.proposalId]] as [string, string | undefined][]).map(([k, v]) => <div key={k} className="ng-row !text-[12px]"><span className="ng-row__k text-ink">{k}</span><span className="ng-row__v">{v ? <Mark className="!text-[10px]"><IconCheck className="h-3 w-3" />Done</Mark> : <span className="text-[10px] text-ink-faint">Pending</span>}</span></div>)}</div>
+              <div className="divide-y divide-line">{([["Project Grid", lp.gridSlug], ["GridX product", lp.productId], ["Fund raise", lp.proposalId]] as [string, string | undefined][]).map(([k, v]) => <div key={k} className="ng-row !text-[12px]"><span className="ng-row__k text-ink">{k}</span><span className="ng-row__v">{v ? <Mark className="!text-[10px]"><IconCheck className="h-3 w-3" />Done</Mark> : <span className="text-[10px] text-ink-faint">Pending</span>}</span></div>)}</div>
               <p className="mt-2 text-[10px] text-ink-faint">Launch destinations for this build — act on them in the center.</p>
             </Card>
           )}
@@ -502,6 +532,7 @@ export default function EchoPage() {
               {bBuild?.deployment ? (
                 <div className="divide-y divide-line">
                   <DataRow k="Live at" v={<a href={`/d/${bBuild.deployment.slug}`} target="_blank" rel="noopener noreferrer" className="text-[12px] text-neon underline decoration-neon/40 underline-offset-2">/d/{bBuild.deployment.slug}</a>} accent="neon" />
+                  {bBuild.deployment.icp && <DataRow k="ICP mirror" v={<a href={bBuild.deployment.icp.url} target="_blank" rel="noopener noreferrer" className="block max-w-[220px] truncate text-[12px] text-ink underline decoration-line underline-offset-2" title="Served from an Internet Computer asset canister — the unstoppable URL">{bBuild.deployment.icp.url.replace(/^https?:\/\//, "")}</a>} />}
                   <DataRow k="Serving" v={<Mark plain>v{bBuild.deployment.version}</Mark>} />
                   <DataRow k="Deploys" v={<span className="text-[12px]">{bBuild.deployment.redeploys + 1}</span>} />
                 </div>
@@ -745,7 +776,7 @@ export default function EchoPage() {
               </Card>
             )}
             <Card>
-              <SecLabel icon={<IconNetwork className="h-3.5 w-3.5" />} action={<Mark plain className="!text-[10px]">TradeX · live</Mark>}>MARKET SNAPSHOT</SecLabel>
+              <SecLabel icon={<IconNetwork className="h-3.5 w-3.5" />} action={<Mark plain className="!text-[10px]">Trade · live</Mark>}>MARKET SNAPSHOT</SecLabel>
               {askSnap?.markets?.length ? (
                 <div className="divide-y divide-line">
                   {askSnap.markets.map((m) => (
@@ -786,7 +817,7 @@ export default function EchoPage() {
                     {([
                       { Icon: IconUser, name: "Create Project Grid", meta: "Team + treasury home", done: lp.gridSlug, busyKey: "grid" as const, onClick: createProjectGrid, cta: "Create" },
                       { Icon: IconRocket, name: "Publish to GridX", meta: "List as a product · +20 creator", done: lp.productId, busyKey: "product" as const, onClick: listOnGridX, cta: "Publish" },
-                      { Icon: IconCoins, name: "Apply to GenesisX", meta: bBuild.artifact.files?.length ? "Echo drafts your raise — pitch · ask · milestones" : "Raise · build = proof of build", done: lp.proposalId, busyKey: "genesis" as const, onClick: bBuild.artifact.files?.length ? draftGenesis : applyGenesis, cta: bBuild.artifact.files?.length ? "Draft" : "Apply" },
+                      { Icon: IconCoins, name: "Apply to Fund", meta: bBuild.artifact.files?.length ? "Echo drafts your raise — pitch · ask · milestones" : "Raise · build = proof of build", done: lp.proposalId, busyKey: "genesis" as const, onClick: bBuild.artifact.files?.length ? draftGenesis : applyGenesis, cta: bBuild.artifact.files?.length ? "Draft" : "Apply" },
                     ]).map((a) => (
                       <div key={a.name} className="flex items-center gap-3 p-3">
                         <span className="grid h-8 w-8 shrink-0 place-items-center rounded bg-neon/10 text-neon"><a.Icon className="h-4 w-4" /></span>
@@ -799,7 +830,7 @@ export default function EchoPage() {
                   </div>
                 </div>
 
-                {/* ECHO-DRAFTED RAISE — review (edit the essentials) → submit to GenesisX */}
+                {/* ECHO-DRAFTED RAISE — review (edit the essentials) → submit to Fund */}
                 {gx && !lp.proposalId && (
                   <Card className="!border-neon/40">
                     <SecLabel icon={<IconCoins className="h-3.5 w-3.5" />} action={<Mark plain className="!text-[10px]">drafted by Echo · review before submit</Mark>}>YOUR RAISE — DRAFT</SecLabel>
@@ -832,7 +863,7 @@ export default function EchoPage() {
                       </div>
                     </div>
                     <div className="mt-3 flex items-center gap-2">
-                      <button onClick={submitGenesis} disabled={gx.submitting || !gx.draft.title.trim()} className="ng-btn ng-btn-primary ng-btn--sm disabled:opacity-40">{gx.submitting ? <><IconRefresh className="h-3.5 w-3.5 animate-spin" /> Submitting…</> : <><IconCoins className="h-3.5 w-3.5" /> Submit to GenesisX</>}</button>
+                      <button onClick={submitGenesis} disabled={gx.submitting || !gx.draft.title.trim()} className="ng-btn ng-btn-primary ng-btn--sm disabled:opacity-40">{gx.submitting ? <><IconRefresh className="h-3.5 w-3.5 animate-spin" /> Submitting…</> : <><IconCoins className="h-3.5 w-3.5" /> Submit to Fund</>}</button>
                       <button onClick={() => setGx(null)} disabled={gx.submitting} className="ng-btn ng-btn-ghost ng-btn--sm">Discard</button>
                       <span className="ml-auto text-[10px] text-ink-faint">Backed by proof {bBuild.artifact.proof_of_build?.slice(0, 22)}…</span>
                     </div>
@@ -852,7 +883,7 @@ export default function EchoPage() {
 
                 {/* deploy to mainnet → guarded execution flow (real toggle) */}
                 <div className="ng-card flex items-center justify-between gap-3 p-3.5">
-                  <div><div className="text-[13px] text-ink">Deploy — get a live URL</div><div className="text-[10px] text-ink-dim">{bBuild.deployment ? `Live at /d/${bBuild.deployment.slug} · v${bBuild.deployment.version}` : `NeuGrid hosting · ${DEPLOY_COST} GRID · shareable link`}</div></div>
+                  <div><div className="text-[13px] text-ink">Deploy — get a live URL</div><div className="text-[10px] text-ink-dim">{bBuild.deployment ? `Live at /d/${bBuild.deployment.slug} · v${bBuild.deployment.version}${bBuild.deployment.icp ? " · ICP-mirrored" : ""}` : `NeuGrid hosting · ${DEPLOY_COST} GRID · shareable link`}</div></div>
                   <button onClick={() => setExecRun(true)} className="ng-btn ng-btn-primary ng-btn--sm shrink-0"><IconBolt className="h-3.5 w-3.5" /> Deploy Now</button>
                 </div>
               </>
@@ -977,6 +1008,17 @@ export default function EchoPage() {
 
         {/* ============ RIGHT ============ */}
         <OrbPanel label="Controls" open={rOpen} onToggle={setROpen} widthClass="lg:w-[300px] xl:w-[320px]" className="space-y-3 lg:overflow-y-auto">
+          {/* live rail charts — the grid state Echo reasons over */}
+          {hasSnap && (
+            <PanelChart title="Grid · live state" read="normalized">
+              <Radar axes={snapAxes} values={snapVals} size={132} />
+            </PanelChart>
+          )}
+          {revisionCounts.length > 0 && (
+            <PanelChart title="Iterations · per build" read={`${pastBuilds.length} builds`}>
+              <Bars data={revisionCounts} h={44} />
+            </PanelChart>
+          )}
           {/* HUB right */}
           {mode === "select" && <>
             <Card>
@@ -1016,7 +1058,7 @@ export default function EchoPage() {
                 <button onClick={() => setMode("builder")} className="ng-btn ng-btn--sm ng-btn--block"><IconCode className="h-3.5 w-3.5" /> Build with Echo</button>
                 <Link href="/jobs" className="ng-btn ng-btn--sm ng-btn--block"><IconBriefcase className="h-3.5 w-3.5" /> Open Jobs</Link>
                 <Link href="/agents" className="ng-btn ng-btn--sm ng-btn--block"><IconBot className="h-3.5 w-3.5" /> Your Agents</Link>
-                <Link href="/genesis/board" className="ng-btn ng-btn--sm ng-btn--block"><IconCoins className="h-3.5 w-3.5" /> GenesisX Board</Link>
+                <Link href="/genesis/board" className="ng-btn ng-btn--sm ng-btn--block"><IconCoins className="h-3.5 w-3.5" /> Fund Board</Link>
               </div>
             </Card>
           </>}
@@ -1156,7 +1198,7 @@ export default function EchoPage() {
             <Card>
               <SecLabel icon={<IconActivity className="h-3.5 w-3.5" />}>GO TO THE SOURCE</SecLabel>
               <div className="space-y-2">
-                <Link href="/markets" className="ng-btn ng-btn--sm ng-btn--block"><IconChart className="h-3.5 w-3.5" /> TradeX Markets</Link>
+                <Link href="/markets" className="ng-btn ng-btn--sm ng-btn--block"><IconChart className="h-3.5 w-3.5" /> Trade Markets</Link>
                 <Link href="/jobs" className="ng-btn ng-btn--sm ng-btn--block"><IconBriefcase className="h-3.5 w-3.5" /> Job Board</Link>
                 <Link href="/leaderboard" className="ng-btn ng-btn--sm ng-btn--block"><IconStar className="h-3.5 w-3.5" /> Leaderboard</Link>
               </div>
@@ -1166,7 +1208,6 @@ export default function EchoPage() {
       </div>
 
       {toast && <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded border border-neon/40 bg-black/90 px-4 py-2.5 text-sm text-neon shadow-[0_0_20px_rgba(0,255,0,0.3)]">{toast}</div>}
-      <NeuGridDock />
     </div>
   );
 }

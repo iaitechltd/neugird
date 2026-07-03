@@ -37,12 +37,17 @@ pub mod milestone_vault {
     use super::*;
 
     /// Founder opens a raise. `ask` is derived on-chain as the tranche sum.
+    /// `release_authority` (optional) is a key that must CO-SIGN any vote that
+    /// executes a tranche release — NeuGrid wires the ICP signer canister's
+    /// threshold-Ed25519 address here, so no payout can leave the vault without
+    /// the canister's policy approving it (A3: trustless release authority).
     pub fn create_vault(
         ctx: Context<CreateVault>,
         vault_id: u64,
         milestone_amounts: Vec<u64>,
         raise_seconds: i64,
         stall_seconds: i64,
+        release_authority: Option<Pubkey>,
     ) -> Result<()> {
         require!(
             !milestone_amounts.is_empty() && milestone_amounts.len() <= MAX_MILESTONES,
@@ -72,6 +77,7 @@ pub mod milestone_vault {
             v.milestones[i] = MilestoneState { amount: *amount, status: PENDING, round: 0, votes_for: 0, votes_against: 0 };
         }
         v.backer_count = 0;
+        v.release_authority = release_authority.unwrap_or_default();
         v.bump = ctx.bumps.vault;
         emit!(VaultCreated { vault: v.key(), founder: v.founder, ask });
         Ok(())
@@ -162,6 +168,16 @@ pub mod milestone_vault {
 
         if released_now {
             let v = &ctx.accounts.vault;
+            // The releasing vote is the only instruction that moves money to the
+            // founder — when a release authority is set, it must co-sign HERE.
+            if v.release_authority != Pubkey::default() {
+                let ra = ctx
+                    .accounts
+                    .release_authority
+                    .as_ref()
+                    .ok_or(VaultError::MissingReleaseAuthority)?;
+                require!(ra.key() == v.release_authority, VaultError::WrongReleaseAuthority);
+            }
             let seeds: &[&[u8]] = &[b"vault", v.founder.as_ref(), &v.vault_id.to_le_bytes(), &[v.bump]];
             token::transfer(
                 CpiContext::new_with_signer(
@@ -308,6 +324,8 @@ pub struct Vault {
     pub milestone_count: u8,
     pub milestones: [MilestoneState; MAX_MILESTONES],
     pub backer_count: u32,
+    /// must co-sign releasing votes when set (Pubkey::default() = unset)
+    pub release_authority: Pubkey,
     pub bump: u8,
 }
 
@@ -385,6 +403,8 @@ pub struct Vote<'info> {
         constraint = founder_token.mint == vault.usdc_mint @ VaultError::WrongMint
     )]
     pub founder_token: Account<'info, TokenAccount>,
+    /// co-signer for the releasing vote — required only when the vault set one
+    pub release_authority: Option<Signer<'info>>,
     pub token_program: Program<'info, Token>,
 }
 
@@ -488,4 +508,6 @@ pub enum VaultError {
     #[msg("wrong token mint")] WrongMint,
     #[msg("wrong token account owner")] WrongOwner,
     #[msg("only the founder may do this")] NotFounder,
+    #[msg("release authority must co-sign this release")] MissingReleaseAuthority,
+    #[msg("wrong release authority")] WrongReleaseAuthority,
 }

@@ -8,16 +8,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import NeuGridDock from "@/components/app/NeuGridDock";
 import NeuHeader from "@/components/app/NeuHeader";
 import {
   Panel, Mark, Tag, Bracket,
   IconGrid, IconCheck, IconBolt, IconRocket, IconStore,
   IconCoins, IconLayers, IconArrowRight,
+  kpiColor,
 } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import OrbPanel from "@/components/app/OrbPanel";
+import { PanelChart } from "@/components/app/terminal";
+import { Ring, Gauge } from "@/components/app/charts";
 import type { Build, Product } from "@/lib/types";
 
 type P = Product & {
@@ -131,6 +133,15 @@ export default function GridXPage() {
   }, [products, category, sort]);
   const topProducts = [...products].sort((a, b) => (b.onchain_revenue ?? 0) - (a.onchain_revenue ?? 0)).slice(0, 5);
 
+  /* catalogue metrics — single-value arcs that read well at ANY product count
+     (Bars/Area degenerate to a flat block when the catalogue is tiny). */
+  const ratingPct = rated.length ? Math.round((avgRating / 5) * 100) : 0;
+  const totalOpens = products.reduce((s, p) => s + (p.opens_30d ?? 0), 0);
+  const reviewedCount = products.filter((p) => (p.review_count ?? 0) > 0).length;
+  const revenuePct = Math.min(100, Math.round((totalRevenue / 1000) * 100)); // toward a $1K milestone
+  const usagePct = Math.min(100, Math.round((totalOpens / 100) * 100));       // toward 100 opens / 30d
+  const reviewedPct = products.length ? Math.round((reviewedCount / products.length) * 100) : 0;
+
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
       <NeuHeader collapsed={!lOpen && !rOpen} onToggleCollapse={() => { const v = lOpen || rOpen; setLOpen(!v); setROpen(!v); }} />
@@ -140,6 +151,13 @@ export default function GridXPage() {
         <OrbPanel side="left" label="Your GridX" open={lOpen} onToggle={setLOpen} widthClass="lg:w-[320px] xl:w-[340px]">
           <Panel scroll title="YOUR GRIDX" icon={<IconStore className="h-4 w-4" />} bodyClass="p-3.5">
             <Link href="/echo" className="ng-btn ng-btn-primary ng-btn--block"><IconBolt className="h-3.5 w-3.5" /> Build &amp; publish with Echo</Link>
+
+            <PanelChart title="Quality · avg rating" read={`${rated.length} rated`}>
+              {rated.length ? <div className="flex items-center justify-center py-1"><Ring percent={ratingPct} label="avg rating" value={`${avgRating}★`} size={92} stroke={6} /></div> : <p className="text-[11px] text-ink-faint">No reviews yet.</p>}
+            </PanelChart>
+            <PanelChart title="Revenue · toward $1K" read={`$${Math.round(totalRevenue).toLocaleString()}`}>
+              <div className="flex items-center justify-center py-1"><Gauge percent={revenuePct} value={`${revenuePct}%`} w={150} color="var(--ng-cyan)" /></div>
+            </PanelChart>
 
             <Section icon={<IconLayers className="h-3.5 w-3.5" />}>Your Products</Section>
             {mine.length ? (
@@ -177,9 +195,9 @@ export default function GridXPage() {
 
           {/* page KPIs — 3 by default, 4/5 as the side panels collapse */}
           <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
-            {kpis.slice(0, 3 + closed).map(([k, v, unit]) => (
+            {kpis.slice(0, 3 + closed).map(([k, v, unit], i) => (
               <div key={k} className="ng-card p-4 text-center">
-                <div className="ng-stat__v">{unit === "$" && <span className="text-cyan">$</span>}<CountUp key={v} value={v} /></div>
+                <div className="ng-stat__v" style={{ color: kpiColor(i) }}>{unit === "$" && <span className="opacity-60">$</span>}<CountUp key={v} value={v} /></div>
                 <div className="ng-stat__k">{k}</div>
               </div>
             ))}
@@ -216,6 +234,13 @@ export default function GridXPage() {
         {/* RIGHT */}
         <OrbPanel label="Signal" open={rOpen} onToggle={setROpen} widthClass="lg:w-[320px] xl:w-[340px]">
           <Panel scroll title="SIGNAL" icon={<IconCoins className="h-4 w-4" />} bodyClass="p-3.5">
+            <PanelChart title="Reviewed · verified share" read={`${reviewedCount}/${products.length}`}>
+              {products.length ? <div className="flex items-center justify-center py-1"><Ring percent={reviewedPct} label="reviewed" value={`${reviewedPct}%`} size={92} stroke={6} /></div> : <p className="text-[11px] text-ink-faint">No products yet.</p>}
+            </PanelChart>
+            <PanelChart title="Usage · toward 100 opens" read={`${totalOpens.toLocaleString()} opens 30d`}>
+              <div className="flex items-center justify-center py-1"><Gauge percent={usagePct} value={`${usagePct}%`} w={150} /></div>
+            </PanelChart>
+
             <Section icon={<IconCoins className="h-3.5 w-3.5" />}>Top Products</Section>
             {topProducts.length ? (
               <div className="space-y-2">
@@ -248,8 +273,6 @@ export default function GridXPage() {
           </Panel>
         </OrbPanel>
       </div>
-
-      <NeuGridDock />
     </div>
   );
 }

@@ -9,6 +9,7 @@
 
 import { NextResponse } from "next/server";
 import { AgentWork } from "@/lib/modules";
+import { isDuplicateTick } from "@/lib/cronTick";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,7 @@ export async function POST(request: Request) {
   if (required && request.headers.get("x-ng-cron-key") !== required) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  if (isDuplicateTick(request)) return NextResponse.json({ ok: true, deduped: true });
   const summary = await AgentWork.tickAll();
   return NextResponse.json({ ok: true, ...summary });
 }

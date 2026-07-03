@@ -306,7 +306,14 @@ export function IconPlay({ className }: IconProps) {
 
 /* ------------------------- Box-free primitives -------------------------- */
 
-type Accent = "neon" | "cyan" | "amber" | "danger";
+type Accent = "neon" | "cyan" | "amber" | "danger" | "violet" | "magenta";
+
+/** TERMINAL discipline (founder, 2026-07-03): phosphor green is the voice —
+ *  KPI numbers are all neon; amber warns, red is negative, cyan is rare. The
+ *  cycle helper stays as the single knob if that ever changes again. */
+export const ACCENTS: Accent[] = ["neon"];
+/** CSS color for the i-th KPI in a strip. */
+export const kpiColor = (i: number): string => `var(--ng-${ACCENTS[i % ACCENTS.length]})`;
 
 /** Highlighted text — replaces bordered chips. */
 export function Mark({ children, accent = "neon", plain = false, className = "" }: { children: ReactNode; accent?: Accent; plain?: boolean; className?: string }) {
@@ -373,18 +380,20 @@ export function Bracket({ children, className = "", accent = "neon" }: { childre
 
 /** Frameless panel — glowing mono label + hairline, scrolls its body. */
 export function Panel({ title, icon, action, children, scroll = false, className = "", bodyClass = "" }: { title?: ReactNode; icon?: ReactNode; action?: ReactNode; children: ReactNode; scroll?: boolean; className?: string; bodyClass?: string }) {
+  // Terminal pane: the [ TITLE ] sits ON the top border (TUI-style), actions right.
   return (
-    <section className={`ng-panel flex flex-col ${scroll ? "lg:h-full lg:overflow-hidden" : ""} ${className}`}>
+    // NOTE: no overflow-hidden on the section — it would clip the on-border [ TITLE ]; the body div scrolls
+    <section className={`ng-panel relative flex flex-col ${title ? "mt-3" : ""} ${scroll ? "lg:h-full" : ""} ${className}`}>
       {title && (
-        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-3.5 py-2.5">
-          <div className="ng-label flex items-center gap-2 !text-ink">
+        <div className="pointer-events-none absolute -top-[9px] left-2 right-2 flex items-center justify-between gap-2">
+          <div className="ng-label pointer-events-auto flex items-center gap-1.5 bg-bg px-1">
             {icon && <span className="text-neon">{icon}</span>}
             {title}
           </div>
-          {action}
+          {action && <div className="pointer-events-auto bg-bg px-1">{action}</div>}
         </div>
       )}
-      <div className={`${scroll ? "lg:min-h-0 lg:flex-1 lg:overflow-y-auto" : ""} ${bodyClass || "p-3.5"}`}>{children}</div>
+      <div className={`${title ? "pt-2" : ""} ${scroll ? "lg:min-h-0 lg:flex-1 lg:overflow-y-auto" : ""} ${bodyClass || "p-3.5"}`}>{children}</div>
     </section>
   );
 }

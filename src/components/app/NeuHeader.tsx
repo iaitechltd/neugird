@@ -26,9 +26,9 @@ export function HeaderIcon({ children, onClick, label, badge, active }: { childr
 }
 
 const NAMES: Record<string, string> = {
-  "/home": "Home", "/tradex": "TradeX", "/echo": "Echo", "/me": "Profile",
+  "/home": "Home", "/tradex": "Trade", "/echo": "Echo", "/me": "Profile",
   "/profile": "Dashboard", "/grids": "Grids", "/agents": "Agents",
-  "/talentx": "TalenX", "/campaignx": "CampaignX", "/gridx": "GridX", "/genesis": "GenesisX",
+  "/talentx": "Talent", "/campaignx": "Campaign", "/gridx": "GridX", "/genesis": "Fund",
 };
 export function pageName(path: string) {
   if (NAMES[path]) return NAMES[path];
@@ -38,7 +38,7 @@ export function pageName(path: string) {
   if (path.startsWith("/talent/")) return "Talent";
   if (path.startsWith("/campaignx/")) return "Campaign";
   if (path.startsWith("/gridx/")) return "GridX";
-  if (path.startsWith("/genesis/")) return "Genesis";
+  if (path.startsWith("/genesis/")) return "Fund";
   if (path.startsWith("/subgrid/")) return "SubGrid";
   if (path.startsWith("/post/")) return "Post";
   return "NeuGrid";
@@ -84,36 +84,37 @@ function SearchOverlay({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-[70]">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-[2px]" onClick={onClose} />
-      <div className="relative z-10 mx-auto mt-[12vh] w-full max-w-xl px-4">
-        <div className="overflow-hidden rounded-xl border border-neon/25 bg-[#040d07]">
-          <div className="flex items-center gap-2.5 border-b border-neon/15 px-4 py-3">
-            <IconSearch className="h-4 w-4 shrink-0 text-neon/80" />
+      <div className="absolute inset-0 bg-black/80" onClick={onClose} />
+      <div className="relative z-10 mx-auto mt-[12vh] w-full max-w-xl px-4 font-mono">
+        <div className="border border-neon/16 bg-black">
+          {/* prompt input line */}
+          <div className="flex items-center gap-2 border-b border-neon/10 px-3 py-2.5">
+            <span className="shrink-0 text-[13px] text-neon">grid<span className="text-ink-faint">://</span>search</span>
+            <span className="shrink-0 text-neon">»</span>
             <input
               ref={inputRef}
               value={q}
               onChange={(e) => search(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && hits[0]) open(hits[0]); }}
-              placeholder="Search grids, people, agents, jobs, markets, builds…"
-              className="min-w-0 flex-1 bg-transparent text-[14px] text-ink outline-none placeholder:text-ink-faint"
+              placeholder="grids · people · agents · jobs · markets · builds"
+              className="min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-faint"
             />
-            <kbd className="shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-ink-faint">esc</kbd>
+            {busy && <span className="ng-tcursor shrink-0">█</span>}
+            <kbd className="shrink-0 border border-line px-1.5 py-0.5 text-[9px] text-ink-faint">esc</kbd>
           </div>
-          <div className="max-h-[46vh] overflow-y-auto p-1.5">
+          <div className="max-h-[46vh] overflow-y-auto py-1 text-[12px]">
             {q.trim().length < 2 ? (
-              <p className="px-3 py-4 text-[11px] text-ink-dim">Type at least two characters — search covers everything live on the grid.</p>
+              <p className="px-3 py-3 text-[11px] text-ink-dim">{"// type ≥2 chars — searches everything live on the grid"}</p>
             ) : busy && hits.length === 0 ? (
-              <p className="px-3 py-4 text-[11px] text-ink-dim">Searching…</p>
+              <p className="px-3 py-3 text-[11px] text-ink-dim">{"// searching…"}</p>
             ) : hits.length === 0 ? (
-              <p className="px-3 py-4 text-[11px] text-ink-dim">Nothing on the grid matches &ldquo;{q}&rdquo;.</p>
+              <p className="px-3 py-3 text-[11px] text-ink-dim">{"// no matches for "}&ldquo;{q}&rdquo;</p>
             ) : (
               hits.map((h, i) => (
-                <button key={`${h.href}-${i}`} onClick={() => open(h)} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-neon/[0.07]">
+                <button key={`${h.href}-${i}`} onClick={() => open(h)} className="thl flex w-full items-baseline gap-2.5 px-3 py-1.5 text-left">
                   <span className={`w-14 shrink-0 text-[9px] uppercase tracking-wider ${KIND_TINT[h.kind] ?? "text-ink-dim"}`}>{h.kind}</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] text-ink">{h.title}</span>
-                    <span className="block truncate text-[10.5px] text-ink-faint">{h.sub}</span>
-                  </span>
+                  <span className="min-w-0 flex-1 truncate text-ink">{h.title}</span>
+                  <span className="hidden max-w-[40%] shrink truncate text-[10px] text-ink-faint sm:block">{h.sub}</span>
                   <span className="shrink-0 text-ink-faint">›</span>
                 </button>
               ))
@@ -135,22 +136,25 @@ function BellDropdown({ notes, onClose }: { notes: Note[]; onClose: () => void }
   return (
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
-      <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-[320px] overflow-hidden rounded-xl border border-neon/25 bg-[#040d07]">
-        <div className="border-b border-neon/15 px-3.5 py-2.5 text-[10px] font-bold uppercase tracking-[0.14em] text-neon/80">Notifications</div>
-        <div className="max-h-[60vh] overflow-y-auto p-1.5">
+      <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-[326px] border border-neon/16 bg-black font-mono">
+        <div className="flex items-center justify-between border-b border-neon/10 px-3 py-2">
+          <span className="ng-label !text-[10px]">notifications</span>
+          <span className="text-[9px] text-ink-faint">{notes.length} pending</span>
+        </div>
+        <div className="max-h-[60vh] overflow-y-auto py-1">
           {notes.length === 0 ? (
-            <p className="px-3 py-4 text-[11px] text-ink-dim">You&rsquo;re all caught up — nothing needs you right now.</p>
+            <p className="px-3 py-3 text-[11px] text-ink-dim">{"// all caught up — nothing needs you"}</p>
           ) : (
             notes.map((n, i) => {
               const Ico = NOTE_ICON[n.kind] ?? IconCheck; // unknown kinds must never crash the bell
               return (
-                <button key={i} onClick={() => { onClose(); router.push(n.href); }} className="flex w-full items-start gap-2.5 rounded-lg px-3 py-2 text-left transition hover:bg-neon/[0.07]">
-                  <span className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded ${n.kind === "message" ? "bg-cyan/10 text-cyan" : "bg-neon/10 text-neon"}`}><Ico className="h-3.5 w-3.5" /></span>
+                <button key={i} onClick={() => { onClose(); router.push(n.href); }} className="thl flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-[12px]">
+                  <span className={`shrink-0 ${n.kind === "message" ? "text-cyan" : "text-neon"}`}><Ico className="h-3.5 w-3.5 translate-y-0.5" /></span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[12px] leading-snug text-ink">{n.text}</span>
-                    {n.sub && <span className="block truncate text-[10.5px] text-ink-faint">{n.sub}</span>}
+                    <span className="block leading-snug text-ink">{n.text}</span>
+                    {n.sub && <span className="block truncate text-[10px] text-ink-faint">{n.sub}</span>}
                   </span>
-                  <span className="mt-0.5 shrink-0 text-ink-faint">›</span>
+                  <span className="shrink-0 text-ink-faint">›</span>
                 </button>
               );
             })
@@ -193,6 +197,7 @@ export default function NeuHeader(props: {
   // Live Pulse from the current identity (/api/me); refreshes on demand so an
   // action like creating a Grid makes the number tick up immediately.
   const [livePulse, setLivePulse] = useState(pulse);
+  const [operator, setOperator] = useState<string>("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [bellOpen, setBellOpen] = useState(false);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -203,7 +208,7 @@ export default function NeuHeader(props: {
     const load = () =>
       fetch("/api/me")
         .then((r) => r.json())
-        .then((d) => { if (alive && typeof d?.pulse === "number") setLivePulse(d.pulse); })
+        .then((d) => { if (alive && typeof d?.pulse === "number") setLivePulse(d.pulse); if (alive && d?.username) setOperator(String(d.username)); })
         .catch(() => {});
     const loadNotes = () =>
       fetch("/api/notifications")
@@ -220,11 +225,15 @@ export default function NeuHeader(props: {
   }, []);
 
   return (
-    <header className="sticky top-0 z-40 shrink-0 border-b border-neon/20 bg-black/55 backdrop-blur" style={{ boxShadow: "0 0 18px rgba(0,255,0,0.18)" }}>
+    <header className="sticky top-0 z-40 shrink-0 border-b border-neon/20 bg-black">
       <div className="flex h-16 w-full items-center justify-between gap-3 px-4 sm:px-6">
         <div className="flex items-center gap-2.5">
           <Link href="/" aria-label="NeuGrid — landing"><NeuGridMark size={30} /></Link>
-          <span className="ng-title min-w-[7ch] text-xl font-bold tracking-tight text-neon"><Typewriter key={name} text={name} cursor /></span>
+          <span className="min-w-[16ch] text-[13px]">
+            <span className="text-ink-dim">{operator || "guest"}@neugrid</span>
+            <span className="text-ink-faint">:~$ </span>
+            <span className="font-bold text-neon"><Typewriter key={name} text={name.toLowerCase()} cursor /></span>
+          </span>
         </div>
 
         <div className="hidden lg:block">

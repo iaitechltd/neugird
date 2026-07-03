@@ -10,10 +10,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import NeuHeader from "@/components/app/NeuHeader";
-import NeuGridDock from "@/components/app/NeuGridDock";
 import OrbPanel from "@/components/app/OrbPanel";
-import { Panel, Tag, Mark, DataRow, IconBriefcase, IconActivity, IconBolt, IconCheck } from "@/components/app/ui";
+import { Panel, Tag, Mark, DataRow, IconBriefcase, IconActivity, IconBolt, IconCheck , kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
+import { PanelChart } from "@/components/app/terminal";
+import { Bars, Ring } from "@/components/app/charts";
 import type { Job } from "@/lib/types";
 
 type View = "open" | "doing" | "created" | "all";
@@ -35,13 +36,15 @@ export default function JobsPage() {
   const closed = (lOpen ? 0 : 1) + (rOpen ? 0 : 1);
   const notify = (m: string) => { setToast(m); window.setTimeout(() => setToast(null), 2400); };
 
-  const reload = useCallback(async () => {
-    const [j, m] = await Promise.allSettled([
+  const reload = useCallback(() => {
+    // .then (not await) so setState is inside a callback — satisfies react-hooks/set-state-in-effect
+    return Promise.allSettled([
       fetch("/api/jobs").then((r) => r.json()),
       fetch("/api/me").then((r) => r.json()),
-    ]);
-    setJobs(j.status === "fulfilled" ? (j.value.jobs ?? []) : []);
-    if (m.status === "fulfilled" && m.value?.id) setMe({ id: m.value.id });
+    ]).then(([j, m]) => {
+      setJobs(j.status === "fulfilled" ? (j.value.jobs ?? []) : []);
+      if (m.status === "fulfilled" && m.value?.id) setMe({ id: m.value.id });
+    });
   }, []);
 
   useEffect(() => {
@@ -51,7 +54,7 @@ export default function JobsPage() {
     return () => window.removeEventListener("neugrid:refresh-me", h);
   }, [reload]);
 
-  const list = jobs ?? [];
+  const list = useMemo(() => jobs ?? [], [jobs]);
   const mineId = me?.id;
   const counts = useMemo(() => ({
     open: list.filter((j) => j.status === "open").length,
@@ -71,6 +74,19 @@ export default function JobsPage() {
     ["Delivered", list.filter((j) => j.status === "paid").length],
     ["Agent-eligible", list.filter((j) => j.status === "open" && j.executor_kind !== "human").length],
   ];
+
+  // ── side-rail chart data (derived, SSR-safe) ─────────────────────────
+  const openJobs = useMemo(() => list.filter((j) => j.status === "open"), [list]);
+  const rewardBars = openJobs.map((j) => j.reward_amount ?? 0);          // LEFT · Bars
+  const totalCount = list.length;
+  const openPct = totalCount ? Math.round((counts.open / totalCount) * 100) : 0; // LEFT · Ring
+  const skillDemand = useMemo(() => {                                    // RIGHT · Bars
+    const tally: Record<string, number> = {};
+    for (const j of list) for (const s of j.required_skills) tally[s] = (tally[s] ?? 0) + 1;
+    return Object.entries(tally).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  }, [list]);
+  const paidCount = useMemo(() => list.filter((j) => j.status === "paid").length, [list]);
+  const paidPct = totalCount ? Math.round((paidCount / totalCount) * 100) : 0;    // RIGHT · Ring
 
   async function act(url: string, body?: object, msg?: string) {
     if (busy) return;
@@ -118,6 +134,18 @@ export default function JobsPage() {
               <DataRow k="Reward Pool" v={`${counts.pool} Pulse`} />
               <DataRow k="Total Jobs" v={list.length} />
             </div>
+
+            <PanelChart title="Rewards · open jobs" read={`${openJobs.length} live`}>
+              {rewardBars.length > 0
+                ? <Bars data={rewardBars} h={46} />
+                : <p className="py-3 text-center text-[10px] text-ink-faint">no open jobs</p>}
+            </PanelChart>
+            <PanelChart title="Pipeline · open share" read={`${counts.open}/${totalCount}`}>
+              {totalCount > 0
+                ? <div className="flex justify-center py-1"><Ring percent={openPct} label="open" size={80} stroke={6} color="var(--ng-cyan)" /></div>
+                : <p className="py-3 text-center text-[10px] text-ink-faint">no jobs yet</p>}
+            </PanelChart>
+
             <div className="ng-label mb-2 mt-4 !text-ink-dim">Filter</div>
             <div className="space-y-1">
               {([["open", "Open", counts.open], ["doing", "I'm doing", counts.doing], ["created", "I created", counts.created], ["all", "All", list.length]] as [View, string, number][]).map(([v, label, n]) => (
@@ -141,9 +169,9 @@ export default function JobsPage() {
 
           {/* page KPIs — 3 by default, 4/5 as the side panels collapse */}
           <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
-            {kpis.slice(0, 3 + closed).map(([k, v, unit]) => (
+            {kpis.slice(0, 3 + closed).map(([k, v, unit], i) => (
               <div key={k} className="ng-card p-4 text-center">
-                <div className="ng-stat__v">{unit === "$" && <span className="text-cyan">$</span>}<CountUp key={v} value={v} /></div>
+                <div className="ng-stat__v" style={{ color: kpiColor(i) }}>{unit === "$" && <span className="opacity-60">$</span>}<CountUp key={v} value={v} /></div>
                 <div className="ng-stat__k">{k}</div>
               </div>
             ))}
@@ -218,6 +246,18 @@ export default function JobsPage() {
               <DataRow k="I'm doing" v={counts.doing} accent="cyan" />
               <DataRow k="I created" v={counts.created} />
             </div>
+
+            <PanelChart title="Demand · by skill" read={`top ${skillDemand.length}`}>
+              {skillDemand.length > 0
+                ? <Bars data={skillDemand.map(([, n]) => n)} h={46} />
+                : <p className="py-3 text-center text-[10px] text-ink-faint">no skills tagged</p>}
+            </PanelChart>
+            <PanelChart title="Delivered · paid share" read={`${paidCount}/${totalCount}`}>
+              {totalCount > 0
+                ? <div className="flex justify-center py-1"><Ring percent={paidPct} label="paid" size={80} stroke={6} color="var(--ng-amber)" /></div>
+                : <p className="py-3 text-center text-[10px] text-ink-faint">no jobs yet</p>}
+            </PanelChart>
+
             <div className="ng-label mb-2 mt-5 !text-ink-dim">Lifecycle</div>
             <div className="space-y-1.5 text-[11px] text-ink-dim">
               {LIFECYCLE.map((s, i) => <div key={s} className="flex items-center gap-2"><span className="grid h-4 w-4 place-items-center rounded-full bg-neon/15 text-[9px] text-neon">{i + 1}</span>{s}</div>)}
@@ -229,7 +269,6 @@ export default function JobsPage() {
       </div>
 
       {toast && <div className="fixed bottom-24 left-1/2 z-[80] -translate-x-1/2 rounded border border-neon/40 bg-black/90 px-4 py-2.5 text-sm text-neon" style={{ boxShadow: "0 0 20px rgba(0,255,0,0.3)" }}>{toast}</div>}
-      <NeuGridDock />
     </div>
   );
 }

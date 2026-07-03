@@ -24,10 +24,10 @@ export type ModuleKey =
   | "Grid"
   | "SubGrid"
   | "GridX"
-  | "CampaignX"
-  | "TalenX"
+  | "Campaign"
+  | "Talent"
   | "SentientX"
-  | "GenesisX"
+  | "Fund"
   | "Pulse"
   | "Axon"
   | "Echo";
@@ -56,7 +56,7 @@ export interface RoleAssignment {
 
 /* --------------------------- User & Identity ----------------------- */
 
-/** Self-serve TalenX listing — the user's "hire me" card (set on /talent). */
+/** Self-serve Talent listing — the user's "hire me" card (set on /talent). */
 export interface TalentListing {
   headline?: string;   // e.g. "Full-stack Solana engineer"
   rate_usdc?: number;  // asking rate per deliverable
@@ -71,7 +71,7 @@ export interface UserProfile {
   avatar?: string;
   bio?: string;
   skills: string[];
-  /** TalenX self-listing (headline · rate · availability). */
+  /** Talent self-listing (headline · rate · availability). */
   listing?: TalentListing;
   /** Who referred this user (bound at signup from the ?ref= link). */
   referred_by?: ID;
@@ -330,7 +330,7 @@ export interface Proposal {
   closes_at?: ISODate; // raise window end — unfilled past this ⇒ expired + refunds (governable, genesis_raise_days)
   /** The raise's REAL on-chain escrow vault (the milestone_vault program), when
    *  the chain rail is active — publicly verifiable escrowed/released/refunded state. */
-  onchain?: { vault: string; program: string; cluster: string; txs?: string[] };
+  onchain?: { vault: string; program: string; cluster: string; txs?: string[]; release_authority?: string }; // release_authority = the ICP signer canister's Solana address (A3)
   created_at: ISODate;
 }
 
@@ -355,10 +355,10 @@ export interface MilestoneDraft {
 // and the agent marketplace. Human or AI, native or external — identical here.
 
 export type JobContext =
-  | "talent_contract" // hire a human via TalenX
+  | "talent_contract" // hire a human via Talent
   | "agent_job" // hire an agent (native or external)
   | "subgrid_task" // internal team work
-  | "campaign_task"; // CampaignX deliverable
+  | "campaign_task"; // Campaign deliverable
 
 export type ExecutorType = "user" | "agent";
 
@@ -475,7 +475,7 @@ export interface Dispute {
   resolved_at?: ISODate;
 }
 
-/* ---------------------------- CampaignX ---------------------------- */
+/* ---------------------------- Campaign ---------------------------- */
 // Distribution exchange: projects strike token deals with Grids for reach.
 
 export type CampaignStatus = "draft" | "active" | "review" | "completed" | "archived";
@@ -593,7 +593,7 @@ export type PulseActionType =
   | "build_completed" // Echo witnessed a build end-to-end (proof of build)
   | "product_listed" // a build was published to GridX
   | "product_reviewed" // a verified buyer/user rated a product (owner's creator rep moves with it)
-  | "raise_backed" // backed a GenesisX raise that filled (curation conviction)
+  | "raise_backed" // backed a Fund raise that filled (curation conviction)
   | "decay" // periodic rebalance so old activity doesn't dominate
   | "campaign_ghosted" // a project left a delivery unreviewed past the deadline (V6 employer fade)
   | "spam_penalty";
@@ -628,7 +628,7 @@ export interface RewardLedger {
   vesting?: Vesting;
 }
 
-/* ----------------------------- GenesisX ---------------------------- */
+/* ----------------------------- Fund ---------------------------- */
 // Milestone-escrowed funding. Money locks in an on-chain treasury and releases
 // tranche by tranche on verified, backer-approved delivery.
 
@@ -747,7 +747,7 @@ export interface TokenLaunch {
 }
 
 /* ----------------------------- Markets ----------------------------- */
-// Axon / TradeX — gated, last. Alpha → Spot → Futures.
+// Axon / Trade — gated, last. Alpha → Spot → Futures.
 
 export type MarketStage = "alpha" | "spot" | "futures";
 
@@ -872,7 +872,7 @@ export interface LimitOrder {
 // + the risk boundary: budget, max position, max leverage, allowed stages,
 // stop-loss / daily-loss kill, expiry, and a kill-switch. The agent acts on the
 // OWNER's wallet (non-custodial: scoped authority, never pooling). Every action
-// is attributed + bounded server-side. This fuses SentientX (agents) with TradeX.
+// is attributed + bounded server-side. This fuses SentientX (agents) with Trade.
 
 /** A native rule-based playbook, or "external" (the agent decides via SDK/MCP). */
 export type MandateStrategy = "dca" | "momentum" | "hedge" | "external";
@@ -1061,7 +1061,7 @@ export interface BuildStep {
  * A build the platform witnessed end-to-end. The owned `artifact` carries the
  * proof-of-build attestation; `steps` are the witnessed log. A Build is the unit
  * of "proof of build" on a user's verifiable track record — it stands on its own
- * whether or not it is ever listed on GridX or funded on GenesisX.
+ * whether or not it is ever listed on GridX or funded on Fund.
  */
 /** A build's live deployment on NeuGrid hosting — a real, shareable URL serving a
  *  version-pinned SNAPSHOT of the app (revising the build doesn't change the live
@@ -1073,6 +1073,7 @@ export interface BuildDeployment {
   proof: string; // the proof-of-build sealed at deploy time
   deployed_at: ISODate;
   redeploys: number; // 0 = first deploy
+  icp?: { canister_id: string; url: string; at: ISODate }; // the ICP asset-canister mirror — the unstoppable URL (A3)
 }
 
 /** One revision of a build (the iterate loop) — each re-seals the proof-of-build. */
@@ -1100,7 +1101,7 @@ export interface Build {
   revisions?: BuildRevision[]; // the iterate-loop history, oldest first
   deployment?: BuildDeployment; // live on NeuGrid hosting (/d/<slug>), version-pinned
   product_id?: ID; // set once listed on GridX
-  proposal_id?: ID; // set once taken to GenesisX
+  proposal_id?: ID; // set once taken to Fund
   grid_id?: ID; // the build's home Grid (lazily created on list/spawn)
   created_at: ISODate;
 }

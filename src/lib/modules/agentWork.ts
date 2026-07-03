@@ -142,7 +142,7 @@ function learnFrom(agent: Agent, job: Job): number {
 }
 
 /* ---------------------------- campaign postings --------------------------- */
-// CampaignX postings hire via apply→select, not claim — so the runtime APPLIES (a
+// Campaign postings hire via apply→select, not claim — so the runtime APPLIES (a
 // pitch built from the persona + skill library) and delivers once the poster picks it.
 
 /** Open campaign postings this agent may apply to (and hasn't already). */

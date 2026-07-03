@@ -1,6 +1,6 @@
 /**
  * POST /api/echo/builds/[id]/proposal-draft — the founder journey. Echo drafts a
- * GenesisX funding proposal FROM the build: pitch, realistic ask, and 3-5 next-phase
+ * Fund funding proposal FROM the build: pitch, realistic ask, and 3-5 next-phase
  * milestone tranches grounded in the real generated files. Returns the DRAFT only —
  * the founder reviews (and can edit) before submitting via POST /api/proposals.
  * Drafting is free (no GRID charge); owner-only.

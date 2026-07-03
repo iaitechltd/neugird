@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TradeX terminal — stage-aware. The trading UI LEVELS UP as a project ascends:
+ * Trade terminal — stage-aware. The trading UI LEVELS UP as a project ascends:
  *   Alpha  = bonding-curve buy/sell (early access)
  *   Spot   = order-book terminal (limit + market)
  *   Futures= perp terminal (long/short, leverage, margin, liquidation)
@@ -14,7 +14,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import NeuHeader from "@/components/app/NeuHeader";
-import NeuGridDock from "@/components/app/NeuGridDock";
 import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, Stat, DataRow, Mark, Tag, IconChart, IconActivity, IconBolt, IconCoins, IconArrowRight, IconShield, IconNetwork, IconCheck, IconLock, IconLayers, IconClose, IconUser } from "@/components/app/ui";
 import { Candles, Gauge, Ring, type Candle } from "@/components/app/charts";
@@ -422,14 +421,19 @@ export default function MarketTerminal() {
     return () => { alive = false; clearInterval(iv); };
   }, [id, agentActive]);
 
-  async function act(url: string, body: object, msg?: string) {
+  async function act(url: string, body: object, msg?: string, errMap?: Record<string, string>) {
     if (busy) return; setBusy(true);
     try { const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); const j = await r.json(); if (!r.ok) throw new Error(j?.error); if (msg) notify(msg); window.dispatchEvent(new Event("neugrid:refresh-me")); setTick((t) => t + 1); }
-    catch (e) { notify(e instanceof Error && e.message ? e.message : "Failed"); }
+    catch (e) { const code = e instanceof Error && e.message ? e.message : "Failed"; notify(errMap?.[code] ?? code); }
     setBusy(false);
   }
   const tradeMkt = (s: "buy" | "sell", amt: number, msg: string) => { if (amt > 0) act(`/api/markets/${id}/trade`, { side: s, amount: amt }, msg); };
-  const sendChat = (t: string) => act(`/api/markets/${id}/chat`, { text: t });
+  const CHAT_ERR: Record<string, string> = {
+    reputation_gate: "Posting here needs 25+ reputation — or a stake in this project (hold, back, or join)",
+    rate_limited: "Slow down — one message every 5 seconds",
+    hourly_cap: "Hourly message cap reached — back shortly",
+  };
+  const sendChat = (t: string) => act(`/api/markets/${id}/chat`, { text: t }, undefined, CHAT_ERR);
   const likeChat = (mid: string) => act(`/api/markets/${id}/chat`, { action: "like", message_id: mid });
   const flagFraud = () => { if (window.confirm("Report this market as fraudulent? Your report counts toward the Verifier quorum — at quorum, trading HALTS and every listing stake is SLASHED (vouchers forfeit their locked GRID). This can't be undone.")) act(`/api/markets/${id}/slash`, {}, "Fraud report registered"); };
 
@@ -522,10 +526,10 @@ export default function MarketTerminal() {
                         <div className="flex items-center gap-2 text-[10px] text-ink-dim"><span className="flex items-center gap-0.5"><IconActivity className="h-3 w-3 text-neon" />{Math.round(d.provenance.founder.reputation).toLocaleString()} rep</span><span className="flex items-center gap-0.5"><IconShield className="h-3 w-3" />{d.provenance.founder.credentials_count} creds</span></div>
                       </div>
                     </Link>
-                    <div className="mt-2 text-[10px] leading-relaxed text-ink-faint">From <Link href={`/grid/${d.provenance.grid.slug}`} className="text-ink-dim transition hover:text-neon">{d.provenance.grid.name}</Link>{d.provenance.subgrid ? ` · team ${d.provenance.subgrid.name}` : ""}{d.provenance.origin.kind === "proposal" ? " · funded on GenesisX" : ""}. <button onClick={() => setTab("Provenance")} className="text-neon transition hover:underline">See provenance →</button></div>
+                    <div className="mt-2 text-[10px] leading-relaxed text-ink-faint">From <Link href={`/grid/${d.provenance.grid.slug}`} className="text-ink-dim transition hover:text-neon">{d.provenance.grid.name}</Link>{d.provenance.subgrid ? ` · team ${d.provenance.subgrid.name}` : ""}{d.provenance.origin.kind === "proposal" ? " · funded on Fund" : ""}. <button onClick={() => setTab("Provenance")} className="text-neon transition hover:underline">See provenance →</button></div>
                   </div>
                 )}
-                <p className="mt-4 text-[10px] leading-relaxed text-ink-faint">Markets are earned: {m.base_symbol} reached TradeX only after the project delivered + passed audit.</p>
+                <p className="mt-4 text-[10px] leading-relaxed text-ink-faint">Markets are earned: {m.base_symbol} reached Trade only after the project delivered + passed audit.</p>
                 {d.flagged ? (
                   <div className="mt-3 flex items-center gap-1.5 rounded border border-danger/30 bg-danger/[0.06] px-2.5 py-1.5 text-[10px] text-danger"><IconShield className="h-3.5 w-3.5 shrink-0" />Flagged fraudulent — halted, stakes slashed.</div>
                 ) : d.can_flag ? (
@@ -551,7 +555,19 @@ export default function MarketTerminal() {
               )}
               <div className="ng-panel p-4">
                 <div className="flex flex-wrap items-end justify-between gap-3">
-                  <div><h1 className="ng-title text-xl font-bold text-neon text-glow-soft"><Decrypt text={`${m.base_symbol} / ${m.quote_symbol}`} /></h1><div className="mt-0.5 text-[10px] text-ink-faint">{m.grid_name} · {stage} market</div></div>
+                  <div className="flex min-w-0 items-center gap-4">
+                    <div><h1 className="ng-title text-xl font-bold text-neon text-glow-soft"><Decrypt text={`${m.base_symbol} / ${m.quote_symbol}`} /></h1><div className="mt-0.5 text-[10px] text-ink-faint">{m.grid_name} · {stage} market</div></div>
+                    {/* condensed founder credibility — the thesis, in the header */}
+                    {d.provenance?.founder && (
+                      <Link href={`/talent/${d.provenance.founder.id}`} className="group flex min-w-0 shrink items-center gap-2 rounded border border-line bg-neon/[0.03] px-2.5 py-1.5 transition hover:border-neon/40" title="Founder — verifiable track record">
+                        <MatrixAvatar seed={d.provenance.founder.username} size={26} />
+                        <span className="min-w-0">
+                          <span className="block truncate text-[11px] font-bold leading-tight text-ink group-hover:text-neon">{d.provenance.founder.username}</span>
+                          <span className="block text-[9px] leading-tight text-ink-faint"><span className="text-neon tnum">{Math.round(d.provenance.founder.reputation).toLocaleString()}</span> rep · {d.provenance.founder.credentials_count}✓ creds</span>
+                        </span>
+                      </Link>
+                    )}
+                  </div>
                   <div className="flex items-center gap-5 text-right">
                     <div><div className="text-[9px] uppercase tracking-wide text-ink-faint">Change</div><div className={`text-sm font-bold tnum ${st.change >= 0 ? "text-neon" : "text-danger"}`}>{st.change >= 0 ? "+" : ""}{st.change.toFixed(2)}%</div></div>
                     <div><div className="text-[9px] uppercase tracking-wide text-ink-faint">High</div><div className="text-sm tnum text-ink">${st.high.toFixed(4)}</div></div>
@@ -683,7 +699,7 @@ export default function MarketTerminal() {
                             <div className="ng-label mb-2 !text-ink-dim">Backers{p.origin.proposal ? ` · ${money(p.origin.proposal.raised)} raised` : ""}</div>
                             {p.backers.length ? (
                               <div className="space-y-1.5">{p.backers.map((b) => <Link key={b.id} href={`/talent/${b.id}`} className="flex items-center gap-2 text-[11px]"><MatrixAvatar seed={b.username} size={22} /><span className="min-w-0 flex-1 truncate text-ink">{b.username}</span><span className="flex items-center gap-0.5 text-ink-dim"><IconActivity className="h-2.5 w-2.5 text-neon" />{Math.round(b.reputation)}</span><Mark plain className="!text-[10px]">{money(b.amount)}</Mark></Link>)}</div>
-                            ) : <p className="text-[11px] text-ink-faint">{p.origin.kind === "direct" ? "Direct launch — no GenesisX raise." : "No backers listed."}</p>}
+                            ) : <p className="text-[11px] text-ink-faint">{p.origin.kind === "direct" ? "Direct launch — no Fund raise." : "No backers listed."}</p>}
                             <div className="mt-3 divide-y divide-line border-t border-line pt-2 text-[11px]">
                               <div className="ng-row !py-1"><span className="ng-row__k">Audit</span><span className={`font-normal ${p.audit?.status === "passed" ? "text-neon" : "text-amber"}`}>{p.audit?.status ?? "—"}</span></div>
                               <div className="ng-row !py-1"><span className="ng-row__k">Milestones</span><span className="ng-row__v font-normal">{p.milestones.released}/{p.milestones.total} released</span></div>
@@ -803,7 +819,7 @@ export default function MarketTerminal() {
                     <div className="ng-label mb-1 flex items-center gap-2 !text-neon"><IconBolt className="h-3.5 w-3.5" />Stake to list · {d.stake.stage}</div>
                     <p className="text-[10px] leading-relaxed text-ink-dim">Lock GRID to vouch for {m.base_symbol} + unlock {d.stake.stage}. The stake is the listing vote — earns a fee share, ~2-yr lock, and is <span className="text-danger/80">slashable if the project is found fraudulent</span>.</p>
                     <div className="mt-2 flex items-center gap-3">
-                      <Ring percent={d.stake.pct} value={`${d.stake.pct}%`} label="staked" size={76} stroke={5} />
+                      <Ring percent={d.stake.pct} value={`${d.stake.pct}%`} label="staked" size={76} stroke={5} color="#ffb020" />
                       <div className="flex-1 text-[11px]"><div className="ng-row !py-0.5"><span className="ng-row__k">Staked</span><Mark plain className="!text-[11px]">{d.stake.staked.toLocaleString()}</Mark></div><div className="ng-row !py-0.5"><span className="ng-row__k">Required</span><span className="ng-row__v font-normal">{d.stake.required.toLocaleString()}</span></div><div className="ng-row !py-0.5"><span className="ng-row__k">Backers</span><span className="ng-row__v font-normal">{d.stake.backers}</span></div></div>
                     </div>
                     {!d.stake.met && <form onSubmit={(e) => { e.preventDefault(); const a = Number(new FormData(e.currentTarget).get("g")); if (a > 0) act(`/api/markets/${id}/stake`, { amount: a }, "GRID staked"); }} className="mt-2 flex gap-1.5"><input name="g" inputMode="decimal" placeholder={`GRID (bal ${Math.round(d.wallet.grid)})`} className="ng-input !py-1.5 text-xs" /><button type="submit" disabled={busy} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-50">Stake</button></form>}
@@ -868,7 +884,6 @@ export default function MarketTerminal() {
       )}
       {toast && <div className="fixed bottom-28 left-1/2 z-[80] -translate-x-1/2 rounded border border-neon/40 bg-black/90 px-4 py-2.5 text-sm text-neon" style={{ boxShadow: "0 0 20px rgba(0,255,0,0.3)" }}>{toast}</div>}
       <TerminalFooter items={allMarkets} />
-      <NeuGridDock />
     </div>
   );
 }

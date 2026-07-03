@@ -1,5 +1,5 @@
 /**
- * Wallets — pre-mainnet USDC + GRID balances for TradeX.
+ * Wallets — pre-mainnet USDC + GRID balances for Trade.
  *
  * USDC is the trade quote; GRID is the platform token (stake-to-list, fee
  * discounts, governance). These are accounting units today; real Solana

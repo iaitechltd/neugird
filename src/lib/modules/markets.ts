@@ -1,5 +1,5 @@
 /**
- * Markets (Axon / TradeX) — the "amber half" of the lifecycle, GATED by graduation.
+ * Markets (Axon / Trade) — the "amber half" of the lifecycle, GATED by graduation.
  *
  *   delivered project (all milestones released) → launch token on ALPHA →
  *   earns traction (holders) → graduate to SPOT → deep liquidity → FUTURES.
@@ -28,7 +28,7 @@ export const SPOT_MARKETCAP = 963_000; // Alpha → Spot cap target
 export const FUTURES_MARKETCAP = 36_000_000; // Spot → Futures cap target
 export const FUTURES_MIN_LIQUIDITY = 900_000; // deep book required for leverage
 const SPOT_MIN_LIQ_RATIO = 0.08; // liquidity ≥ 8% of cap (anti thin-float gaming)
-// TradeX trade fee is GOVERNABLE — Params.get("tradex_fee_bps") (default 100 = 1%);
+// Trade trade fee is GOVERNABLE — Params.get("tradex_fee_bps") (default 100 = 1%);
 // a passed governance proposal changes it and the next trade uses the new value.
 
 export function marketForGrid(grid_id: string): Market | undefined {
@@ -89,7 +89,7 @@ export function stageProgress(m: Market): StageProgress {
 /**
  * Has a Grid "delivered" — the earned precondition to tokenize (gated further by
  * audit)? Two paths, both proof-not-promise:
- *  - milestones: a GenesisX-funded project released ALL its milestones; OR
+ *  - milestones: a Fund-funded project released ALL its milestones; OR
  *  - product: a witnessed GridX product was shipped (tokenize-from-GridX — a
  *    built+listed product earns a market without milestone funding).
  * Milestone-funded grids must finish their milestones (backers committed to them);

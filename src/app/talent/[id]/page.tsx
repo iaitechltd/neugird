@@ -12,7 +12,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import NeuHeader from "@/components/app/NeuHeader";
-import NeuGridDock from "@/components/app/NeuGridDock";
 import OrbPanel from "@/components/app/OrbPanel";
 import {
   Mark, Tag, Bracket, ProgressBar, DataRow,
@@ -90,7 +89,6 @@ export default function TalentProfile() {
             </div>
           )}
         </div>
-        <NeuGridDock />
       </div>
     );
   }
@@ -103,7 +101,7 @@ export default function TalentProfile() {
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
-      <NeuHeader title="TalenX" collapsed={!lOpen && !rOpen} onToggleCollapse={() => { const v = lOpen || rOpen; setLOpen(!v); setROpen(!v); }} />
+      <NeuHeader title="Talent" collapsed={!lOpen && !rOpen} onToggleCollapse={() => { const v = lOpen || rOpen; setLOpen(!v); setROpen(!v); }} />
       {backBar}
 
       <div className="flex flex-col gap-3 px-3 py-3 lg:min-h-0 lg:flex-1 lg:flex-row">
@@ -174,7 +172,7 @@ export default function TalentProfile() {
           <section>
             <div className="ng-label mb-1 flex items-center gap-2 !text-base !tracking-normal !text-neon"><IconShield className="h-4 w-4" />Soulbound Credentials · {view.credentials.length}</div>
             <p className="mb-3 text-[11px] text-ink-faint">Earned achievements, ready to mint as Solana SAS attestations (Token-2022 soulbound) — non-transferable, cannot be faked or sold.</p>
-            {view.credentials.length === 0 ? <p className="text-[11px] text-ink-faint">No credentials yet — ship a build, deliver a job, or raise on GenesisX.</p> : (
+            {view.credentials.length === 0 ? <p className="text-[11px] text-ink-faint">No credentials yet — ship a build, deliver a job, or raise on Fund.</p> : (
               <div className="grid grid-cols-1 gap-2 @2xl:grid-cols-2">
                 {view.credentials.map((c) => {
                   const Ico = CRED_ICON[c.schema] ?? IconShield;
@@ -238,7 +236,7 @@ export default function TalentProfile() {
           <div className="grid grid-cols-1 gap-6 @3xl:grid-cols-2">
             <section>
               <div className="ng-label mb-3 flex items-center gap-2 !text-base !tracking-normal !text-neon"><IconCoins className="h-4 w-4" />Raises</div>
-              {tr.proposals.length === 0 ? <p className="text-[11px] text-ink-faint">No GenesisX proposals yet.</p> : (
+              {tr.proposals.length === 0 ? <p className="text-[11px] text-ink-faint">No Fund proposals yet.</p> : (
                 <div className="space-y-2">
                   {tr.proposals.map((pr) => (
                     <Link key={pr.proposal_id} href={`/genesis/${pr.proposal_id}`} className="ng-card flex items-center justify-between gap-3 p-3 transition hover:!border-neon/40">
@@ -321,8 +319,6 @@ export default function TalentProfile() {
           </div>
         </OrbPanel>
       </div>
-
-      <NeuGridDock />
     </div>
   );
 }

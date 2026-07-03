@@ -9,11 +9,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import NeuHeader from "@/components/app/NeuHeader";
-import NeuGridDock from "@/components/app/NeuGridDock";
 import OrbPanel from "@/components/app/OrbPanel";
-import { Panel, Tag, DataRow, IconUser, IconBot, IconStar, IconShield, IconActivity, IconBolt, IconCheck, IconBriefcase } from "@/components/app/ui";
+import { Panel, Tag, DataRow, IconUser, IconBot, IconStar, IconShield, IconActivity, IconBolt, IconCheck, IconBriefcase , kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
+import { PanelChart } from "@/components/app/terminal";
+import { Bars, Ring, Heatmap, Area } from "@/components/app/charts";
 
 type Builder = { id: string; username: string; reputation: number; by_dimension: Record<string, number>; credentials: number; builds: number; jobs_done: number; skills: string[] };
 type AgentRow = { agent_id: string; name: string; rating: number; trust_tier: string; origin: string; verified_jobs: number; capabilities: string[]; earnings: number; credentials: number };
@@ -41,6 +42,18 @@ export default function Leaderboard() {
   const agents = view?.agents ?? [];
   const tags = view?.tags ?? [];
 
+  // ── chart-derived values (ranked builders = the entries) ──────────────
+  const entries = builders;
+  const maxRep = Math.max(1, ...entries.map((e) => e.reputation ?? 0));
+  const repBars = entries.slice(0, 12).map((e) => e.reputation ?? 0);
+  const totalRep = entries.reduce((s, e) => s + (e.reputation ?? 0), 0);
+  const top3Rep = entries.slice(0, 3).reduce((s, e) => s + (e.reputation ?? 0), 0);
+  const top3Share = totalRep > 0 ? Math.round((top3Rep / totalRep) * 100) : 0;
+  const HM_ROWS = 6, HM_COLS = 10;
+  const heatData = entries.slice(0, HM_ROWS * HM_COLS).map((e) => Math.min(1, (e.reputation ?? 0) / maxRep));
+  // running cumulative-reputation curve, ascending across the ranked field
+  const curveData = [...entries].reverse().reduce<number[]>((acc, e) => { acc.push((acc[acc.length - 1] ?? 0) + (e.reputation ?? 0)); return acc; }, []);
+
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
       <NeuHeader title="Discovery" collapsed={!lOpen && !rOpen} onToggleCollapse={() => { const v = lOpen || rOpen; setLOpen(!v); setROpen(!v); }} />
@@ -53,6 +66,14 @@ export default function Leaderboard() {
               <DataRow k="Builders ranked" v={builders.length} accent="neon" />
               <DataRow k="Agents ranked" v={agents.length} />
             </div>
+
+            <PanelChart title="Reputation · top ranked" read={`${entries.length} ranked`}>
+              {repBars.length ? <Bars data={repBars} h={44} /> : <p className="text-[11px] text-ink-faint">No ranked builders yet.</p>}
+            </PanelChart>
+            <PanelChart title="Concentration · top 3 share" read={`${top3Rep.toLocaleString()} rep`}>
+              {entries.length ? <div className="flex items-center justify-center py-1"><Ring percent={top3Share} label="top 3" value={`${top3Share}%`} size={86} stroke={6} /></div> : <p className="text-[11px] text-ink-faint">No ranked builders yet.</p>}
+            </PanelChart>
+
             <div className="ng-card mt-4 p-3">
               <div className="ng-label mb-2 !text-ink-dim">How ranking works</div>
               <ul className="space-y-2 text-[11px] text-ink-dim">
@@ -80,9 +101,9 @@ export default function Leaderboard() {
               ["Combined Rep", Math.round(builders.reduce((s, b) => s + b.reputation, 0))],
               ["Credentials", builders.reduce((s, b) => s + b.credentials, 0) + agents.reduce((s, a) => s + a.credentials, 0)],
               ["Jobs Done", builders.reduce((s, b) => s + b.jobs_done, 0) + agents.reduce((s, a) => s + a.verified_jobs, 0)],
-            ] as [string, number][]).slice(0, 3 + closed).map(([k, v]) => (
+            ] as [string, number][]).slice(0, 3 + closed).map(([k, v], i) => (
               <div key={k} className="ng-card p-4 text-center">
-                <div className="ng-stat__v"><CountUp key={v} value={v} /></div>
+                <div className="ng-stat__v" style={{ color: kpiColor(i) }}><CountUp key={v} value={v} /></div>
                 <div className="ng-stat__k">{k}</div>
               </div>
             ))}
@@ -155,6 +176,14 @@ export default function Leaderboard() {
         <OrbPanel label="Flywheel" open={rOpen} onToggle={setROpen} widthClass="lg:w-[300px] xl:w-[320px]">
           <Panel scroll title="THE FLYWHEEL" icon={<IconBolt className="h-4 w-4" />} bodyClass="p-3.5">
             <p className="text-[11px] leading-relaxed text-ink-dim">Reputation is earned from verified work and sealed as soulbound credentials. Higher signal → more discovery → more work → more signal.</p>
+
+            <PanelChart title="Activity · distribution" read={`peak ${maxRep.toLocaleString()}`}>
+              {heatData.length ? <Heatmap rows={HM_ROWS} cols={HM_COLS} data={heatData} /> : <p className="text-[11px] text-ink-faint">No ranked builders yet.</p>}
+            </PanelChart>
+            <PanelChart title="Curve · ranked" read={`${totalRep.toLocaleString()} total`}>
+              {curveData.length ? <Area data={curveData.length > 1 ? curveData : [0, curveData[0]]} gid="lb-curve" color="var(--ng-cyan)" h={48} /> : <p className="text-[11px] text-ink-faint">No ranked builders yet.</p>}
+            </PanelChart>
+
             <div className="ng-label mb-2 mt-4 !text-ink-dim">Why it&apos;s fair</div>
             <ul className="space-y-1.5 text-[11px] text-ink-dim">
               <li className="flex gap-2"><span className="text-neon">›</span>Ranked by proof, not payment</li>
@@ -169,8 +198,6 @@ export default function Leaderboard() {
           </Panel>
         </OrbPanel>
       </div>
-
-      <NeuGridDock />
     </div>
   );
 }
