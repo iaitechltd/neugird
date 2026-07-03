@@ -582,6 +582,7 @@ export type PulseActionType =
   | "milestone_approved"
   | "build_completed" // Echo witnessed a build end-to-end (proof of build)
   | "product_listed" // a build was published to GridX
+  | "product_reviewed" // a verified buyer/user rated a product (owner's creator rep moves with it)
   | "decay" // periodic rebalance so old activity doesn't dominate
   | "campaign_ghosted" // a project left a delivery unreviewed past the deadline (V6 employer fade)
   | "spam_penalty";
@@ -1150,14 +1151,35 @@ export interface Product {
   description: string;
   artifact_ref?: BuildArtifactRef;
   category: string;
+  /** Asking price in USDC; 0/absent = free. Purchases settle buyer → grid owner. */
+  price_usdc?: number;
   /* verifiable, on-chain where possible */
-  onchain_revenue?: number; // the gold trust signal
-  active_users?: number;
+  onchain_revenue?: number; // the gold trust signal — DERIVED from real purchase settlements on read
+  active_users?: number; // DERIVED from productEvents (distinct users, 30d) on read
   followers?: number;
-  rating?: number;
-  review_count?: number;
+  rating?: number; // DERIVED from productReviews on read
+  review_count?: number; // DERIVED on read
   spawned_grid_id?: ID; // product → its own community Grid
   listed_at: ISODate;
+}
+
+/** A verified review — only buyers (paid products) or real users (free, opened) may write one. */
+export interface ProductReview {
+  review_id: ID;
+  product_id: ID;
+  user_id: ID;
+  rating: number; // 1–5
+  text?: string;
+  created_at: ISODate;
+}
+
+/** Real product usage — opens + purchases; drives active-users, trending, and review eligibility. */
+export interface ProductEvent {
+  event_id: ID;
+  product_id: ID;
+  user_id: ID;
+  kind: "open" | "purchase";
+  at: ISODate;
 }
 
 /* ------------------------------ Fees ------------------------------- */

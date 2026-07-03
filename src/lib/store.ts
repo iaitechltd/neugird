@@ -36,6 +36,8 @@ import type {
   Milestone,
   Position,
   Product,
+  ProductReview,
+  ProductEvent,
   Proposal,
   PulseEvent,
   Settlement,
@@ -75,6 +77,8 @@ export interface DB {
   audits: Audit[];
   builds: Build[]; // Echo build engine — witnessed builds (proof of build)
   products: Product[]; // GridX — published products
+  productReviews: ProductReview[]; // GridX — verified-purchase/usage reviews
+  productEvents: ProductEvent[]; // GridX — real usage: opens + purchases (drives active-users/trending)
   attestations: Attestation[]; // soulbound credential layer (SAS-bound; Stage 1 in-platform mirror)
   settlements: Settlement[]; // x402 agent-to-protocol payments (Stage 1 accounting; Solana USDC later)
   wallets: Wallet[]; // USDC + GRID balances (TradeX; accounting units pre-mainnet)
@@ -361,6 +365,8 @@ function seed(): DB {
     audits: [],
     builds: [],
     products: [],
+    productReviews: [],
+    productEvents: [],
     attestations: [],
     settlements: [],
     // Dev balances so trading + staking are live in the sandbox (accounting units).

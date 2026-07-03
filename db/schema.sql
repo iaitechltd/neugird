@@ -386,7 +386,8 @@ create table if not exists products (
   description     text,
   artifact_ref    jsonb,      -- BuildArtifactRef
   category        text,
-  onchain_revenue numeric,    -- the gold trust signal
+  price_usdc      numeric,    -- asking price; 0/null = free
+  onchain_revenue numeric,    -- the gold trust signal (derived on read; stored value is legacy)
   active_users    integer,
   followers       integer,
   rating          numeric,
@@ -394,6 +395,27 @@ create table if not exists products (
   spawned_grid_id text,
   listed_at       timestamptz not null default now()
 );
+
+/* GridX verified reviews — only buyers (paid) / real users (free) may write one. */
+create table if not exists product_reviews (
+  review_id  text primary key,
+  product_id text        not null references products(product_id) on delete cascade,
+  user_id    text        not null,
+  rating     integer     not null,
+  text       text,
+  created_at timestamptz not null default now()
+);
+create index if not exists product_reviews_product_idx on product_reviews(product_id);
+
+/* GridX real usage — opens + purchases (drives active-users, trending, review rights). */
+create table if not exists product_events (
+  event_id   text primary key,
+  product_id text        not null references products(product_id) on delete cascade,
+  user_id    text        not null,
+  kind       text        not null,
+  at         timestamptz not null default now()
+);
+create index if not exists product_events_product_idx on product_events(product_id);
 
 /* ==================== On-chain attestations (SAS) =================== */
 -- Soulbound credential layer. Stage 1 = in-platform mirror; Stage 2 fills

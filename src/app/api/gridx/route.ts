@@ -5,13 +5,24 @@
  */
 
 import { NextResponse } from "next/server";
-import { GridX } from "@/lib/modules";
+import { GridX, Markets } from "@/lib/modules";
 import { getCurrentUserId } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return NextResponse.json({ products: GridX.listProducts() });
+  const uid = await getCurrentUserId();
+  const products = GridX.listProducts().map((p) => {
+    const market = Markets.marketForGrid(p.grid_id);
+    return {
+      ...GridX.enrich(p),
+      owner_id: GridX.ownerOf(p),
+      owned_by_me: GridX.ownerOf(p) === uid,
+      purchased_by_me: GridX.hasPurchased(p.product_id, uid),
+      market: market ? { market_id: market.market_id, stage: market.stage, symbol: market.base_symbol } : null,
+    };
+  });
+  return NextResponse.json({ products, me: { id: uid } });
 }
 
 export async function POST(request: Request) {
