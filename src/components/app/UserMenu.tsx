@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { IconChart, IconUser, IconSettings, IconCheck, IconLock, IconConnect } from "./ui";
+import { IconCoins, IconUser, IconSettings, IconCheck, IconLock, IconConnect } from "./ui";
 
 type Me = { id: string; username: string; wallet: string | null; pulse: number } | null;
 
@@ -16,7 +16,7 @@ function getProvider(): SolanaProvider | undefined {
 }
 
 const ITEMS: [React.ReactNode, string, string][] = [
-  [<IconChart key="d" className="h-4 w-4" />, "Dashboard", "/profile"],
+  [<IconCoins key="r" className="h-4 w-4" />, "Rewards & Referrals", "/rewards"],
   [<IconUser key="p" className="h-4 w-4" />, "Profile", "/me"],
   [<IconSettings key="s" className="h-4 w-4" />, "Settings", "/profile"],
 ];
