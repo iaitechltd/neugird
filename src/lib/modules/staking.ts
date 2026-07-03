@@ -10,6 +10,7 @@
  */
 
 import { db } from "../store";
+import { Staking as ChainStaking } from "../chain";
 import { newId, nowISO } from "../id";
 import * as Wallets from "./wallets";
 import type { ListingStake } from "../types";
@@ -80,6 +81,7 @@ export function distributeFees(grid_id: string, amount: number): number {
     Wallets.creditUsdc(s.staker_id, share);
     distributed += share;
   }
+  if (stakes[0]) void ChainStaking.fees(stakes[0].market_id, distributed); // chain mirror
   return distributed;
 }
 
@@ -115,6 +117,7 @@ export function stakeForListing(
     created_at: nowISO(),
   };
   store().push(stake);
+  void ChainStaking.stake(market_id, amount, LOCK_MS / 1000); // chain mirror
   return { stake };
 }
 
@@ -135,6 +138,7 @@ export function slashStakes(grid_id: string, reason: string): { slashed: number;
     Wallets.creditGrid(Wallets.TREASURY, s.amount); // forfeited GRID → protocol sink
     slashed += s.amount;
   }
+  if (active[0]) void ChainStaking.slash(active[0].market_id); // chain mirror — pool sweeps on-chain
   return { slashed, count: active.length };
 }
 
@@ -147,5 +151,6 @@ export function releaseStake(stake_id: string, user_id: string): { stake?: Listi
   if (Date.parse(s.locked_until) > Date.now()) return { error: "still_locked" };
   s.released = true;
   Wallets.creditGrid(user_id, s.amount);
+  void ChainStaking.release(s.market_id, s.amount); // chain mirror
   return { stake: s };
 }

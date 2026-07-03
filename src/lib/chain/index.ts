@@ -15,6 +15,7 @@ import type { Attestation, Proposal } from "../types";
 import { solanaSas, solanaX402, USDC_MINT_MAINNET } from "./solana";
 import * as vaultSolana from "./vaultSolana";
 import * as gridTokenImpl from "./gridToken";
+import * as stakingSolana from "./stakingSolana";
 
 /* -------------------------------- SAS seam ------------------------------------ */
 
@@ -152,4 +153,19 @@ export const GridToken = {
   configured: (): boolean => !!gridTokenImpl.gridTokenConfig(),
   claim: (recipientWallet: string | undefined, amountGrid: number): Promise<void> =>
     guard("gridToken.claim", async () => { await gridTokenImpl.mirrorClaim(recipientWallet, amountGrid); }),
+};
+
+/* -------------------------------- GRID staking -------------------------------- */
+// Stake-to-list mirrored onto the real grid_staking program (C3). Guarded
+// fire-and-forget from staking.ts / markets.ts.
+
+export const Staking = {
+  configured: (): boolean => !!stakingSolana.stakingConfig(),
+  stake: (market_id: string, amount: number, lockSeconds: number) =>
+    guard("staking.stake", () => stakingSolana.mirrorStake(market_id, amount, lockSeconds)),
+  fees: (market_id: string, amount: number) =>
+    guard("staking.fees", () => stakingSolana.mirrorFees(market_id, amount)),
+  release: (market_id: string, amount: number) =>
+    guard("staking.release", () => stakingSolana.mirrorRelease(market_id, amount)),
+  slash: (market_id: string) => guard("staking.slash", () => stakingSolana.mirrorSlash(market_id)),
 };
