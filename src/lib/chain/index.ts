@@ -11,13 +11,14 @@
  *   x402 protocol against a Coinbase-CDP-style facilitator. See ./solana.
  */
 
-import type { Attestation, ContributorSplit, Proposal } from "../types";
+import type { Attestation, ContributorSplit, Proposal, Agreement as AgreementT } from "../types";
 import { solanaSas, solanaX402, USDC_MINT_MAINNET } from "./solana";
 import * as vaultSolana from "./vaultSolana";
 import * as gridTokenImpl from "./gridToken";
 import * as stakingSolana from "./stakingSolana";
 import * as governanceSolana from "./governanceSolana";
 import * as splitsSolana from "./splitsSolana";
+import * as proofsSolana from "./proofsSolana";
 
 /* -------------------------------- SAS seam ------------------------------------ */
 
@@ -194,4 +195,13 @@ export const Splits = {
     guard("splits.configure", () => splitsSolana.mirrorConfigure(subgrid_id, splits)),
   distribute: (subgrid_id: string, amount: number) =>
     guard("splits.distribute", () => splitsSolana.mirrorDistribute(subgrid_id, amount)),
+};
+
+/* --------------------------------- Deal proofs --------------------------------- */
+// C7 — no custom program: a struck agreement's sha256 anchors via the audited
+// Solana Memo program. Guarded fire-and-forget from messaging.ts.
+
+export const Proofs = {
+  configured: (): boolean => !!proofsSolana.proofsConfig(),
+  anchor: (ag: AgreementT) => guard("proofs.anchor", () => proofsSolana.anchorAgreement(ag)),
 };

@@ -188,8 +188,8 @@ const SPECS: Spec[] = [
     cols: ["message_id", "conversation_id", "from_id", "kind", "body", "offer", "read_by", "created_at"],
     arr: ["read_by"], json: ["offer"], ts: ["created_at"] },
   { key: "agreements", table: "agreements",
-    cols: ["agreement_id", "from_id", "to_id", "amount", "asset", "terms", "success_metric", "status", "source_message_id", "created_at"],
-    num: ["amount"], ts: ["created_at"] },
+    cols: ["agreement_id", "from_id", "to_id", "amount", "asset", "terms", "success_metric", "status", "source_message_id", "onchain", "created_at"],
+    num: ["amount"], ts: ["created_at"], json: ["onchain"] },
   { key: "follows", table: "follows",
     cols: ["follower_id", "followee_id", "created_at"], ts: ["created_at"] },
 ];

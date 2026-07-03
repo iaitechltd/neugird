@@ -255,6 +255,8 @@ export interface Agreement {
   success_metric?: string;
   status: "active" | "completed" | "cancelled";
   source_message_id: ID;
+  /** The deal's on-chain proof: its sha256 anchored via the Solana Memo program. */
+  onchain?: { tx: string; hash: string; cluster: string };
   created_at: ISODate;
 }
 export interface DirectMessage {

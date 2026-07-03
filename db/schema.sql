@@ -670,6 +670,7 @@ create table if not exists agreements (
   success_metric    text,
   status            text        not null default 'active', -- active | completed | cancelled
   source_message_id text,
+  onchain           jsonb,      -- the deal's sha256 anchored via the Solana Memo program
   created_at        timestamptz not null default now()
 );
 

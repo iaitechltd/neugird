@@ -7,6 +7,7 @@
  */
 
 import { db } from "../store";
+import { Proofs as ChainProofs } from "../chain";
 import { newId, nowISO } from "../id";
 import * as Jobs from "./jobs";
 import type { Agreement, Conversation, DirectMessage, DMKind, DMOffer } from "../types";
@@ -165,6 +166,7 @@ export function resolveOffer(message_id: string, by_id: string, accept: boolean)
       source_message_id: m.message_id, created_at: nowISO(),
     };
     agreements().push(ag);
+    void ChainProofs.anchor(ag); // chain mirror — the deal's sha256, timestamped on-chain
     m.offer.result_ref = ag.agreement_id;
     m.offer.result_kind = "agreement";
   }
