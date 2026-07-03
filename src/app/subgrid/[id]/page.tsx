@@ -69,6 +69,7 @@ export default function SubgridDetail() {
   const [editAccess, setEditAccess] = useState(false);
   const [accessForm, setAccessForm] = useState<{ access: SubGridAccess; min_reputation: number; min_grid: number }>({ access: "open", min_reputation: 0, min_grid: 0 });
   const [editSplits, setEditSplits] = useState(false);
+  const [distAmount, setDistAmount] = useState("");
   const [draftSplits, setDraftSplits] = useState<Record<string, number>>({});
   const [inviteId, setInviteId] = useState("");
 
@@ -297,6 +298,19 @@ export default function SubgridDetail() {
                   </div>
                 ))}
                 <p className="border-t border-line pt-2 text-[9px] leading-relaxed text-ink-faint">On-chain agreement — revenue / tokens from this team&apos;s output split by these shares.</p>
+                {isAdmin && (
+                  <div className="flex gap-2 border-t border-line pt-2.5">
+                    <input
+                      value={distAmount}
+                      onChange={(e) => setDistAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+                      className="ng-input flex-1 !py-1.5 text-xs" placeholder="USDC amount"
+                    />
+                    <button
+                      onClick={() => { const a = Number(distAmount); if (a > 0) { call("/distribute", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amount: a }) }, `$${a} distributed through the split ✓`); setDistAmount(""); } }}
+                      className="ng-btn ng-btn-primary ng-btn--sm shrink-0"
+                    >Distribute</button>
+                  </div>
+                )}
               </div>
             )}
           </div>

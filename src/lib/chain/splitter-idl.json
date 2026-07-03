@@ -1,0 +1,326 @@
+{
+  "address": "HFuFMdRJPR1BG3vQqjxtvxybeu4mF3FMrLWU2noVHy4N",
+  "metadata": {
+    "name": "revenue_splitter",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "NeuGrid SubGrid ownership splits, executable — atomic revenue distribution by bps"
+  },
+  "instructions": [
+    {
+      "name": "configure",
+      "docs": [
+        "Create or replace the split table for a SubGrid. Shares must sum to 10000."
+      ],
+      "discriminator": [
+        245,
+        7,
+        108,
+        117,
+        95,
+        196,
+        54,
+        217
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "splitter",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  112,
+                  108,
+                  105,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "subgrid_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint_token",
+          "docs": [
+            "any token account of the revenue mint — pins which mint this splitter pays"
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "subgrid_id",
+          "type": "u64"
+        },
+        {
+          "name": "members",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "Member"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "distribute",
+      "docs": [
+        "Split `amount` across the members atomically. `remaining_accounts` must be",
+        "each member's token account (ATA of the splitter's mint), in member order."
+      ],
+      "discriminator": [
+        191,
+        44,
+        223,
+        207,
+        164,
+        236,
+        126,
+        61
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "splitter"
+          ]
+        },
+        {
+          "name": "splitter",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  112,
+                  108,
+                  105,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "splitter.authority",
+                "account": "Splitter"
+              },
+              {
+                "kind": "account",
+                "path": "splitter.subgrid_id",
+                "account": "Splitter"
+              }
+            ]
+          }
+        },
+        {
+          "name": "source",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Splitter",
+      "discriminator": [
+        187,
+        177,
+        147,
+        182,
+        44,
+        155,
+        130,
+        202
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "Configured",
+      "discriminator": [
+        33,
+        54,
+        80,
+        14,
+        177,
+        137,
+        82,
+        235
+      ]
+    },
+    {
+      "name": "Distributed",
+      "discriminator": [
+        10,
+        212,
+        24,
+        78,
+        35,
+        202,
+        182,
+        134
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "BadMembers",
+      "msg": "1-8 members required"
+    },
+    {
+      "code": 6001,
+      "name": "MustSum10000",
+      "msg": "shares must sum to 10000 bps"
+    },
+    {
+      "code": 6002,
+      "name": "BadAmount",
+      "msg": "amount must be positive"
+    },
+    {
+      "code": 6003,
+      "name": "BadRecipients",
+      "msg": "recipient accounts must match the member table"
+    },
+    {
+      "code": 6004,
+      "name": "Overflow",
+      "msg": "arithmetic overflow"
+    },
+    {
+      "code": 6005,
+      "name": "WrongMint",
+      "msg": "wrong token mint"
+    },
+    {
+      "code": 6006,
+      "name": "NotAuthority",
+      "msg": "only the splitter authority may do this"
+    }
+  ],
+  "types": [
+    {
+      "name": "Configured",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "splitter",
+            "type": "pubkey"
+          },
+          {
+            "name": "subgrid_id",
+            "type": "u64"
+          },
+          {
+            "name": "members",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Distributed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "splitter",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Member",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "bps",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Splitter",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "subgrid_id",
+            "type": "u64"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "members",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "Member"
+                }
+              }
+            }
+          },
+          {
+            "name": "distributed",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}

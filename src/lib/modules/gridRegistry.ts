@@ -7,6 +7,7 @@ import { db } from "../store";
 import { newId, nowISO } from "../id";
 import * as Pulse from "./pulse";
 import * as Wallets from "./wallets";
+import { Splits as ChainSplits } from "../chain";
 import type { Agent, ContributorSplit, Grid, GridSummary, GridType, Job, ModuleKey, SubGrid, SubGridAccess, UserProfile, Visibility } from "../types";
 
 const repOf = (u?: UserProfile): number => (u ? Math.round(Math.max(u.pulse_score ?? 0, u.reputation?.total ?? 0)) : 0);
@@ -287,7 +288,43 @@ export function setSubGridSplits(subgrid_id: string, admin_id: string, splits: C
   const total = splits.reduce((n, s) => n + (Number(s.basis_points) || 0), 0);
   if (total !== 10000) return { ok: false, reason: "must_sum_10000" };
   sub.contributor_splits = splits.map((s) => ({ party_id: s.party_id, party_type: s.party_type, beneficiary_id: s.beneficiary_id, basis_points: Math.round(s.basis_points), role: s.role }));
+  void ChainSplits.configure(subgrid_id, sub.contributor_splits); // chain mirror
   return { ok: true };
+}
+
+/** Pay revenue THROUGH the split agreement: the payer's USDC divides across the
+ *  parties by their basis points (an agent's share lands on its beneficiary/owner).
+ *  Admin-only — this is how a team routes what it earned. */
+export function distributeSubGridRevenue(subgrid_id: string, payer_id: string, amount: number): { paid?: { party: string; share: number }[]; error?: string } {
+  const sub = getSubGrid(subgrid_id);
+  if (!sub) return { error: "not_found" };
+  if (!isSubAdmin(sub, payer_id)) return { error: "not_admin" };
+  const splits = sub.contributor_splits ?? [];
+  if (!splits.length) return { error: "no_splits" };
+  if (!(amount > 0)) return { error: "bad_amount" };
+  if (!Wallets.debitUsdc(payer_id, amount)) return { error: "insufficient_usdc" };
+
+  const paid: { party: string; share: number }[] = [];
+  let dispensed = 0;
+  splits.forEach((s, i) => {
+    // the last party takes the rounding remainder so the whole amount moves
+    const share = i === splits.length - 1
+      ? Math.round((amount - dispensed) * 100) / 100
+      : Math.round(amount * s.basis_points) / 10_000;
+    dispensed += share;
+    const recipient = s.party_type === "agent"
+      ? (s.beneficiary_id ?? db.agents.find((a) => a.agent_id === s.party_id)?.owner_id ?? s.party_id)
+      : s.party_id;
+    Wallets.creditUsdc(recipient, share);
+    db.settlements.push({
+      settlement_id: newId("setl"), payer_id, payee: recipient,
+      resource: `subgrid_split:${subgrid_id}`, amount: share, asset: "USDC",
+      network: "neugrid", scheme: "exact", proof: `split:${s.party_id}`, status: "settled", created_at: nowISO(),
+    });
+    paid.push({ party: s.party_id, share });
+  });
+  void ChainSplits.distribute(subgrid_id, amount); // chain mirror — atomic on-chain split
+  return { paid };
 }
 
 /** Full read model for a SubGrid: parent Grid, members, agents, jobs, access policy,

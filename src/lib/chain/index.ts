@@ -11,12 +11,13 @@
  *   x402 protocol against a Coinbase-CDP-style facilitator. See ./solana.
  */
 
-import type { Attestation, Proposal } from "../types";
+import type { Attestation, ContributorSplit, Proposal } from "../types";
 import { solanaSas, solanaX402, USDC_MINT_MAINNET } from "./solana";
 import * as vaultSolana from "./vaultSolana";
 import * as gridTokenImpl from "./gridToken";
 import * as stakingSolana from "./stakingSolana";
 import * as governanceSolana from "./governanceSolana";
+import * as splitsSolana from "./splitsSolana";
 
 /* -------------------------------- SAS seam ------------------------------------ */
 
@@ -182,4 +183,15 @@ export const Gov = {
   vote: (proposal_id: string, support: boolean, amountGrid: number) =>
     guard("gov.vote", () => governanceSolana.mirrorVote(proposal_id, support, amountGrid)),
   resolve: (proposal_id: string) => guard("gov.resolve", () => governanceSolana.mirrorResolve(proposal_id)),
+};
+
+/* ------------------------------ Revenue splitter ------------------------------ */
+// SubGrid ownership splits, executable on-chain (C5). Guarded fire-and-forget.
+
+export const Splits = {
+  configured: (): boolean => !!splitsSolana.splitsConfig(),
+  configure: (subgrid_id: string, splits: ContributorSplit[]) =>
+    guard("splits.configure", () => splitsSolana.mirrorConfigure(subgrid_id, splits)),
+  distribute: (subgrid_id: string, amount: number) =>
+    guard("splits.distribute", () => splitsSolana.mirrorDistribute(subgrid_id, amount)),
 };
