@@ -1,0 +1,17 @@
+{
+  "canisters": {
+    "neugrid_signer": {
+      "candid": "src/neugrid_signer/neugrid_signer.did",
+      "package": "neugrid_signer",
+      "type": "rust"
+    }
+  },
+  "defaults": {
+    "build": {
+      "args": "",
+      "packtool": ""
+    }
+  },
+  "output_env_file": ".env",
+  "version": 1
+}

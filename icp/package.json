@@ -1,0 +1,12 @@
+{
+  "name": "neugrid-icp",
+  "private": true,
+  "type": "module",
+  "description": "NeuGrid ICP canisters + Chain Fusion PoC scripts — see docs/ICP_INTEGRATION.md",
+  "dependencies": {
+    "@dfinity/agent": "^3.2.4",
+    "@solana/web3.js": "^1.98.0",
+    "@solana/spl-token": "^0.4.9",
+    "bs58": "^6.0.0"
+  }
+}
