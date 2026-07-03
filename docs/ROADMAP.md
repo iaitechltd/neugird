@@ -59,7 +59,10 @@ an audited existing protocol does the job (borrow-don't-build still applies).
   canister as release authority (A3), then the Jobs-escrow lens.
 - **C2 · GRID token + vesting** — standard SPL mint + audited vesting tooling
   (TGE-ready; no custom code expected).
-- **C3 · Staking + slashing** — stake-to-list lockups, fee share, fraud slash.
+- **C3 · Staking + slashing — ✅ SHIPPED (2026-07-03)**: per-market GRID
+  lockups + MasterChef USDC fee share + fraud slash (principal sweeps,
+  earned rewards survive). 5/5 suites, devnet-deployed (`3K6UCst…`), smoked
+  with the real GRID mint, platform-mirrored + prod-armed (rev 00020).
 - **C4 · Governance** — evaluate Realms (SPL Governance) integration vs custom;
   lock-to-vote with binding param execution.
 - **C5 · Ownership splits** — SubGrid revenue splitter (human + agent teams).
