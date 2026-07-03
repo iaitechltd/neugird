@@ -11,7 +11,7 @@
 
 import { db } from "../store";
 
-export type ParamKey = "tradex_fee_bps" | "echo_build_cost_grid" | "grid_market_fee_bps" | "gov_quorum_grid" | "grid_fee_discount_bps" | "campaign_ghost_days" | "echo_revision_cost_grid" | "echo_ask_cost_grid" | "echo_deploy_cost_grid" | "fraud_flag_quorum" | "agent_perf_fee_bps" | "genesis_raise_days" | "genesis_stall_days" | "gridx_fee_bps";
+export type ParamKey = "tradex_fee_bps" | "echo_build_cost_grid" | "grid_market_fee_bps" | "gov_quorum_grid" | "grid_fee_discount_bps" | "campaign_ghost_days" | "echo_revision_cost_grid" | "echo_ask_cost_grid" | "echo_deploy_cost_grid" | "fraud_flag_quorum" | "agent_perf_fee_bps" | "genesis_raise_days" | "genesis_stall_days" | "gridx_fee_bps" | "affiliate_fee_share_bps";
 
 export type ParamUnit = "bps" | "grid" | "days" | "count";
 
@@ -30,6 +30,7 @@ export const DEFAULTS: Record<ParamKey, number> = {
   genesis_raise_days: 30, // open-raise funding window; unfilled past this ⇒ expired + backers refunded
   genesis_stall_days: 60, // funded project with no milestone activity this long ⇒ kill-switch eligible
   gridx_fee_bps: 250, // protocol fee on GridX product purchases (2.5% → treasury)
+  affiliate_fee_share_bps: 1000, // referrers' share of their referrals' protocol fees (10%, first 12mo)
 };
 
 /** UI labels + validation bounds (so a malicious proposal can't set fee = 10000%). */
@@ -48,6 +49,7 @@ export const META: Record<ParamKey, { label: string; unit: ParamUnit; min: numbe
   genesis_raise_days: { label: "GenesisX raise window", unit: "days", min: 7, max: 120 },
   genesis_stall_days: { label: "GenesisX stall deadline", unit: "days", min: 14, max: 365 },
   gridx_fee_bps: { label: "GridX purchase fee", unit: "bps", min: 0, max: 1_000 }, // ≤10%
+  affiliate_fee_share_bps: { label: "Affiliate fee share", unit: "bps", min: 0, max: 5_000 }, // ≤50%
 };
 
 export function isKey(k: string): k is ParamKey {

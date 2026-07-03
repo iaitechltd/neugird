@@ -11,6 +11,7 @@
 import { db } from "../store";
 import { newId, nowISO } from "../id";
 import * as Pulse from "./pulse";
+import * as Referrals from "./referrals";
 import * as Wallets from "./wallets";
 import type { Application, ExecutorType, Job, JobContext, JobStatus, ProofType, Settlement } from "../types";
 
@@ -293,6 +294,7 @@ export function reviewJob(id: string, input: ReviewInput): Job | undefined {
 
   job.status = "paid"; // pre-treasury: pay = reputation Pulse
   if (job.assignee_id && job.assignee_type !== "agent") {
+    Referrals.checkVerify(job.assignee_id); // a paid delivery = a verified first action
     const { weight, reason } = Pulse.weightForApproval(job.reward_amount, quality);
     Pulse.recordEvent({
       target_type: "user",

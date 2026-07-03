@@ -28,6 +28,7 @@ export * as Governance from "./governance"; // protocol governance — GRID lock
 export * as Perps from "./perps"; // futures — leverage positions on a futures-stage market
 export * as AgentTrading from "./agentTrading"; // Agent Mode — autonomous trading under a scoped mandate
 export * as AgentWork from "./agentWork"; // native agent framework — persona + autonomous work runtime + skill library
+export * as Referrals from "./referrals"; // referral links + verify-on-first-work + the affiliate fee share
 export * as Provenance from "./provenance"; // a market's lineage + founder credibility (the thesis)
 export * as Chat from "./chat"; // per-Grid community discussion thread
 export * as Content from "./content"; // Grid content hub — the living feed (posts + pinned announcements)

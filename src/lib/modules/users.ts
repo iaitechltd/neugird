@@ -42,7 +42,7 @@ export function findByWallet(wallet: string): UserProfile | undefined {
   return db.users.find((u) => u.wallet_addresses.includes(wallet));
 }
 
-export function upsertByWallet(wallet: string): UserProfile {
+export function upsertByWallet(wallet: string, referred_by?: string): UserProfile {
   const existing = findByWallet(wallet);
   if (existing) return existing;
   const user: UserProfile = {
@@ -57,6 +57,11 @@ export function upsertByWallet(wallet: string): UserProfile {
     joined_grids: [],
     created_at: nowISO(),
   };
+  // referral binding — only a real, different user counts (paid later, on first verified work)
+  if (referred_by) {
+    const ref = db.users.find((u) => u.id === referred_by || u.username.toLowerCase() === referred_by.toLowerCase());
+    if (ref && ref.id !== user.id) user.referred_by = ref.id;
+  }
   db.users.push(user);
   return user;
 }

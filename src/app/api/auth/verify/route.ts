@@ -27,8 +27,9 @@ export async function POST(request: Request) {
   }
 
   clearNonce(wallet);
-  const user = Users.upsertByWallet(wallet);
   const c = await cookies();
+  // referral binding: the ?ref= link set a 30-day cookie; a NEW user binds to it
+  const user = Users.upsertByWallet(wallet, c.get("ng_ref")?.value);
   c.set(SESSION_COOKIE, user.id, { httpOnly: true, sameSite: "lax", path: "/" });
 
   return NextResponse.json({

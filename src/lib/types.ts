@@ -73,6 +73,11 @@ export interface UserProfile {
   skills: string[];
   /** TalenX self-listing (headline · rate · availability). */
   listing?: TalentListing;
+  /** Who referred this user (bound at signup from the ?ref= link). */
+  referred_by?: ID;
+  /** Set when the referred user completes their FIRST verified economic action —
+   *  the moment the referral pays (anti-sybil: dead invites earn nothing). */
+  referral_verified_at?: ISODate;
   roles_by_grid: RoleAssignment[];
   pulse_score: number; // legacy single Pulse — kept; prefer `reputation` below
   /** Multi-dimensional reputation (soulbound, decays, gates access). */
@@ -586,6 +591,7 @@ export type PulseActionType =
   | "build_completed" // Echo witnessed a build end-to-end (proof of build)
   | "product_listed" // a build was published to GridX
   | "product_reviewed" // a verified buyer/user rated a product (owner's creator rep moves with it)
+  | "raise_backed" // backed a GenesisX raise that filled (curation conviction)
   | "decay" // periodic rebalance so old activity doesn't dominate
   | "campaign_ghosted" // a project left a delivery unreviewed past the deadline (V6 employer fade)
   | "spam_penalty";

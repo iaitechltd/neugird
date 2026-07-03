@@ -28,6 +28,8 @@ create table if not exists users (
   bio              text,
   skills           text[]      not null default '{}',
   listing          jsonb,      -- TalentListing (self-serve TalenX card)
+  referred_by      text,       -- who referred this user (bound at signup)
+  referral_verified_at timestamptz, -- when their first verified work paid the referral
   roles_by_grid    jsonb       not null default '[]',
   pulse_score      numeric     not null default 0,
   reputation       jsonb,      -- ReputationScore (soulbound, multi-dimensional)

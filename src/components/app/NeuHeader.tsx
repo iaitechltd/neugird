@@ -181,6 +181,15 @@ export default function NeuHeader(props: {
   const pathname = usePathname() || "";
   const name = title || pageName(pathname);
 
+  // Referral capture: a ?ref=<code> on ANY page sets a 30-day cookie; SIWS
+  // signup binds it (nothing pays until the referred user does verified work).
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get("ref");
+    if (ref && /^[a-z0-9_.-]{2,40}$/i.test(ref)) {
+      document.cookie = `ng_ref=${encodeURIComponent(ref)}; path=/; max-age=${30 * 86400}; samesite=lax`;
+    }
+  }, []);
+
   // Live Pulse from the current identity (/api/me); refreshes on demand so an
   // action like creating a Grid makes the number tick up immediately.
   const [livePulse, setLivePulse] = useState(pulse);

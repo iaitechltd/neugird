@@ -291,7 +291,7 @@ export default function MePage() {
               )}
             </div>
 
-            <Section icon={<IconCoins className="h-3.5 w-3.5" />}>GRID Allocation</Section>
+            <Section icon={<IconCoins className="h-3.5 w-3.5" />} action={<Link href="/rewards" className="text-[10px] text-cyan transition hover:text-glow">Dashboard →</Link>}>GRID Allocation</Section>
             <div className="ng-card p-3.5">
               <div className="flex items-baseline justify-between"><span className="ng-stat__v !text-2xl text-neon">{(me?.reward?.sybil_adjusted ?? 0).toLocaleString()}</span><span className="text-[11px] text-ink-dim">earned · vests at TGE</span></div>
               <p className="mt-1 text-[10px] leading-relaxed text-ink-faint">GRID is <span className="text-ink-dim">earned, not sold</span> — verified contribution accrues a sybil-filtered allocation that converts to GRID at the platform TGE.</p>

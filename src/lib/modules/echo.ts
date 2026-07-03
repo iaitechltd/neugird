@@ -16,6 +16,7 @@ import { createHash } from "node:crypto";
 import { db } from "../store";
 import { newId, nowISO } from "../id";
 import * as Pulse from "./pulse";
+import * as Referrals from "./referrals";
 import * as Wallets from "./wallets";
 import * as Rewards from "./rewards";
 import * as Params from "./params";
@@ -137,6 +138,7 @@ export async function runBuild(input: RunBuildInput): Promise<{ build?: Build; c
     verification_source: "echo:witness",
     dimension: "builder",
   });
+  Referrals.checkVerify(input.owner_id); // a shipped build = a verified first action
 
   return { build, cost };
 }

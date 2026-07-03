@@ -25,11 +25,32 @@ const REWARDABLE = new Set<PulseEvent["action_type"]>([
   "submission_approved",
   "campaign_completed",
   "referral_verified",
+  "raise_backed",
   "job_delivered",
   "milestone_approved",
   "build_completed",
   "product_listed",
+  "product_reviewed",
 ]);
+
+/** THE EARNING SCHEDULE — the canonical "what each action pays" table, published
+ *  in-app (/rewards). `pulse` is the fixed weight; formula rows describe the
+ *  reward-scaled emitters. GRID allocation = pulse × GRID_PER_PULSE, sybil-filtered. */
+export const SCHEDULE: { action: string; pulse: number | null; formula?: string; dimension: string }[] = [
+  { action: "Deliver a paid job", pulse: null, formula: "1 Pulse per $10 of reward (min 5)", dimension: "builder" },
+  { action: "Ship an Echo build", pulse: 40, dimension: "builder" },
+  { action: "Milestone released by backers", pulse: 30, dimension: "builder" },
+  { action: "Publish a product on GridX", pulse: 20, dimension: "creator" },
+  { action: "Your product earns a 4–5★ verified review", pulse: 3, dimension: "creator" },
+  { action: "Back a raise that fills", pulse: 10, dimension: "backer" },
+  { action: "Verify an audit / review a milestone", pulse: 15, dimension: "reviewer" },
+  { action: "Create a Grid", pulse: 25, dimension: "creator" },
+  { action: "Referral verified (you referred them)", pulse: 15, dimension: "creator" },
+  { action: "Referral verified (you were referred)", pulse: 5, dimension: "creator" },
+  { action: "Complete a promo campaign", pulse: null, formula: "reward-scaled (8–50)", dimension: "creator" },
+  { action: "Rejected delivery", pulse: -30, dimension: "builder" },
+  { action: "Spam / fraud", pulse: -60, dimension: "builder" },
+];
 
 /** Who an event's allocation belongs to: the user target, an agent's owner, or
  *  (for grid/subgrid/campaign events) the human actor who did the work. */

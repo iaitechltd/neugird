@@ -12,6 +12,7 @@ import * as Echo from "./echo";
 import * as GridRegistry from "./gridRegistry";
 import * as Markets from "./markets";
 import * as Wallets from "./wallets";
+import * as Referrals from "./referrals";
 import * as Params from "./params";
 import type { Grid, Product, ProductEvent, ProductReview, Settlement } from "../types";
 
@@ -111,6 +112,7 @@ export function purchase(product_id: string, buyer_id: string): { product?: Prod
     if (fee > 0) recordReceipt(buyer_id, TREASURY, `product_fee:${product_id}`, fee);
   }
   pushEvent(product_id, buyer_id, "purchase");
+  Referrals.checkVerify(buyer_id); // a purchase = a verified first action
   return { product, paid: price };
 }
 

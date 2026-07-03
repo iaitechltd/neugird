@@ -12,6 +12,7 @@
 import { db } from "../store";
 import { newId, nowISO } from "../id";
 import { Vault } from "../chain";
+import * as Referrals from "./referrals";
 import * as Pulse from "./pulse";
 import * as GridRegistry from "./gridRegistry";
 import * as Echo from "./echo";
@@ -143,6 +144,7 @@ export function fundProposal(proposal_id: string, backer_id: string, amount: num
   Wallets.creditUsdc(GENESIS_ESCROW, amount);
 
   db.backings.push({ backing_id: newId("back"), round_id: proposal_id, grid_id: "", backer_id, amount, created_at: nowISO() });
+  Referrals.checkVerify(backer_id); // a real backing = a verified first action
   void Vault.back(p, amount); // chain mirror
   const raised = raisedFor(proposal_id);
   if (raised < p.ask_amount) return { proposal: p, raised };
@@ -164,7 +166,7 @@ export function fundProposal(proposal_id: string, backer_id: string, amount: num
 
   Pulse.recordEvent({ target_type: "grid", target_id: grid.grid_id, action_type: "campaign_completed", weight: 50, reason: `Funded: raised ${raised} for "${p.title}"`, verification_source: "auto" });
   for (const b of backersFor(proposal_id)) {
-    Pulse.recordEvent({ target_type: "user", target_id: b.backer_id, action_type: "referral_verified", weight: 10, reason: `Backed "${p.title}" to a full raise`, verification_source: "auto", dimension: "backer" });
+    Pulse.recordEvent({ target_type: "user", target_id: b.backer_id, action_type: "raise_backed", weight: 10, reason: `Backed "${p.title}" to a full raise`, verification_source: "auto", dimension: "backer" });
   }
   return { proposal: p, raised, spawned_grid_id: grid.grid_id };
 }
