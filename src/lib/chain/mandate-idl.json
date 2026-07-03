@@ -1,0 +1,796 @@
+{
+  "address": "FetAKDK1vVQU44r52WuocFqYCMEoiPaT5KEwLbZ6ku3b",
+  "metadata": {
+    "name": "mandate_wallet",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "NeuGrid agent mandate wallets — owner guardrails enforced by the chain"
+  },
+  "instructions": [
+    {
+      "name": "agent_spend",
+      "docs": [
+        "THE AGENT's instruction — its own signature, nobody else's. Spends from",
+        "the vault within the cap, while alive and unexpired."
+      ],
+      "discriminator": [
+        23,
+        170,
+        137,
+        159,
+        219,
+        53,
+        9,
+        61
+      ],
+      "accounts": [
+        {
+          "name": "agent",
+          "docs": [
+            "the AGENT's key — the only signature this instruction accepts"
+          ],
+          "signer": true
+        },
+        {
+          "name": "mandate",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  110,
+                  100,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mandate.owner",
+                "account": "MandateAccount"
+              },
+              {
+                "kind": "account",
+                "path": "mandate.mandate_id",
+                "account": "MandateAccount"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "mandate"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mandate.mint",
+                "account": "MandateAccount"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "destination",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "create_mandate",
+      "docs": [
+        "Owner arms the mandate: agent key + per-tx cap + expiry. Fund it by",
+        "transferring USDC into the vault (the balance IS the budget)."
+      ],
+      "discriminator": [
+        230,
+        170,
+        158,
+        68,
+        33,
+        169,
+        16,
+        158
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mandate",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  110,
+                  100,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              },
+              {
+                "kind": "arg",
+                "path": "mandate_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "mandate"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "mandate_id",
+          "type": "u64"
+        },
+        {
+          "name": "agent",
+          "type": "pubkey"
+        },
+        {
+          "name": "per_tx_cap",
+          "type": "u64"
+        },
+        {
+          "name": "expires_at",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "kill",
+      "docs": [
+        "The owner's kill-switch: blocks every future agent spend, instantly."
+      ],
+      "discriminator": [
+        46,
+        229,
+        132,
+        89,
+        87,
+        194,
+        20,
+        217
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "mandate"
+          ]
+        },
+        {
+          "name": "mandate",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  110,
+                  100,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mandate.owner",
+                "account": "MandateAccount"
+              },
+              {
+                "kind": "account",
+                "path": "mandate.mandate_id",
+                "account": "MandateAccount"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "owner_withdraw",
+      "docs": [
+        "Owner reclaims from the vault — any amount, any time, killed or not."
+      ],
+      "discriminator": [
+        138,
+        172,
+        103,
+        228,
+        254,
+        96,
+        114,
+        178
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "mandate"
+          ]
+        },
+        {
+          "name": "mandate",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  110,
+                  100,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mandate.owner",
+                "account": "MandateAccount"
+              },
+              {
+                "kind": "account",
+                "path": "mandate.mandate_id",
+                "account": "MandateAccount"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "mandate"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mandate.mint",
+                "account": "MandateAccount"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "owner_token",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "MandateAccount",
+      "discriminator": [
+        93,
+        50,
+        242,
+        30,
+        106,
+        198,
+        146,
+        213
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "AgentSpent",
+      "discriminator": [
+        20,
+        48,
+        241,
+        251,
+        238,
+        42,
+        166,
+        163
+      ]
+    },
+    {
+      "name": "MandateArmed",
+      "discriminator": [
+        198,
+        224,
+        86,
+        26,
+        66,
+        45,
+        102,
+        41
+      ]
+    },
+    {
+      "name": "MandateKilled",
+      "discriminator": [
+        223,
+        21,
+        173,
+        197,
+        140,
+        55,
+        179,
+        132
+      ]
+    },
+    {
+      "name": "OwnerWithdrew",
+      "discriminator": [
+        93,
+        227,
+        126,
+        234,
+        132,
+        244,
+        70,
+        195
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "BadInput",
+      "msg": "bad input"
+    },
+    {
+      "code": 6001,
+      "name": "Overflow",
+      "msg": "arithmetic overflow"
+    },
+    {
+      "code": 6002,
+      "name": "Killed",
+      "msg": "mandate was killed by the owner"
+    },
+    {
+      "code": 6003,
+      "name": "Expired",
+      "msg": "mandate has expired"
+    },
+    {
+      "code": 6004,
+      "name": "OverCap",
+      "msg": "amount exceeds the per-transaction cap"
+    },
+    {
+      "code": 6005,
+      "name": "NotAgent",
+      "msg": "only the mandated agent key may spend"
+    },
+    {
+      "code": 6006,
+      "name": "NotOwner",
+      "msg": "only the owner may do this"
+    },
+    {
+      "code": 6007,
+      "name": "WrongMint",
+      "msg": "wrong token mint"
+    }
+  ],
+  "types": [
+    {
+      "name": "AgentSpent",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mandate",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "spent",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MandateAccount",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "mandate_id",
+            "type": "u64"
+          },
+          {
+            "name": "agent",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "per_tx_cap",
+            "type": "u64"
+          },
+          {
+            "name": "expires_at",
+            "type": "i64"
+          },
+          {
+            "name": "killed",
+            "type": "bool"
+          },
+          {
+            "name": "spent",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MandateArmed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mandate",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "agent",
+            "type": "pubkey"
+          },
+          {
+            "name": "per_tx_cap",
+            "type": "u64"
+          },
+          {
+            "name": "expires_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MandateKilled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mandate",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OwnerWithdrew",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mandate",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    }
+  ]
+}

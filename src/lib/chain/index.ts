@@ -19,6 +19,7 @@ import * as stakingSolana from "./stakingSolana";
 import * as governanceSolana from "./governanceSolana";
 import * as splitsSolana from "./splitsSolana";
 import * as proofsSolana from "./proofsSolana";
+import * as mandateSolana from "./mandateSolana";
 
 /* -------------------------------- SAS seam ------------------------------------ */
 
@@ -204,4 +205,17 @@ export const Splits = {
 export const Proofs = {
   configured: (): boolean => !!proofsSolana.proofsConfig(),
   anchor: (ag: AgreementT) => guard("proofs.anchor", () => proofsSolana.anchorAgreement(ag)),
+};
+
+/* ------------------------------- Mandate wallets ------------------------------- */
+// Agent-Mode mandates mirrored onto the real mandate_wallet program (C6 — the
+// last one). Guarded fire-and-forget from agentTrading.ts.
+
+export const MandateChain = {
+  configured: (): boolean => !!mandateSolana.mandateConfig(),
+  create: (mandate_id: string, budgetUsd: number, perTxCapUsd: number, expiryISO: string) =>
+    guard("mandate.create", () => mandateSolana.mirrorCreate(mandate_id, budgetUsd, perTxCapUsd, expiryISO)),
+  spend: (mandate_id: string, amountUsd: number) =>
+    guard("mandate.spend", () => mandateSolana.mirrorSpend(mandate_id, amountUsd)),
+  kill: (mandate_id: string) => guard("mandate.kill", () => mandateSolana.mirrorKill(mandate_id)),
 };

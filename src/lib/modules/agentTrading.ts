@@ -19,6 +19,7 @@
  */
 
 import { db } from "../store";
+import { MandateChain } from "../chain";
 import { newId, nowISO } from "../id";
 import * as Markets from "./markets";
 import * as Perps from "./perps";
@@ -132,6 +133,7 @@ export function createMandate(input: CreateMandateInput): { mandate?: Mandate; e
   };
   mandates().push(mandate);
   agent.status = "active";
+  void MandateChain.create(mandate.mandate_id, mandate.budget_usdc, mandate.max_position_usd, mandate.expiry); // chain mirror
   record(mandate, { kind: "hold", ok: true, rationale: `Mandate armed — ${strategy} · $${budget.toLocaleString()} budget · ${maxLev}× max · stages ${stages.join("/")}` });
   return { mandate };
 }
@@ -146,6 +148,7 @@ export function stopMandate(mandate_id: string, owner_id: string, reason = "user
   m.status = reason === "expired" ? "expired" : "stopped";
   m.stopped_at = nowISO();
   m.stop_reason = reason;
+  void MandateChain.kill(m.mandate_id); // chain mirror — blocks the chain wallet + reclaims
   // Cancel any resting limit orders the agent left working for this owner+market.
   for (const o of Markets.ordersFor(m.market_id, owner_id)) Markets.cancelOrder(o.order_id, owner_id);
   record(m, { kind: "stop", ok: true, rationale: reason === "user_kill" ? "Kill-switch — owner stopped Agent Mode" : `Stopped (${reason})` });
@@ -405,6 +408,7 @@ function execute(m: Mandate, p: Planned): AgentAction {
     m.deployed_usdc += p.amount ?? 0;
     m.position_base += r.filled ?? 0;
     m.trades_count += 1;
+    void MandateChain.spend(m.mandate_id, p.amount ?? 0); // chain mirror
     return record(m, { kind: "buy", ok: true, amount: p.amount, price: Markets.priceOf(market), rationale: p.rationale });
   }
 
