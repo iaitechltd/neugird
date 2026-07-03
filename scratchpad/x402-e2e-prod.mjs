@@ -11,7 +11,8 @@ import { NeuGridAgent, createSolanaX402Payer } from "../sdk/neugrid-agent.mjs";
 
 const BASE = "https://neugrid-188737658015.us-central1.run.app";
 const RPC = "https://api.devnet.solana.com";
-const TREASURY_ATA = "AydnJhats37Bm7jarmzgyHSePG2acrVMyA4J6WctEf83";
+// classic-SPL test mint's treasury ATA (CDP era — 2026-07-03); the old Token-2022 one was AydnJhats37…
+const TREASURY_ATA = process.env.NEUGRID_X402_TREASURY_ATA || "5U1N1yLdUu6rq3j3iBy6wFEc6c8xUQc1TYNWhNT2XcE4";
 
 async function ataBalance() {
   const r = await fetch(RPC, { method: "POST", headers: { "content-type": "application/json" },

@@ -73,7 +73,7 @@ function x402Config(): X402Config | null {
  *  - Coinbase CDP: if `@coinbase/x402` is installed it mints the per-request JWT.
  *    Loaded via a non-analyzable dynamic import so the sandbox build never needs it.
  */
-async function authHeaders(cfg: X402Config, endpoint: "verify" | "settle"): Promise<Record<string, string>> {
+async function authHeaders(cfg: X402Config, endpoint: "verify" | "settle" | "supported"): Promise<Record<string, string>> {
   if (cfg.apiKey) return { authorization: `Bearer ${cfg.apiKey}` };
   try {
     const cdpPkg = "@coinbase/x402"; // variable specifier ⇒ not type-resolved / not bundled
@@ -141,7 +141,7 @@ export const solanaX402: X402Facilitator = {
   async supported(): Promise<X402SupportedKind[]> {
     const cfg = x402Config();
     if (!cfg) return [];
-    const res = await fetch(`${cfg.facilitatorUrl}/supported`).catch(() => null);
+    const res = await fetch(`${cfg.facilitatorUrl}/supported`, { headers: await authHeaders(cfg, "supported") }).catch(() => null);
     if (!res || !res.ok) return [];
     const data = (await res.json().catch(() => ({}))) as { kinds?: X402SupportedKind[] };
     return data.kinds ?? [];
@@ -153,7 +153,8 @@ export const solanaX402: X402Facilitator = {
     const res = await fetch(`${cfg.facilitatorUrl}/verify`, {
       method: "POST",
       headers: { "content-type": "application/json", ...(await authHeaders(cfg, "verify")) },
-      body: JSON.stringify({ paymentPayload: payload, paymentRequirements: req }),
+      // x402Version is optional for open facilitators but REQUIRED by Coinbase CDP
+      body: JSON.stringify({ x402Version: 1, paymentPayload: payload, paymentRequirements: req }),
     });
     if (!res.ok) return { isValid: false, invalidReason: `facilitator_http_${res.status}` };
     return (await res.json().catch(() => ({ isValid: false, invalidReason: "bad_facilitator_response" }))) as X402VerifyResult;
@@ -165,7 +166,7 @@ export const solanaX402: X402Facilitator = {
     const res = await fetch(`${cfg.facilitatorUrl}/settle`, {
       method: "POST",
       headers: { "content-type": "application/json", ...(await authHeaders(cfg, "settle")) },
-      body: JSON.stringify({ paymentPayload: payload, paymentRequirements: req }),
+      body: JSON.stringify({ x402Version: 1, paymentPayload: payload, paymentRequirements: req }),
     });
     if (!res.ok) return { success: false, errorReason: `facilitator_http_${res.status}` };
     return (await res.json().catch(() => ({ success: false, errorReason: "bad_facilitator_response" }))) as X402SettleResult;

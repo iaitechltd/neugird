@@ -23,6 +23,7 @@ RUN npm run build
 RUN mkdir -p /pgmod && cd /pgmod && npm init -y >/dev/null 2>&1 \
     && npm install pg@8.22.0 @anthropic-ai/sdk@0.109.1 \
        sas-lib @solana/kit @solana-program/token-2022 @solana-program/compute-budget \
+       @coinbase/x402@2.1.0 \
        --legacy-peer-deps --omit=dev --no-audit --no-fund
 
 # ---- runtime: only the standalone server + static + public (+ pg) ----

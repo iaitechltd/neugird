@@ -18,7 +18,7 @@ async function authHeaders() {
   try {
     const m = await import("@coinbase/x402");
     const h = await m.facilitator?.createAuthHeaders?.();
-    return h?.verify ?? {};
+    return h?.supported ?? h?.verify ?? {}; // CDP v2 mints a per-endpoint JWT — /supported needs its own
   } catch { return {}; }
 }
 
