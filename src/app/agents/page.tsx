@@ -13,7 +13,7 @@ import { CountUp, Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import OrbPanel from "@/components/app/OrbPanel";
 import { PanelChart } from "@/components/app/terminal";
-import { Bars, Ring } from "@/components/app/charts";
+import { Beeswarm, PolarArea, Honeycomb, StackBars } from "@/components/app/charts";
 import type { Agent, Job } from "@/lib/types";
 
 function Section({ icon, children, action }: { icon: React.ReactNode; children: React.ReactNode; action?: React.ReactNode }) {
@@ -114,11 +114,19 @@ export default function AgentsPage() {
   const trustedCount = allAgents.filter((a) => a.trust_tier === "trusted").length;
   const totalEarned = allAgents.reduce((s, a) => s + (a.earnings ?? 0), 0);
 
-  // derived chart series (rail data-viz) — computed from real agents
-  const topEarnings = [...allAgents].sort((a, b) => (b.earnings ?? 0) - (a.earnings ?? 0)).slice(0, 10).map((a) => a.earnings ?? 0);
-  const topRatings = [...allAgents].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0)).slice(0, 10).map((a) => (a.rating ?? 0) * 20);
-  const trustedPct = allAgents.length ? Math.round((trustedCount / allAgents.length) * 100) : 0;
-  const nativePct = allAgents.length ? Math.round((nativeCount / allAgents.length) * 100) : 0;
+  // futuristic rail-chart data (grounded, SSR-safe): swarm · rose · honeycomb · stack
+  const tierColor = (t?: string) => (t === "trusted" ? "#00ff00" : t === "suspended" ? "#ff4d5e" : "#ffb020");
+  const swarm = allAgents.map((a) => ({ value: a.rating ?? 0, size: a.earnings ?? 0, color: tierColor(a.trust_tier) }));
+  const capCounts = allAgents.flatMap((a) => a.capabilities ?? []).reduce<Record<string, number>>((m, c) => ({ ...m, [c]: (m[c] ?? 0) + 1 }), {});
+  const capTop = Object.entries(capCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const roseData = capTop.map(([, n]) => n);
+  const roseLabels = capTop.map(([c]) => c.slice(0, 4).toUpperCase());
+  const earnMax = Math.max(1, ...allAgents.map((a) => a.earnings ?? 0));
+  const hive = allAgents.map((a) => ({ v: (a.earnings ?? 0) / earnMax, color: tierColor(a.trust_tier) }));
+  const stackData = ["probation", "trusted", "suspended"].map((t) => ({ values: [
+    allAgents.filter((a) => (a.trust_tier ?? "trusted") === t && (a.origin ?? "native") === "native").length,
+    allAgents.filter((a) => (a.trust_tier ?? "trusted") === t && a.origin === "external").length,
+  ] }));
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
@@ -136,11 +144,11 @@ export default function AgentsPage() {
             <div className="ng-card mt-2 flex items-center justify-between p-3 text-[12px]"><span className="text-ink-dim">Total earned</span><Mark plain accent="cyan">{totalEarned.toLocaleString()} Pulse</Mark></div>
 
             <div className="mt-3 space-y-2">
-              <PanelChart title="Earnings · top agents" read={`${totalEarned.toLocaleString()} Pulse`}>
-                {topEarnings.length ? <Bars data={topEarnings} h={44} /> : <p className="text-[11px] text-ink-dim">No agents yet.</p>}
+              <PanelChart title="Agents · rating swarm" read={`${allAgents.length} agents`}>
+                {allAgents.length ? <div className="py-1"><Beeswarm data={swarm} h={92} /></div> : <p className="text-[11px] text-ink-dim">No agents yet.</p>}
               </PanelChart>
-              <PanelChart title="Trust · trusted share" read={`${trustedCount}/${allAgents.length} trusted`}>
-                {allAgents.length ? <div className="flex items-center justify-center py-1"><Ring percent={trustedPct} label="trusted" value={`${trustedPct}%`} size={86} stroke={6} /></div> : <p className="text-[11px] text-ink-dim">No agents yet.</p>}
+              <PanelChart title="Capabilities · rose" read={`top ${roseData.length}`}>
+                {roseData.length ? <div className="flex justify-center py-1"><PolarArea data={roseData} labels={roseLabels} size={150} /></div> : <p className="text-[11px] text-ink-dim">No capabilities yet.</p>}
               </PanelChart>
             </div>
 
@@ -263,11 +271,14 @@ export default function AgentsPage() {
         <OrbPanel label="Network" open={rOpen} onToggle={setROpen} widthClass="lg:w-[320px] xl:w-[350px]">
           <Panel scroll title="NETWORK" icon={<IconUser className="h-4 w-4" />} action={<IconChevronDown className="h-4 w-4 text-ink-dim" />} bodyClass="p-3.5">
             <div className="space-y-2">
-              <PanelChart title="Ratings · top agents" read={`${allAgents.length} rated`}>
-                {topRatings.length ? <Bars data={topRatings} h={44} color="var(--ng-cyan)" /> : <p className="text-[11px] text-ink-dim">No agents yet.</p>}
+              <PanelChart title="Network · agent hive" read={`${allAgents.length} agents`}>
+                {allAgents.length ? <div className="py-1"><Honeycomb data={hive} cols={6} /></div> : <p className="text-[11px] text-ink-dim">No agents yet.</p>}
               </PanelChart>
-              <PanelChart title="Composition · native share" read={`${nativeCount} native · ${externalCount} external`}>
-                {allAgents.length ? <div className="flex items-center justify-center py-1"><Ring percent={nativePct} label="native" value={`${nativePct}%`} size={86} stroke={6} /></div> : <p className="text-[11px] text-ink-dim">No agents yet.</p>}
+              <PanelChart title="Composition · tier × origin" read={`${nativeCount}N · ${externalCount}E`}>
+                {allAgents.length
+                  ? <><StackBars data={stackData} h={80} colors={["#00ff00", "#48f5ff"]} />
+                      <div className="mt-1 flex justify-between text-[9px] text-ink-faint"><span>prob · trust · susp</span><span><span className="text-neon">▮</span>native <span className="text-cyan">▮</span>ext</span></div></>
+                  : <p className="text-[11px] text-ink-dim">No agents yet.</p>}
               </PanelChart>
             </div>
 

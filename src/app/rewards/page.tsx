@@ -13,7 +13,7 @@ import NeuHeader from "@/components/app/NeuHeader";
 import OrbPanel from "@/components/app/OrbPanel";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import { Panel, Mark, DataRow, IconCoins, IconSparkle, IconUser, IconActivity , kpiColor } from "@/components/app/ui";
-import { Area, Bars, Ring } from "@/components/app/charts";
+import { Area, Bars, StepArea, LabeledBars, Donut, RadialProgress } from "@/components/app/charts";
 import { PanelChart } from "@/components/app/terminal";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 
@@ -63,11 +63,13 @@ export default function RewardsPage() {
 
   // ── side-rail chart data (all derived from the real ledger/event log) ──
   const accrual = data?.accrual ?? [];
-  const weekly = data?.weekly ?? [];
-  const weeklyTotal = weekly.reduce((a, b) => a + b, 0);
   const breakdown = l?.breakdown ?? [];
   const srcUnits = breakdown.map((b) => b.units);
   const srcTotal = srcUnits.reduce((a, b) => a + b, 0);
+  const srcBars = breakdown.map((b) => ({ label: b.dimension, value: b.units }));
+  const refVerified = data?.referrals.verified ?? 0;
+  const refPending = data?.referrals.pending ?? 0;
+  const refTotal = refVerified + refPending;
   // claim/vesting progress: claimed vs allocation if present, else vested_pct
   const claimPct = l && (l.total_allocation ?? 0) > 0
     ? Math.round(((l.claimed ?? 0) / l.total_allocation) * 100)
@@ -94,14 +96,14 @@ export default function RewardsPage() {
 
             <PanelChart title="Accrual · cumulative GRID" read={accrual.length > 1 ? `${(accrual[accrual.length - 1] ?? 0).toLocaleString()} GRID` : undefined}>
               {accrual.length > 1
-                ? <Area data={accrual} gid="rw-acc" h={48} />
+                ? <div className="py-1"><StepArea data={accrual} gid="rw-acc" h={52} /></div>
                 : <p className="py-3 text-center text-[10px] text-ink-faint">No accrual yet</p>}
             </PanelChart>
 
-            <PanelChart title="Weekly · earning events" read={weekly.length ? `${weeklyTotal} events` : undefined}>
-              {weekly.some((v) => v > 0)
-                ? <Bars data={weekly} h={46} color="#48f5ff" />
-                : <p className="py-3 text-center text-[10px] text-ink-faint">No activity yet</p>}
+            <PanelChart title="Sources · GRID by activity" read={srcTotal > 0 ? `${srcTotal.toLocaleString()} units` : undefined}>
+              {srcTotal > 0
+                ? <div className="py-1"><LabeledBars data={srcBars} /></div>
+                : <p className="py-3 text-center text-[10px] text-ink-faint">No sources yet</p>}
             </PanelChart>
 
             <div className="mt-4 divide-y divide-line">
@@ -198,15 +200,16 @@ export default function RewardsPage() {
           <Panel scroll title="REFER & EARN" icon={<IconUser className="h-4 w-4" />} bodyClass="p-3.5">
             <p className="text-[10.5px] leading-relaxed text-ink-dim">Share your link. When someone you invited completes their <Mark plain>first verified work</Mark>, you earn +15 Pulse (150 GRID), they earn +5 — plus {((data?.referrals.affiliate.share_bps ?? 1000) / 100)}% of the protocol fees they generate for 12 months.</p>
 
-            <PanelChart title="Sources · by dimension" read={srcTotal > 0 ? `${srcTotal.toLocaleString()} units` : undefined}>
-              {srcUnits.some((v) => v > 0)
-                ? <Bars data={srcUnits} h={46} />
-                : <p className="py-3 text-center text-[10px] text-ink-faint">No sources yet</p>}
+            <PanelChart title="Referrals · verified vs pending" read={`${refTotal} invited`}>
+              {refTotal > 0
+                ? <><div className="flex items-center justify-center py-1"><Donut data={[refVerified, refPending]} colors={["#00ff00", "#ffb020"]} size={104} center={`${refTotal}`} /></div>
+                    <div className="mt-1 flex justify-center gap-3 text-[9px] text-ink-faint"><span className="flex items-center gap-1"><span className="inline-block h-1.5 w-1.5" style={{ background: "#00ff00" }} />verified {refVerified}</span><span className="flex items-center gap-1"><span className="inline-block h-1.5 w-1.5" style={{ background: "#ffb020" }} />pending {refPending}</span></div></>
+                : <p className="py-3 text-center text-[10px] text-ink-faint">No referrals yet — share your link below</p>}
             </PanelChart>
 
             <PanelChart title={l?.vesting ? "Vesting · % vested" : "Claim · % of allocation"} read={hasClaimData ? `${claimPct}%` : undefined}>
               {hasClaimData
-                ? <div className="flex justify-center py-1"><Ring percent={claimPct} label={l?.vesting ? "vested" : "claimed"} size={78} stroke={6} /></div>
+                ? <div className="flex justify-center py-1"><RadialProgress percent={claimPct} value={`${claimPct}%`} size={104} /></div>
                 : <p className="py-3 text-center text-[10px] text-ink-faint">Pre-TGE — nothing vested</p>}
             </PanelChart>
 

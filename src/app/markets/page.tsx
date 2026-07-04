@@ -13,7 +13,7 @@ import OrbPanel from "@/components/app/OrbPanel";
 import MarketTicker from "@/components/app/MarketTicker";
 import { Panel, Mark, DataRow, IconChart, IconActivity , kpiColor } from "@/components/app/ui";
 import { PanelChart } from "@/components/app/terminal";
-import { Area, Gauge, Bars, Ring, LineMulti } from "@/components/app/charts";
+import { Area, Gauge, DivergingBars, Depth, Bubble, Candles, type Candle } from "@/components/app/charts";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import type { Market, MarketStage } from "@/lib/types";
 
@@ -93,6 +93,7 @@ function MarketCard({ m }: { m: Mkt }) {
 
 export default function MarketsPage() {
   const [markets, setMarkets] = useState<Mkt[] | null>(null);
+  const [leadCandles, setLeadCandles] = useState<Candle[]>([]);
   const [stage, setStage] = useState<MarketStage | "all">("all");
   const [lOpen, setLOpen] = useState(true);
   const [rOpen, setROpen] = useState(true);
@@ -117,13 +118,29 @@ export default function MarketsPage() {
     ["Futures", list.filter((m) => m.stage === "futures").length],
   ];
 
-  // side-rail chart data (all guarded; rendered only when list.length > 0)
-  const vols = list.map((m) => m.vol24h ?? 0);                                    // LEFT bars: 24h volume per market
-  const futuresCount = list.filter((m) => m.stage === "futures").length;
-  const futuresPct = list.length ? Math.round((futuresCount / list.length) * 100) : 0; // LEFT ring: % ascended to futures
-  const priceSeries = list.map((m) => m.series ?? []).filter((s) => s.length > 1).slice(0, 3); // RIGHT lines: top markets' closes
-  const nextCapPct = list.filter((m) => m.stage !== "futures").reduce((mx, m) => Math.max(mx, m.cap_pct ?? 0), 0); // RIGHT gauge: leader's cap %
-  const nextCapRounded = Math.min(100, Math.round(nextCapPct));
+  // lead market (highest cap) drives the REAL candlestick (fetched OHLC) + AMM depth
+  const lead = [...list].sort((a, b) => (b.marketcap ?? 0) - (a.marketcap ?? 0))[0];
+  const leadId = lead?.market_id;
+  useEffect(() => {
+    if (!leadId) return;
+    fetch(`/api/markets/${leadId}/candles?tf=1D&n=40`).then((r) => r.json()).then((d) => setLeadCandles(d.candles ?? [])).catch(() => {});
+  }, [leadId]);
+
+  // trade-rail chart data — REAL: movers (24h ROI) · constant-product AMM depth (from liquidity+price) · cap bubbles
+  const roiOf = (m: Mkt) => { const s = m.series && m.series.length > 1 ? m.series : null; return s && s[0] ? ((s[s.length - 1] - s[0]) / s[0]) * 100 : 0; };
+  const movers = list.map(roiOf);
+  const hasMovers = movers.some((v) => Math.abs(v) > 0.01);
+  const stageColor = (st: string) => (st === "futures" ? "#48f5ff" : st === "spot" ? "#00ff00" : "#ffb020");
+  const capBubbles = list.slice(0, 12).map((m) => ({ value: m.marketcap ?? 0, label: m.base_symbol.slice(0, 4), color: stageColor(m.stage) }));
+  const depth = (() => {
+    const p = lead?.price ?? 0, L = lead?.liquidity_usd ?? 0;
+    if (!(p > 0) || !(L > 0)) return { bids: [] as number[], asks: [] as number[] };
+    const Xr = (L / 2) / p, k = Xr * (L / 2), N = 20;
+    const asks = Array.from({ length: N + 1 }, (_, i) => { const pp = p * (1 + (i / N) * 0.5); return Math.max(0, Xr - Math.sqrt(k / pp)); });
+    const bids = Array.from({ length: N + 1 }, (_, i) => { const pp = p * (1 - (i / N) * 0.49); return Math.max(0, Math.sqrt(k / pp) - Xr); });
+    return { bids, asks };
+  })();
+  const hasDepth = depth.asks.length > 1 && (depth.asks[depth.asks.length - 1] > 0 || depth.bids[depth.bids.length - 1] > 0);
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
@@ -139,16 +156,16 @@ export default function MarketsPage() {
               <DataRow k="Holders" v={totals.holders} />
             </div>
 
-            <PanelChart title="Volume · 24h by market" read={`${list.length} mkts`}>
-              {list.length > 0
-                ? <Bars data={vols} h={46} />
-                : <p className="py-2 text-[11px] text-ink-dim">No markets yet.</p>}
+            <PanelChart title="Movers · 24h ROI" read={`${list.length} mkts`}>
+              {hasMovers
+                ? <div className="py-1"><DivergingBars data={movers} h={58} /></div>
+                : <p className="py-2 text-[11px] text-ink-dim">No price moves yet.</p>}
             </PanelChart>
 
-            <PanelChart title="Ascension · futures reached" read={`${futuresCount}/${list.length}`}>
-              {list.length > 0
-                ? <div className="flex items-center justify-center py-1"><Ring percent={futuresPct} label="futures" value={`${futuresPct}%`} size={86} stroke={6} /></div>
-                : <p className="py-2 text-[11px] text-ink-dim">No markets yet.</p>}
+            <PanelChart title={`Depth · ${lead?.base_symbol ?? "market"}`} read={money(lead?.liquidity_usd ?? 0)}>
+              {hasDepth
+                ? <div className="py-1"><Depth bids={depth.bids} asks={depth.asks} h={92} /></div>
+                : <p className="py-2 text-[11px] text-ink-dim">No liquidity yet.</p>}
             </PanelChart>
 
             <div className="ng-label mb-2 mt-4 !text-ink-dim">Stage</div>
@@ -216,16 +233,16 @@ export default function MarketsPage() {
               <li className="flex gap-2"><Mark plain accent="cyan" className="!text-[9px]">futures</Mark> deep liquidity + licensing, last</li>
             </ol>
 
-            <PanelChart title="Price · top markets" read={`${priceSeries.length} series`}>
-              {priceSeries.length > 0
-                ? <LineMulti series={priceSeries} gid="mk-price" h={48} />
+            <PanelChart title={`Price · ${lead?.base_symbol ?? "leader"}`} read={lead ? money(lead.marketcap ?? 0) : "—"}>
+              {leadCandles.length > 1
+                ? <div className="py-1"><Candles data={leadCandles} h={92} /></div>
                 : <p className="py-2 text-[11px] text-ink-dim">No price history yet.</p>}
             </PanelChart>
 
-            <PanelChart title="Next graduation · cap %" read={`${nextCapRounded}%`}>
-              {list.filter((m) => m.stage !== "futures").length > 0
-                ? <div className="flex items-center justify-center py-1"><Gauge percent={nextCapRounded} w={116} color="var(--ng-cyan)" /></div>
-                : <p className="py-2 text-[11px] text-ink-dim">All markets ascended.</p>}
+            <PanelChart title="Market cap · by stage" read={`${list.length} mkts`}>
+              {list.length > 0
+                ? <div className="py-1"><Bubble data={capBubbles} h={112} /></div>
+                : <p className="py-2 text-[11px] text-ink-dim">No markets yet.</p>}
             </PanelChart>
 
             {/* live ranking — real cap progress toward each market's next stage */}

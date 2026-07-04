@@ -21,6 +21,7 @@
     "@solana-program/token-2022": "^0.11.0",
     "@solana/kit": "^7.0.0",
     "@solana/spl-token": "^0.4.14",
+    "@wallet-standard/app": "^1.1.0",
     "bs58": "^6.0.0",
     "next": "16.2.9",
     "pg": "^8.22.0",

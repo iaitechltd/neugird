@@ -19,7 +19,7 @@ import { CountUp, Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import OrbPanel from "@/components/app/OrbPanel";
 import { PanelChart } from "@/components/app/terminal";
-import { Ring, Gauge } from "@/components/app/charts";
+import { RadialBars, ConcentricRings, Bubble, Bars } from "@/components/app/charts";
 import type { Build, Product } from "@/lib/types";
 
 type P = Product & {
@@ -138,9 +138,27 @@ export default function GridXPage() {
   const ratingPct = rated.length ? Math.round((avgRating / 5) * 100) : 0;
   const totalOpens = products.reduce((s, p) => s + (p.opens_30d ?? 0), 0);
   const reviewedCount = products.filter((p) => (p.review_count ?? 0) > 0).length;
-  const revenuePct = Math.min(100, Math.round((totalRevenue / 1000) * 100)); // toward a $1K milestone
   const usagePct = Math.min(100, Math.round((totalOpens / 100) * 100));       // toward 100 opens / 30d
   const reviewedPct = products.length ? Math.round((reviewedCount / products.length) * 100) : 0;
+
+  /* futuristic rail-chart data — grounded, SSR-safe (radial burst · nested rings · sonar scope · waveform).
+     Aggregate-driven so they read well at ANY product count (demo can be a single product). */
+  const totalUsers = products.reduce((s, p) => s + (p.active_users ?? 0), 0);
+  const kpiBurst = [
+    Math.min(100, (totalRevenue / 1000) * 100),
+    Math.min(100, (totalPurchases / 50) * 100),
+    Math.min(100, (totalUsers / 100) * 100),
+    usagePct,
+    Math.min(100, (products.length / 10) * 100),
+  ];
+  const kpiLabels = ["REV", "BUY", "USR", "OPEN", "APPS"];
+  const hasBurst = kpiBurst.some((v) => v > 0);
+  const vitals = [{ pct: ratingPct, color: "#00ff00" }, { pct: reviewedPct, color: "#48f5ff" }, { pct: usagePct, color: "#ffb020" }];
+  // REAL: tech-stack usage tallied across all builds (bubble) · build pipeline counts (bars)
+  const techCounts = builds.flatMap((b) => b.stack ?? []).reduce<Record<string, number>>((m, t) => ({ ...m, [t]: (m[t] ?? 0) + 1 }), {});
+  const techTop = Object.entries(techCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const techBubbles = techTop.map(([t, n], i) => ({ value: n, label: t.slice(0, 4), color: ["#00ff00", "#48f5ff", "#ffb020", "#7cf57c"][i % 4] }));
+  const pipelineBars = [builds.length, products.length, unlisted.length];
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
@@ -152,11 +170,22 @@ export default function GridXPage() {
           <Panel scroll title="YOUR GRIDX" icon={<IconStore className="h-4 w-4" />} bodyClass="p-3.5">
             <Link href="/echo" className="ng-btn ng-btn-primary ng-btn--block"><IconBolt className="h-3.5 w-3.5" /> Build &amp; publish with Echo</Link>
 
-            <PanelChart title="Quality · avg rating" read={`${rated.length} rated`}>
-              {rated.length ? <div className="flex items-center justify-center py-1"><Ring percent={ratingPct} label="avg rating" value={`${avgRating}★`} size={92} stroke={6} /></div> : <p className="text-[11px] text-ink-faint">No reviews yet.</p>}
+            <PanelChart title="Traction · signal burst" read={`$${Math.round(totalRevenue).toLocaleString()}`}>
+              {hasBurst
+                ? <div className="flex justify-center py-1"><RadialBars data={kpiBurst} labels={kpiLabels} size={156} /></div>
+                : <p className="text-[11px] text-ink-faint">No activity yet.</p>}
             </PanelChart>
-            <PanelChart title="Revenue · toward $1K" read={`$${Math.round(totalRevenue).toLocaleString()}`}>
-              <div className="flex items-center justify-center py-1"><Gauge percent={revenuePct} value={`${revenuePct}%`} w={150} color="var(--ng-cyan)" /></div>
+            <PanelChart title="Catalogue · vitals" read={`${products.length} products`}>
+              {products.length
+                ? <div className="flex items-center justify-center gap-3 py-1">
+                    <ConcentricRings rings={vitals} size={140} />
+                    <div className="space-y-1 text-[10px]">
+                      <div className="flex items-center gap-1.5"><span className="inline-block h-2 w-2" style={{ background: "#00ff00" }} /><span className="text-ink-dim">rating</span><span className="ml-auto tnum text-ink-faint">{avgRating}★</span></div>
+                      <div className="flex items-center gap-1.5"><span className="inline-block h-2 w-2" style={{ background: "#48f5ff" }} /><span className="text-ink-dim">reviewed</span><span className="ml-auto tnum text-ink-faint">{reviewedPct}%</span></div>
+                      <div className="flex items-center gap-1.5"><span className="inline-block h-2 w-2" style={{ background: "#ffb020" }} /><span className="text-ink-dim">usage</span><span className="ml-auto tnum text-ink-faint">{usagePct}%</span></div>
+                    </div>
+                  </div>
+                : <p className="text-[11px] text-ink-faint">No products yet.</p>}
             </PanelChart>
 
             <Section icon={<IconLayers className="h-3.5 w-3.5" />}>Your Products</Section>
@@ -234,11 +263,16 @@ export default function GridXPage() {
         {/* RIGHT */}
         <OrbPanel label="Signal" open={rOpen} onToggle={setROpen} widthClass="lg:w-[320px] xl:w-[340px]">
           <Panel scroll title="SIGNAL" icon={<IconCoins className="h-4 w-4" />} bodyClass="p-3.5">
-            <PanelChart title="Reviewed · verified share" read={`${reviewedCount}/${products.length}`}>
-              {products.length ? <div className="flex items-center justify-center py-1"><Ring percent={reviewedPct} label="reviewed" value={`${reviewedPct}%`} size={92} stroke={6} /></div> : <p className="text-[11px] text-ink-faint">No products yet.</p>}
+            <PanelChart title="Tech · stack usage" read={`${techTop.length} stacks`}>
+              {techTop.length
+                ? <div className="py-1"><Bubble data={techBubbles} h={120} /></div>
+                : <p className="text-[11px] text-ink-faint">No builds yet.</p>}
             </PanelChart>
-            <PanelChart title="Usage · toward 100 opens" read={`${totalOpens.toLocaleString()} opens 30d`}>
-              <div className="flex items-center justify-center py-1"><Gauge percent={usagePct} value={`${usagePct}%`} w={150} /></div>
+            <PanelChart title="Pipeline · builds → listed" read={`${products.length}/${builds.length} listed`}>
+              {builds.length
+                ? <><Bars data={pipelineBars} h={72} />
+                    <div className="mt-1 flex justify-around text-[9px] text-ink-faint"><span>builds</span><span>listed</span><span>ready</span></div></>
+                : <p className="text-[11px] text-ink-faint">No builds yet.</p>}
             </PanelChart>
 
             <Section icon={<IconCoins className="h-3.5 w-3.5" />}>Top Products</Section>

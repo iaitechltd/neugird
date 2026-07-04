@@ -12,7 +12,7 @@ import {
 } from "@/components/app/ui";
 import { Decrypt, CountUp } from "@/components/app/typefx";
 import { TProc, TailLog, PanelChart, type LogLine } from "@/components/app/terminal";
-import { Area, Radar, Bars, Ring } from "@/components/app/charts";
+import { Radar, Bars, Ring, Gauge } from "@/components/app/charts";
 import OrbPanel from "@/components/app/OrbPanel";
 import type { Agent, Build, Grid, Job } from "@/lib/types";
 
@@ -66,6 +66,11 @@ export default function HomePage() {
     ? repSeries.slice(1).map((v, i) => Math.max(0, v - repSeries[i])).slice(-14)
     : [0];
   const trustedPct = economy?.agents.total ? Math.round((economy.agents.trusted / economy.agents.total) * 100) : 0;
+  const externalPct = economy?.agents.total ? Math.round((economy.agents.external / economy.agents.total) * 100) : 0;
+  const govDenom = (economy?.grid?.gov_passed ?? 0) + (economy?.grid?.gov_open ?? 0);
+  const govApprovalPct = govDenom ? Math.round(((economy?.grid?.gov_passed ?? 0) / govDenom) * 100) : 0;
+  const gridEarnSink = (economy?.grid?.treasury_grid ?? 0) + (economy?.grid?.allocation_issued ?? 0);
+  const gridSinkPct = gridEarnSink ? Math.round(((economy?.grid?.treasury_grid ?? 0) / gridEarnSink) * 100) : 0;
   // recent builds → a tail -f style log (oldest first, so newest lands at the bottom)
   const buildLog: LogLine[] = [...builds]
     .sort((a, b) => Date.parse(a.created_at ?? "") - Date.parse(b.created_at ?? ""))
@@ -111,7 +116,9 @@ export default function HomePage() {
 
             {/* two live charts — the terminal readout (founder: charts on every rail) */}
             <PanelChart title="Reputation · by dimension" read={`${rep} pulse`}>
-              <Radar axes={[...RADAR_DIMS]} values={radarVals} size={132} />
+              <div className="flex justify-center py-1.5">
+                <Radar axes={[...RADAR_DIMS]} values={radarVals} size={156} />
+              </div>
             </PanelChart>
             <PanelChart title="Activity · contribution cadence" read={`${activity.reduce((a, b) => a + b, 0)} pts`}>
               <Bars data={activity.length ? activity : [0]} h={44} />
@@ -298,12 +305,16 @@ export default function HomePage() {
               <div className="flex items-baseline justify-between"><span className="ng-stat__v !text-2xl">{rep}</span><span className="text-[11px] text-ink-dim">total Pulse</span></div>
             </div>
 
-            {/* two live charts on the Signal rail */}
-            <PanelChart title="Agent economy · trust ring" read={`${economy?.agents.trusted ?? 0}/${economy?.agents.total ?? 0} trusted`}>
-              <div className="flex items-center justify-center py-1"><Ring percent={trustedPct} label="trusted" value={`${trustedPct}%`} size={86} stroke={6} /></div>
+            {/* two Signal-rail charts — a ratio-ring cluster + a GRID gauge (founder, screenshot-inspired 2026-07-04) */}
+            <PanelChart title="Agent economy · ratios" read={`${economy?.agents.total ?? 0} agents`}>
+              <div className="flex items-end justify-around gap-1 py-1.5">
+                <Ring percent={trustedPct} label="trusted" size={66} stroke={5} />
+                <Ring percent={externalPct} label="external" size={66} stroke={5} color="var(--ng-cyan)" />
+                <Ring percent={govApprovalPct} label="gov" size={66} stroke={5} color="var(--ng-amber)" />
+              </div>
             </PanelChart>
-            <PanelChart title="Income · lifetime" read={`$${(me?.income?.total ?? 0).toLocaleString()}`}>
-              <Area data={me?.income?.series && me.income.series.length > 1 ? me.income.series : [0, me?.income?.total ?? 0]} gid="home-income" color="var(--ng-cyan)" h={44} />
+            <PanelChart title="GRID · sink share" read={`${(economy?.grid?.treasury_grid ?? 0).toLocaleString()} GRID`}>
+              <div className="flex justify-center py-0.5"><Gauge percent={gridSinkPct} value={`${gridSinkPct}%`} w={152} /></div>
             </PanelChart>
 
             <Section icon={<IconRocket className="h-3.5 w-3.5" />} action={<Link href="/me" className="text-[11px] text-ink-dim transition hover:text-neon">All</Link>}>Recent Builds · tail -f</Section>

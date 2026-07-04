@@ -7,6 +7,7 @@ import NeuGridMark from "@/components/NeuGridMark";
 import PulseMonitor from "./PulseMonitor";
 import StartNewButton from "./StartNewButton";
 import UserMenu from "./UserMenu";
+import WalletConnect from "./WalletConnect";
 import { IconActivity, IconBell, IconChart, IconCheck, IconConnect, IconMessage, IconSearch, IconShield, IconUser } from "./ui";
 import { Typewriter } from "./typefx";
 
@@ -252,6 +253,7 @@ export default function NeuHeader(props: {
             <HeaderIcon active={bellOpen} onClick={() => setBellOpen((v) => !v)} label="Notifications" badge={badge}><IconBell className="h-4 w-4" /></HeaderIcon>
             {bellOpen && <BellDropdown notes={notes} onClose={() => setBellOpen(false)} />}
           </div>
+          <WalletConnect align="right" />
           <UserMenu />
         </div>
       </div>

@@ -14,7 +14,7 @@ import { Panel, Tag, Mark, DataRow, ProgressBar, IconRocket, IconActivity, IconB
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import GenesisProposeWizard from "@/components/app/GenesisProposeWizard";
 import { PanelChart } from "@/components/app/terminal";
-import { Gauge, Bars, Ring } from "@/components/app/charts";
+import { Waterfall, Bullet, Funnel, Marimekko } from "@/components/app/charts";
 import type { Milestone, Proposal } from "@/lib/types";
 
 type View = { proposal: Proposal; raised: number; backers: number; spawned_grid_slug: string | null; milestones: Milestone[]; i_backed: boolean; founder?: { username: string; reputation: number }; closes_at?: string; refunded?: number };
@@ -54,16 +54,22 @@ export default function GenesisBoard() {
     ["Funded Raises", list.filter((v) => v.proposal.status === "funded").length],
   ];
 
-  // ---- side-rail chart data (derived from real raise fields) ----
-  const raisedSeries = list.map((v) => v.raised ?? 0);
-  const backerSeries = list.map((v) => v.backers ?? 0);
-  // leading open raise = the most-funded still-open round
-  const leader = open.length ? [...open].sort((a, b) => b.raised - a.raised)[0] : null;
-  const leaderPct = leader ? Math.round(Math.min(100, (leader.raised / (leader.proposal.ask_amount || 1)) * 100)) : 0;
-  const fundedCount = list.filter((v) => v.proposal.status === "funded").length;
-  const fundedSharePct = list.length ? Math.round((fundedCount / list.length) * 100) : 0;
-  const hasRaised = raisedSeries.some((n) => n > 0);
-  const hasBackers = backerSeries.some((n) => n > 0);
+  // ---- side-rail chart data (REAL: raise amounts + milestone releases) ----
+  const totalReleased = list.reduce((s, v) => s + v.milestones.filter((m) => m.status === "released").reduce((a, m) => a + (m.amount ?? 0), 0), 0);
+  const escrow = Math.max(0, totals.raised - totalReleased);
+  const waterfall = [{ value: totals.raised, kind: "total" as const }, { value: -totalReleased, kind: "delta" as const }, { value: escrow, kind: "total" as const }];
+  const hasRaised = totals.raised > 0;
+  const bullets = list.slice(0, 8).map((v) => ({ value: v.raised, target: v.proposal.ask_amount }));
+  const fundedC = list.filter((v) => v.proposal.status === "funded").length;
+  const deliveringC = list.filter((v) => v.proposal.status === "funded" && v.milestones.some((m) => m.status === "released")).length;
+  const completeC = list.filter((v) => v.milestones.length > 0 && v.milestones.every((m) => m.status === "released")).length;
+  const funnel = [
+    { value: list.length, color: "#00ff00" },
+    { value: fundedC, color: "#48f5ff" },
+    { value: deliveringC, color: "#ffb020" },
+    { value: completeC, color: "#7cf57c" },
+  ];
+  const mekko = list.slice(0, 8).map((v) => ({ weight: v.proposal.ask_amount || 1, fill: v.proposal.ask_amount ? v.raised / v.proposal.ask_amount : 0, color: v.proposal.status === "funded" ? "#00ff00" : "#48f5ff" }));
 
   async function act(url: string, body?: object, msg?: string) {
     if (busy) return; setBusy(true);
@@ -84,17 +90,18 @@ export default function GenesisBoard() {
               <DataRow k="Total Raised" v={`${totals.raised}`} />
               <DataRow k="Open Ask" v={`${totals.ask}`} />
             </div>
-            {leader ? (
-              <PanelChart title="Funding · leading raise" read={`${leaderPct}%`}>
-                <div className="flex justify-center py-1"><Gauge percent={leaderPct} value={`${leaderPct}%`} w={116} /></div>
-              </PanelChart>
-            ) : <p className="mt-3 text-[10px] text-ink-faint">No open raise to chart yet.</p>}
-
             {hasRaised ? (
-              <PanelChart title="Raised · by project" read={`$${Math.round(totals.raised).toLocaleString()}`}>
-                <Bars data={raisedSeries} h={44} />
+              <PanelChart title="Capital · flow" read={`$${Math.round(totals.raised).toLocaleString()}`}>
+                <div className="py-1"><Waterfall steps={waterfall} h={92} /></div>
+                <div className="mt-1 flex justify-around text-[9px] text-ink-faint"><span className="text-neon">raised</span><span style={{ color: "#ff4d5e" }}>released</span><span className="text-neon">escrow</span></div>
               </PanelChart>
             ) : <p className="mt-3 text-[10px] text-ink-faint">No funding raised yet.</p>}
+
+            {list.length ? (
+              <PanelChart title="Progress · by raise" read={`${list.length} raises`}>
+                <div className="py-1"><Bullet data={bullets} /></div>
+              </PanelChart>
+            ) : <p className="mt-3 text-[10px] text-ink-faint">No raises yet.</p>}
 
             <div className="ng-card mt-4 p-3">
               <div className="text-[11px] text-ink-dim">Your reputation</div>
@@ -190,16 +197,17 @@ export default function GenesisBoard() {
         <OrbPanel side="right" label="How it works" open={rOpen} onToggle={setROpen}>
           <Panel scroll title="HOW IT WORKS" icon={<IconActivity className="h-4 w-4" />} bodyClass="p-3.5">
             {list.length ? (
-              <PanelChart title="Outcomes · funded share" read={`${fundedCount}/${list.length}`}>
-                <div className="flex justify-center py-1"><Ring percent={fundedSharePct} label="funded" value={`${fundedSharePct}%`} /></div>
+              <PanelChart title="Raises · lifecycle funnel" read={`${list.length} raises`}>
+                <div className="py-1"><Funnel data={funnel} h={100} /></div>
+                <div className="mt-1 flex justify-between text-[9px] text-ink-faint"><span className="text-neon">all</span><span className="text-cyan">funded</span><span className="text-amber">building</span><span style={{ color: "#7cf57c" }}>done</span></div>
               </PanelChart>
             ) : <p className="text-[10px] text-ink-faint">No raises to chart yet.</p>}
 
-            {hasBackers ? (
-              <PanelChart title="Backers · by project" read={`${backerSeries.reduce((s, n) => s + n, 0)} total`}>
-                <Bars data={backerSeries} color="#48f5ff" h={44} />
+            {list.length ? (
+              <PanelChart title="Raises · ask × funded" read={`$${Math.round(totals.ask).toLocaleString()} ask`}>
+                <div className="py-1"><Marimekko data={mekko} h={100} /></div>
               </PanelChart>
-            ) : <p className="mt-3 text-[10px] text-ink-faint">No backers yet.</p>}
+            ) : <p className="mt-3 text-[10px] text-ink-faint">No raises yet.</p>}
 
             <ol className="mt-4 space-y-2 text-[11px] text-ink-dim">
               {["Earn reputation through verified work", "Propose with your MVP + track record", "Backers fund — money locks in escrow", "A project Grid spawns to build in", "Deliver milestones → backers release funds"].map((s, i) => (

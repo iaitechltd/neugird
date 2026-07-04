@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import NeuGridMark from "@/components/NeuGridMark";
 import { Cursor } from "@/components/app/typefx";
+import WalletConnect from "@/components/app/WalletConnect";
 import { IconArrowRight, IconChevronDown, IconExternal } from "@/components/app/ui";
 
 const prefersReduced = () =>
@@ -146,7 +147,10 @@ export default function Landing() {
       <header className="fixed inset-x-0 top-0 z-50">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 sm:px-10">
           <Link href="/" className="inline-flex items-center gap-2.5"><NeuGridMark size={26} /><span className="ng-title text-[16px] font-bold tracking-tight text-neon">NeuGrid</span></Link>
-          <Link href="/home" className="ng-btn ng-btn-primary ng-btn--sm">Enter <IconArrowRight className="h-3.5 w-3.5" /></Link>
+          <div className="flex items-center gap-2">
+            <WalletConnect align="right" />
+            <Link href="/home" className="ng-btn ng-btn-primary ng-btn--sm">Enter <IconArrowRight className="h-3.5 w-3.5" /></Link>
+          </div>
         </div>
       </header>
 

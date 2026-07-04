@@ -13,7 +13,7 @@ import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, Mark, DataRow, ProgressBar, IconShield, IconActivity, IconLock, IconWallet, IconBolt, IconCheck, IconCoins , kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import { PanelChart } from "@/components/app/terminal";
-import { Bars, Gauge, StackBars, Ring } from "@/components/app/charts";
+import { Tornado, Lollipop, Waffle, Dumbbell } from "@/components/app/charts";
 import type { GovProposal, GovProposalKind } from "@/lib/types";
 
 type GovView = GovProposal & { total_grid: number; for_pct: number; against_pct: number; quorum_pct: number; voters: number; my_vote: { support: boolean; grid: number } | null };
@@ -191,24 +191,16 @@ export default function GovernancePage() {
     rejected: list.filter((p) => p.status === "rejected").length,
     locked: list.reduce((s, p) => s + (p.status === "open" ? p.total_grid : 0), 0),
   }), [list]);
-  // Chart-derived values (SSR-safe, no randomness). Real fields: for_grid /
-  // against_grid / total_grid / quorum_grid / status.
+  // Chart-derived values (SSR-safe, REAL: for_grid / against_grid / total_grid / quorum_grid / voters / status)
   const openProposals = useMemo(() => list.filter((p) => p.status === "open"), [list]);
-  const turnout = openProposals.map((p) => (p.for_grid ?? 0) + (p.against_grid ?? 0));
-  // "closest to passing" = highest quorum progress among open proposals.
-  const leading = useMemo(
-    () => openProposals.reduce<GovView | null>((best, p) => {
-      const prog = ((p.for_grid ?? 0) + (p.against_grid ?? 0)) / Math.max(1, p.quorum_grid);
-      const bestProg = best ? ((best.for_grid ?? 0) + (best.against_grid ?? 0)) / Math.max(1, best.quorum_grid) : -1;
-      return prog > bestProg ? p : best;
-    }, null),
-    [openProposals],
-  );
-  const leadingPct = leading
-    ? Math.round(Math.min(100, (((leading.for_grid ?? 0) + (leading.against_grid ?? 0)) / Math.max(1, leading.quorum_grid)) * 100))
-    : 0;
-  const forAgainst = list.slice(0, 8).map((p) => ({ values: [p.for_grid ?? 0, p.against_grid ?? 0] }));
-  const passedShare = list.length ? Math.round((stats.passed / list.length) * 100) : 0;
+  const forAgainst = list.slice(0, 8).map((p) => ({ left: p.against_grid ?? 0, right: p.for_grid ?? 0 }));
+  const voterDots = list.slice(0, 8).map((p) => ({ value: p.voters ?? 0 }));
+  const outcomes = [
+    { value: stats.passed, color: "#00ff00" },
+    { value: stats.rejected, color: "#ff4d5e" },
+    { value: stats.open, color: "#48f5ff" },
+  ];
+  const quorumGap = openProposals.slice(0, 8).map((p) => ({ a: p.quorum_grid ?? 0, b: p.total_grid ?? 0 }));
 
   const kpis: [string, number, string?][] = [
     ["Open Votes", stats.open],
@@ -232,23 +224,22 @@ export default function GovernancePage() {
               <DataRow k="Your GRID" v={me ? grid(me.grid) : "—"} accent="cyan" />
             </div>
 
-            {/* Turnout — total GRID voted per open proposal */}
-            <PanelChart title="Turnout · GRID per proposal" read={`${openProposals.length} open`}>
-              {turnout.length > 0 ? (
-                <Bars data={turnout} h={46} />
+            {/* FOR (right, green) vs AGAINST (left, red) GRID weight per proposal */}
+            <PanelChart title="For / against · by proposal" read={`${list.length} proposals`}>
+              {list.length > 0 ? (
+                <><Tornado data={forAgainst} />
+                  <div className="mt-1 flex justify-between text-[9px] text-ink-faint"><span style={{ color: "#ff4d5e" }}>against</span><span className="text-neon">for</span></div></>
               ) : (
-                <p className="py-2 text-center text-[10px] text-ink-faint">No open proposals</p>
+                <p className="py-2 text-center text-[10px] text-ink-faint">No proposals yet</p>
               )}
             </PanelChart>
 
-            {/* Quorum progress of the proposal closest to passing */}
-            <PanelChart title="Quorum · leading proposal" read={leading ? `${leadingPct}%` : "—"}>
-              {leading ? (
-                <div className="flex justify-center">
-                  <Gauge percent={leadingPct} color="#48f5ff" w={116} />
-                </div>
+            {/* Voter count per proposal (participation breadth) */}
+            <PanelChart title="Voters · by proposal" read={`${list.reduce((s, p) => s + (p.voters ?? 0), 0)} total`}>
+              {list.length > 0 ? (
+                <div className="py-1"><Lollipop data={voterDots} /></div>
               ) : (
-                <p className="py-2 text-center text-[10px] text-ink-faint">No open proposals</p>
+                <p className="py-2 text-center text-[10px] text-ink-faint">No proposals yet</p>
               )}
             </PanelChart>
 
@@ -348,23 +339,23 @@ export default function GovernancePage() {
           <Panel scroll title="GRID UTILITY" icon={<IconActivity className="h-4 w-4" />} bodyClass="p-3.5">
             <p className="text-[11px] leading-relaxed text-ink-dim">GRID is earned, not sold. Its jobs make it useful — not a security:</p>
 
-            {/* FOR vs AGAINST GRID, per proposal (green = for, cyan = against) */}
-            <PanelChart title="For / against · by proposal" read={`${forAgainst.length} shown`}>
-              {forAgainst.length > 0 ? (
-                <StackBars data={forAgainst} h={48} />
+            {/* Outcome composition — passed / rejected / open as a waffle pictogram */}
+            <PanelChart title="Outcomes · composition" read={`${list.length} total`}>
+              {list.length > 0 ? (
+                <div className="flex justify-center py-1"><Waffle data={outcomes} /></div>
               ) : (
                 <p className="py-2 text-center text-[10px] text-ink-faint">No proposals yet</p>
               )}
+              <div className="mt-1 flex justify-around text-[9px] text-ink-faint"><span className="text-neon">passed</span><span style={{ color: "#ff4d5e" }}>rejected</span><span className="text-cyan">open</span></div>
             </PanelChart>
 
-            {/* Share of resolved+open proposals that passed */}
-            <PanelChart title="Outcomes · passed share" read={`${stats.passed}/${list.length}`}>
-              {list.length > 0 ? (
-                <div className="flex justify-center">
-                  <Ring percent={passedShare} label="passed" size={86} />
-                </div>
+            {/* Quorum gap — locked GRID (dot) vs quorum threshold (amber) per open vote */}
+            <PanelChart title="Quorum gap · open votes" read={`${quorumGap.length} open`}>
+              {quorumGap.length > 0 ? (
+                <><Dumbbell data={quorumGap} />
+                  <div className="mt-1 flex justify-between text-[9px] text-ink-faint"><span className="text-amber">quorum</span><span className="text-neon">locked</span></div></>
               ) : (
-                <p className="py-2 text-center text-[10px] text-ink-faint">No proposals yet</p>
+                <p className="py-2 text-center text-[10px] text-ink-faint">No open proposals</p>
               )}
             </PanelChart>
 

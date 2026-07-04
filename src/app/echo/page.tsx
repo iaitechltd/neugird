@@ -12,7 +12,7 @@ import {
   IconArrowRight, IconArrowUp, IconArrowDown, IconPlus, IconAlert,
   IconRefresh, IconExternal, IconSparkle, IconMessage,
 } from "@/components/app/ui";
-import { Ring, Bars, Radar } from "@/components/app/charts";
+import { Ring, Histogram, SegBar, Donut, Spark } from "@/components/app/charts";
 import { PanelChart } from "@/components/app/terminal";
 import { Decrypt, CountUp, Typewriter } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
@@ -391,8 +391,7 @@ export default function EchoPage() {
   const revisionCounts = pastBuilds.map((b) => (b.revisions?.length ?? 0) + 1);
   const snapAxes = ["builds", "agents", "raises", "markets", "jobs"];
   const snapRaw = [askSnap?.builds ?? 0, askSnap?.agents ?? 0, askSnap?.open_raises ?? askSnap?.raises ?? 0, askSnap?.markets?.length ?? 0, askSnap?.open_jobs ?? 0];
-  const snapMax = Math.max(1, ...snapRaw);
-  const snapVals = snapRaw.map((v) => Math.round((v / snapMax) * 100));
+  const snapTotal = snapRaw.reduce((s, v) => s + v, 0);
   const hasSnap = snapRaw.some((v) => v > 0);
 
   return (
@@ -404,11 +403,11 @@ export default function EchoPage() {
         <OrbPanel side="left" label="Scope" open={lOpen} onToggle={setLOpen} widthClass="lg:w-[300px] xl:w-[320px]" className="space-y-3 lg:overflow-y-auto">
           {/* live rail charts — Echo's build output */}
           {buildSizes.length > 0
-            ? <PanelChart title="Builds · output size" read={`${pastBuilds.length} builds`}><Bars data={buildSizes} h={44} /></PanelChart>
-            : <PanelChart title="Builds · output size" read="0 builds"><p className="py-2 text-[11px] text-ink-dim">No builds yet — ship one in Builder mode.</p></PanelChart>}
+            ? <PanelChart title="Output size · distribution" read={`${pastBuilds.length} builds`}><div className="py-1"><Histogram data={buildSizes} h={54} /></div></PanelChart>
+            : <PanelChart title="Output size · distribution" read="0 builds"><p className="py-2 text-[11px] text-ink-dim">No builds yet — ship one in Builder mode.</p></PanelChart>}
           {pastBuilds.length > 0 && (
-            <PanelChart title="Deployed · share" read={`${deployedCount}/${pastBuilds.length} live`}>
-              <div className="flex items-center justify-center py-1"><Ring percent={deployedShare} label="deployed" value={`${deployedShare}%`} size={86} stroke={6} color="var(--ng-cyan)" /></div>
+            <PanelChart title="Deployed · share" read={`${deployedCount}/${pastBuilds.length} live · ${deployedShare}%`}>
+              <div className="py-2"><SegBar percent={deployedShare} color="var(--ng-cyan)" /></div>
             </PanelChart>
           )}
           {/* profile */}
@@ -1010,13 +1009,14 @@ export default function EchoPage() {
         <OrbPanel label="Controls" open={rOpen} onToggle={setROpen} widthClass="lg:w-[300px] xl:w-[320px]" className="space-y-3 lg:overflow-y-auto">
           {/* live rail charts — the grid state Echo reasons over */}
           {hasSnap && (
-            <PanelChart title="Grid · live state" read="normalized">
-              <Radar axes={snapAxes} values={snapVals} size={132} />
+            <PanelChart title="Grid · live state" read={`${snapTotal} entities`}>
+              <div className="flex items-center justify-center py-1"><Donut data={snapRaw} size={128} center={`${snapTotal}`} /></div>
+              <div className="mt-1 flex flex-wrap justify-center gap-x-2 gap-y-0.5 text-[8.5px] text-ink-faint">{snapAxes.map((a, i) => <span key={a} className="flex items-center gap-1"><span className="inline-block h-1.5 w-1.5" style={{ background: ["#00ff00", "#7cf57c", "#48f5ff", "#ffb020", "#ff4d5e"][i] }} />{a}</span>)}</div>
             </PanelChart>
           )}
-          {revisionCounts.length > 0 && (
-            <PanelChart title="Iterations · per build" read={`${pastBuilds.length} builds`}>
-              <Bars data={revisionCounts} h={44} />
+          {revisionCounts.length > 1 && (
+            <PanelChart title="Iterations · per build" read={`${revisionCounts.reduce((s, n) => s + n, 0)} total`}>
+              <div className="py-1"><Spark data={revisionCounts} gid="echo-iter" w={280} h={44} /></div>
             </PanelChart>
           )}
           {/* HUB right */}

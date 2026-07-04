@@ -12,7 +12,7 @@ import {
 import { Decrypt, CountUp } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import OrbPanel from "@/components/app/OrbPanel";
-import { Area, Bars, Radar, Ring } from "@/components/app/charts";
+import { Area, Bars, Radar, LabeledBars, StepArea, Stream, RadialProgress } from "@/components/app/charts";
 import { PanelChart } from "@/components/app/terminal";
 import type { Agent, Build, Grid, Product } from "@/lib/types";
 
@@ -111,11 +111,10 @@ export default function MePage() {
   const stats: [string, number, string?][] = [["Reputation", rep], ["Earned", Math.round(income?.total ?? 0), "$"], ["Builds", builds.length], ["Agents", agents.length], ["GRID Alloc", Math.round(me?.reward?.sybil_adjusted ?? 0)]];
 
   // --- side-rail chart data (derived, SSR-safe) ---
-  const repAxes = ["builder", "creator", "backer", "reviewer", "agent"];
-  const repRadarVals = repAxes.map((d) => Math.round(((repDims[d] ?? 0) / repMax) * 100));
-  const hasRepDims = Object.values(repDims).some((v) => (v as number) > 0);
   const incomeSeries = income?.series ?? [];
   const repSeries = me?.rep_series ?? [];
+  const agentBars = [...agents].sort((a, b) => (b.earnings ?? 0) - (a.earnings ?? 0)).slice(0, 6).map((a) => ({ label: a.name, value: a.earnings ?? 0, color: a.trust_tier === "trusted" ? "#00ff00" : "#ffb020" }));
+  const hasAgentEarn = agents.some((a) => (a.earnings ?? 0) > 0);
   const vesting = me?.reward?.vesting;
   // RIGHT ring — vesting-claimed % if TGE ran, else builds-shipped ratio, else rep-vs-1000 target.
   const shipped = builds.filter((b) => b.status === "listed" || b.status === "funded").length;
@@ -135,14 +134,14 @@ export default function MePage() {
         {/* LEFT */}
         <OrbPanel side="left" label="Portfolio" open={lOpen} onToggle={setLOpen} widthClass="lg:w-[320px] xl:w-[340px]">
           <Panel scroll title="PORTFOLIO" icon={<IconUser className="h-4 w-4" />} action={<IconChevronDown className="h-4 w-4 text-ink-dim" />} bodyClass="p-3.5">
-            <PanelChart title="Reputation · dimensions" read={`${rep} rep`}>
-              {hasRepDims
-                ? <div className="flex justify-center"><Radar axes={repAxes} values={repRadarVals} size={132} /></div>
-                : <p className="text-[11px] text-ink-dim">Earn reputation across dimensions to shape your profile.</p>}
+            <PanelChart title="Agents · earnings" read={`${agents.length} agents`}>
+              {hasAgentEarn
+                ? <div className="py-1"><LabeledBars data={agentBars} /></div>
+                : <p className="text-[11px] text-ink-dim">Your agents haven&apos;t earned yet — deploy them on jobs.</p>}
             </PanelChart>
             <PanelChart title="Income · trend" read={`$${Math.round(income?.total ?? 0).toLocaleString()}`}>
-              {incomeSeries.length
-                ? <Bars data={incomeSeries} h={44} />
+              {incomeSeries.length > 1
+                ? <div className="py-1"><StepArea data={incomeSeries} gid="me-income" color="var(--ng-cyan)" h={52} /></div>
                 : <p className="text-[11px] text-ink-dim">No income yet — earnings appear as you deliver.</p>}
             </PanelChart>
 
@@ -285,14 +284,14 @@ export default function MePage() {
         {/* RIGHT */}
         <OrbPanel label="Signal" open={rOpen} onToggle={setROpen} widthClass="lg:w-[320px] xl:w-[340px]">
           <Panel scroll title="SIGNAL" icon={<IconShield className="h-4 w-4" />} action={<IconChevronDown className="h-4 w-4 text-ink-dim" />} bodyClass="p-3.5">
-            <PanelChart title="Rep curve · cumulative" read={`${rep} now`}>
+            <PanelChart title="Rep · momentum" read={`${rep} now`}>
               {repSeries.length > 1
-                ? <Area data={repSeries} gid="me-rep-rail" color="var(--ng-cyan)" h={48} />
+                ? <div className="py-1"><Stream data={repSeries} h={52} /></div>
                 : <p className="text-[11px] text-ink-dim">Reputation builds up over verified events.</p>}
             </PanelChart>
             {ring && (
               <PanelChart title={ring.title} read={`${ring.pct}%`}>
-                <div className="flex justify-center"><Ring percent={ring.pct} label={ring.label} size={82} /></div>
+                <div className="flex justify-center py-1"><RadialProgress percent={ring.pct} value={`${ring.pct}%`} size={104} /></div>
               </PanelChart>
             )}
 

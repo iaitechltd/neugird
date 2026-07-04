@@ -15,7 +15,7 @@ import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, Tag, Mark, DataRow, IconSparkle, IconActivity, IconUser , kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import { PanelChart } from "@/components/app/terminal";
-import { Bars, Ring, Area } from "@/components/app/charts";
+import { Bars, Ring, Pie, Heatmap } from "@/components/app/charts";
 import type { Job } from "@/lib/types";
 
 type J = Job & { project_name: string; project_slug: string; applicant_count: number; applied: boolean; assignee_name: string | null };
@@ -80,16 +80,26 @@ export default function CampaignXBoard() {
   const rewardBars = list.map((j) => j.reward_amount ?? 0);                        // LEFT · Bars — reward per campaign
   const activeCount = useMemo(() => list.filter((j) => j.status === "open").length, [list]); // LEFT · Ring — active/open share
   const activePct = totalCount ? Math.round((activeCount / totalCount) * 100) : 0;
-  const applicantBars = list.map((j) => j.applicant_count ?? 0);                   // RIGHT · Bars — applicants per campaign
-  const hasApplicants = applicantBars.some((n) => n > 0);
-  const skillDemand = useMemo(() => {                                              // RIGHT · Bars fallback — count per top skill
-    const tally: Record<string, number> = {};
-    for (const j of list) for (const s of (j.required_skills ?? [])) tally[s] = (tally[s] ?? 0) + 1;
-    return Object.entries(tally).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  // RIGHT · Pie — who campaigns are hiring (humans / agents / either)
+  const seekData = useMemo(() => {
+    const t: Record<string, number> = { human: 0, agent: 0, any: 0 };
+    for (const j of list) { const k = String(j.executor_kind ?? "any"); t[k in t ? k : "any"]++; }
+    return [
+      { value: t.human, label: "humans" },
+      { value: t.agent, label: "agents" },
+      { value: t.any, label: "either" },
+    ].filter((s) => s.value > 0);
   }, [list]);
-  const rewardPool = useMemo(() => {                                               // RIGHT · Area — cumulative reward pool
-    const sorted = list.map((j) => j.reward_amount ?? 0).sort((a, b) => a - b);
-    return sorted.reduce<number[]>((acc, v) => [...acc, (acc[acc.length - 1] ?? 0) + v], []);
+  // RIGHT · Heatmap — skill demand across campaigns (skill rows × campaign cols, cell = reward intensity)
+  const heat = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const j of list) for (const s of (j.required_skills ?? [])) counts[s] = (counts[s] ?? 0) + 1;
+    const skills = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([s]) => s);
+    const camps = list.slice(0, 8);
+    const maxR = Math.max(1, ...camps.map((j) => j.reward_amount ?? 0));
+    const data: number[] = [];
+    for (const s of skills) for (const j of camps) data.push((j.required_skills ?? []).includes(s) ? 0.25 + 0.75 * ((j.reward_amount ?? 0) / maxR) : 0);
+    return { rows: skills.length, cols: camps.length, data };
   }, [list]);
 
   function addChip(role: string) {
@@ -378,17 +388,25 @@ export default function CampaignXBoard() {
         {/* RIGHT — Echo matchmaking + how it works */}
         <OrbPanel side="right" label="Echo match" open={rOpen} onToggle={setROpen}>
           <Panel scroll title="ECHO · SUGGESTED GRIDS" icon={<IconActivity className="h-4 w-4" />} bodyClass="p-3.5">
-            <PanelChart title={hasApplicants ? "Applicants · by campaign" : "Demand · by skill"} read={hasApplicants ? `${totalCount} posts` : `top ${skillDemand.length}`} className="!mt-0">
-              {hasApplicants
-                ? <Bars data={applicantBars} h={46} />
-                : skillDemand.length > 0
-                  ? <Bars data={skillDemand.map(([, n]) => n)} h={46} />
-                  : <p className="py-3 text-center text-[10px] text-ink-faint">no applicants yet</p>}
+            <PanelChart title="Seeking · worker type" read={`${totalCount} posts`} className="!mt-0">
+              {seekData.length > 0
+                ? <div className="flex items-center justify-center gap-4 py-1.5">
+                    <Pie data={seekData} size={92} colors={["#00ff00", "#48f5ff", "#ffb020"]} />
+                    <div className="space-y-1 text-[10px]">
+                      {seekData.map((s, i) => (
+                        <div key={s.label} className="flex items-center gap-1.5">
+                          <span className="inline-block h-2 w-2 shrink-0" style={{ background: ["#00ff00", "#48f5ff", "#ffb020"][i] ?? "#00ff00" }} />
+                          <span className="text-ink-dim">{s.label}</span><span className="ml-auto tnum text-ink-faint">{s.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                : <p className="py-3 text-center text-[10px] text-ink-faint">no campaigns yet</p>}
             </PanelChart>
-            <PanelChart title="Reward pool · cumulative" read={`${Math.round(rewardPool[rewardPool.length - 1] ?? 0)} USDC`}>
-              {rewardPool.length > 1
-                ? <Area data={rewardPool} gid="cx-pool" color="var(--ng-cyan)" h={48} />
-                : <p className="py-3 text-center text-[10px] text-ink-faint">not enough campaigns</p>}
+            <PanelChart title="Demand · skill × campaign" read={`${heat.rows}×${heat.cols}`}>
+              {heat.rows > 0 && heat.cols > 0
+                ? <div className="flex justify-center py-1"><Heatmap rows={heat.rows} cols={heat.cols} data={heat.data} cell={15} gap={3} /></div>
+                : <p className="py-3 text-center text-[10px] text-ink-faint">no skills tagged yet</p>}
             </PanelChart>
 
             <p className="mb-3 mt-4 text-[11px] text-ink-dim">Communities Echo would approach first, by audience size:</p>

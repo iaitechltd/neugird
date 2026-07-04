@@ -2,23 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { IconCoins, IconUser, IconSettings, IconLock, IconConnect } from "./ui";
+import { IconCoins, IconUser, IconSettings } from "./ui";
 
 type Me = { id: string; username: string; wallet: string | null; pulse: number } | null;
-
-type SolanaProvider = {
-  connect: () => Promise<{ publicKey: { toString(): string } }>;
-  signMessage: (m: Uint8Array, enc?: string) => Promise<{ signature: Uint8Array }>;
-};
-function getProvider(): SolanaProvider | undefined {
-  const w = window as unknown as { solana?: SolanaProvider; phantom?: { solana?: SolanaProvider } };
-  return w.solana ?? w.phantom?.solana;
-}
 
 const ITEMS: [React.ReactNode, string, string][] = [
   [<IconCoins key="r" className="h-4 w-4" />, "Rewards & Referrals", "/rewards"],
   [<IconUser key="p" className="h-4 w-4" />, "Profile", "/me"],
-  [<IconSettings key="s" className="h-4 w-4" />, "Settings", "/profile"],
+  [<IconSettings key="s" className="h-4 w-4" />, "Settings", "/settings"],
 ];
 
 const short = (a: string) => (a.length > 8 ? `${a.slice(0, 4)}…${a.slice(-4)}` : a);
@@ -26,7 +17,6 @@ const short = (a: string) => (a.length > 8 ? `${a.slice(0, 4)}…${a.slice(-4)}`
 export default function UserMenu() {
   const [open, setOpen] = useState(false);
   const [me, setMe] = useState<Me>(null);
-  const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -40,34 +30,6 @@ export default function UserMenu() {
   const name = me?.username ?? "Guest";
   const initial = name.charAt(0).toUpperCase() || "?";
   const handle = me?.wallet ? short(me.wallet) : `@${name}`;
-
-  async function connect() {
-    setMsg(null);
-    const provider = getProvider();
-    if (!provider) { setMsg("No Solana wallet detected — install Phantom"); return; }
-    try {
-      const { publicKey } = await provider.connect();
-      const wallet = publicKey.toString();
-      const nr = await fetch("/api/auth/nonce", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wallet }),
-      });
-      const { message } = await nr.json();
-      const signed = await provider.signMessage(new TextEncoder().encode(message), "utf8");
-      const signature = btoa(String.fromCharCode(...signed.signature));
-      const vr = await fetch("/api/auth/verify", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wallet, signature }),
-      });
-      if (!vr.ok) { setMsg("Sign-in failed"); return; }
-      window.dispatchEvent(new Event("neugrid:refresh-me"));
-      setOpen(false);
-    } catch { setMsg("Connection cancelled"); }
-  }
-
-  async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    window.dispatchEvent(new Event("neugrid:refresh-me"));
-    setOpen(false);
-  }
 
   return (
     <div className="relative font-mono">
@@ -94,13 +56,7 @@ export default function UserMenu() {
                 </Link>
               ))}
               <div className="my-1 border-t border-neon/[0.07]" />
-              <button onClick={connect} className="thl flex w-full items-center gap-2.5 px-3 py-1.5 text-[12px] text-ink">
-                <span className="grid w-4 place-items-center text-neon"><IconConnect className="h-4 w-4" /></span>connect wallet
-              </button>
-              <button onClick={logout} className="flex w-full items-center gap-2.5 px-3 py-1.5 text-[12px] text-danger transition hover:bg-danger hover:text-black">
-                <span className="grid w-4 place-items-center"><IconLock className="h-4 w-4" /></span>sign out
-              </button>
-              {msg && <div className="px-3 py-1.5 text-[10px] text-ink-dim">{"// "}{msg}</div>}
+              <div className="px-3 py-1.5 text-[10px] leading-relaxed text-ink-faint">{"// "}connect wallet &amp; sign out from the wallet button in the top bar</div>
             </div>
           </div>
         </>
