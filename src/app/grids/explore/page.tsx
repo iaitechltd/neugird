@@ -13,7 +13,7 @@ import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, Tag, Mark, DataRow, IconActivity, IconArrowRight, IconNetwork, IconLayers, IconBot, IconCoins , kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import { PanelChart } from "@/components/app/terminal";
-import { Radar, Bars, Ring, Heatmap } from "@/components/app/charts";
+import { PolarArea, Heatmap, Bullet, SegBar } from "@/components/app/charts";
 import type { Grid } from "@/lib/types";
 
 type GridRow = Grid & { subgrid_count?: number; agent_count?: number; earnings?: number };
@@ -61,16 +61,17 @@ export default function GridsExplorePage() {
     ["Avg Pulse", list.length ? Math.round(list.reduce((s, g) => s + (g.pulse_score || 0), 0) / list.length) : 0],
   ], [list]);
 
-  // ── chart-derived values (grids = the communities on the network) ─────
-  const maxMembers = Math.max(1, ...list.map((g) => g.member_count ?? 0));
-  const memberBars = [...list].sort((a, b) => (b.member_count ?? 0) - (a.member_count ?? 0)).slice(0, 10).map((g) => g.member_count ?? 0);
-  // category mix — top community types, normalized to the biggest, for the Radar
-  const catTop = [...categories].sort((a, b) => b[1] - a[1]).slice(0, 6);
-  const catMax = Math.max(1, ...catTop.map(([, n]) => n));
-  const catAxes = catTop.map(([name]) => name);
-  const catVals = catTop.map(([, n]) => Math.round((n / catMax) * 100));
+  // ── chart-derived values (grids = the communities on the network; all real) ─────
+  // LEFT-1 · PolarArea — community-type mix (labeled petals, sized by count)
+  const catTopN = [...categories].sort((a, b) => b[1] - a[1]).slice(0, 7);
+  // LEFT-2 · Heatmap — the whole network as a field, cell brightness = the grid's pulse
+  const maxPulse = Math.max(1, ...list.map((g) => g.pulse_score ?? 0));
   const HM_ROWS = 6, HM_COLS = 10;
-  const activityHeat = list.slice(0, HM_ROWS * HM_COLS).map((g) => Math.min(1, (g.member_count ?? 0) / maxMembers));
+  const activityHeat = list.slice(0, HM_ROWS * HM_COLS).map((g) => Math.min(1, (g.pulse_score ?? 0) / maxPulse));
+  // RIGHT-1 · Bullet — top grids' membership against the network average
+  const avgMembers = list.length ? Math.round(totals.members / list.length) : 0;
+  const memberBullet = [...list].sort((a, b) => (b.member_count ?? 0) - (a.member_count ?? 0)).slice(0, 6).map((g) => ({ value: g.member_count ?? 0, target: avgMembers }));
+  // RIGHT-2 · SegBar — share of grids running subgrids
   const withSub = list.filter((g) => (g.subgrid_count ?? 0) > 0).length;
   const subShare = list.length ? Math.round((withSub / list.length) * 100) : 0;
 
@@ -88,12 +89,12 @@ export default function GridsExplorePage() {
               <DataRow k="Total Pulse" v={totals.pulse} accent="neon" />
             </div>
             <PanelChart title="Categories · community mix" read={`${categories.length} types`}>
-              {catAxes.length >= 3
-                ? <div className="flex justify-center py-1"><Radar axes={catAxes} values={catVals} size={180} /></div>
+              {catTopN.length > 0
+                ? <div className="flex justify-center py-1"><PolarArea data={catTopN.map(([, n]) => n)} labels={catTopN.map(([name]) => name)} size={150} /></div>
                 : <p className="text-[11px] text-ink-faint">Not enough categories yet to map.</p>}
             </PanelChart>
-            <PanelChart title="Members · top grids" read={`peak ${maxMembers.toLocaleString()}`}>
-              {memberBars.length ? <Bars data={memberBars} h={44} /> : <p className="text-[11px] text-ink-faint">No grids yet.</p>}
+            <PanelChart title="Activity · network field" read={`${list.length} grids`}>
+              {activityHeat.length ? <Heatmap rows={HM_ROWS} cols={HM_COLS} data={activityHeat} /> : <p className="text-[11px] text-ink-faint">No grids yet.</p>}
             </PanelChart>
             <div className="ng-label mb-2 mt-4 !text-ink-dim">Categories</div>
             <div className="space-y-1">
@@ -174,11 +175,11 @@ export default function GridsExplorePage() {
         {/* RIGHT — signal */}
         <OrbPanel side="right" label="Signal" open={rOpen} onToggle={setROpen}>
           <Panel scroll title="SIGNAL" icon={<IconActivity className="h-4 w-4" />} bodyClass="p-3.5">
-            <PanelChart title="Activity · by grid" read={`${list.length} grids`}>
-              {activityHeat.length ? <Heatmap rows={HM_ROWS} cols={HM_COLS} data={activityHeat} /> : <p className="text-[11px] text-ink-faint">No grids yet.</p>}
+            <PanelChart title="Members · top grids vs avg" read={avgMembers ? `avg ${avgMembers}` : "—"}>
+              {memberBullet.length ? <Bullet data={memberBullet} /> : <p className="text-[11px] text-ink-faint">No grids yet.</p>}
             </PanelChart>
-            <PanelChart title="SubGrids · share with subgrids" read={`${withSub}/${list.length}`}>
-              {list.length > 0 ? <div className="flex items-center justify-center py-1"><Ring percent={subShare} label="w/ subs" value={`${subShare}%`} size={86} stroke={6} /></div> : <p className="text-[11px] text-ink-faint">No grids yet.</p>}
+            <PanelChart title="SubGrids · network share" read={`${withSub}/${list.length}`}>
+              {list.length > 0 ? <div className="py-2"><SegBar percent={subShare} /><div className="mt-1.5 text-[9px] text-ink-faint">{subShare}% of grids run subgrids ({withSub}/{list.length})</div></div> : <p className="text-[11px] text-ink-faint">No grids yet.</p>}
             </PanelChart>
             <div className="ng-label mb-2 mt-5 !text-ink-dim">Top by Pulse</div>
             <div className="space-y-2">

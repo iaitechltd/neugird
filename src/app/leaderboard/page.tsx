@@ -14,7 +14,7 @@ import { Panel, Tag, DataRow, IconUser, IconBot, IconStar, IconShield, IconActiv
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import { PanelChart } from "@/components/app/terminal";
-import { Bars, Ring, Heatmap, Area } from "@/components/app/charts";
+import { LabeledBars, Funnel, Bubble, Waffle } from "@/components/app/charts";
 
 type Builder = { id: string; username: string; reputation: number; by_dimension: Record<string, number>; credentials: number; builds: number; jobs_done: number; skills: string[] };
 type AgentRow = { agent_id: string; name: string; rating: number; trust_tier: string; origin: string; verified_jobs: number; capabilities: string[]; earnings: number; credentials: number };
@@ -42,17 +42,39 @@ export default function Leaderboard() {
   const agents = view?.agents ?? [];
   const tags = view?.tags ?? [];
 
-  // ── chart-derived values (ranked builders = the entries) ──────────────
+  // ── chart-derived values (all real, from the ranked field) ────────────
   const entries = builders;
-  const maxRep = Math.max(1, ...entries.map((e) => e.reputation ?? 0));
-  const repBars = entries.slice(0, 12).map((e) => e.reputation ?? 0);
   const totalRep = entries.reduce((s, e) => s + (e.reputation ?? 0), 0);
-  const top3Rep = entries.slice(0, 3).reduce((s, e) => s + (e.reputation ?? 0), 0);
-  const top3Share = totalRep > 0 ? Math.round((top3Rep / totalRep) * 100) : 0;
-  const HM_ROWS = 6, HM_COLS = 10;
-  const heatData = entries.slice(0, HM_ROWS * HM_COLS).map((e) => Math.min(1, (e.reputation ?? 0) / maxRep));
-  // running cumulative-reputation curve, ascending across the ranked field
-  const curveData = [...entries].reverse().reduce<number[]>((acc, e) => { acc.push((acc[acc.length - 1] ?? 0) + (e.reputation ?? 0)); return acc; }, []);
+
+  // LabeledBars — top builders by reputation (ranked + labeled)
+  const repRanked = entries.slice(0, 6).map((e) => ({ label: e.username, value: e.reputation ?? 0 }));
+
+  // Funnel — the proof pipeline: everyone ranked → those credentialed → those delivering paid work
+  const nRanked = entries.length;
+  const nCred = entries.filter((e) => (e.credentials ?? 0) > 0).length;
+  const nShipping = entries.filter((e) => (e.jobs_done ?? 0) > 0).length;
+  const proofFunnel = [
+    { label: "ranked", value: nRanked },
+    { label: "credentialed", value: nCred },
+    { label: "delivering", value: nShipping },
+  ];
+
+  // Bubble — top agents sized by rating, coloured by trust tier (green = trusted, cyan = probation)
+  const agentBubbles = agents.slice(0, 5).map((a) => ({
+    value: Math.max(0.1, a.rating ?? 0),
+    label: a.name,
+    color: a.trust_tier === "trusted" ? "#00ff00" : "#48f5ff",
+  }));
+
+  // Waffle — reputation concentration: the top 3 builders vs the rest of the field
+  const top3 = entries.slice(0, 3);
+  const top3Rep = top3.reduce((s, e) => s + (e.reputation ?? 0), 0);
+  const restRep = Math.max(0, totalRep - top3Rep);
+  const repShare = [
+    ...top3.map((e, i) => ({ value: e.reputation ?? 0, color: ["#00ff00", "#7cf57c", "#48f5ff"][i] })),
+    { value: restRep, color: "rgba(0,255,0,0.22)" },
+  ];
+  const top3Pct = totalRep > 0 ? Math.round((top3Rep / totalRep) * 100) : 0;
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
@@ -67,11 +89,16 @@ export default function Leaderboard() {
               <DataRow k="Agents ranked" v={agents.length} />
             </div>
 
-            <PanelChart title="Reputation · top ranked" read={`${entries.length} ranked`}>
-              {repBars.length ? <Bars data={repBars} h={44} /> : <p className="text-[11px] text-ink-faint">No ranked builders yet.</p>}
+            <PanelChart title="Builders · reputation" read={`${entries.length} ranked`}>
+              {repRanked.length ? <LabeledBars data={repRanked} /> : <p className="text-[11px] text-ink-faint">No ranked builders yet.</p>}
             </PanelChart>
-            <PanelChart title="Concentration · top 3 share" read={`${top3Rep.toLocaleString()} rep`}>
-              {entries.length ? <div className="flex items-center justify-center py-1"><Ring percent={top3Share} label="top 3" value={`${top3Share}%`} size={86} stroke={6} /></div> : <p className="text-[11px] text-ink-faint">No ranked builders yet.</p>}
+            <PanelChart title="Proof funnel · ranked → shipping" read={`${nShipping}/${nRanked} shipping`}>
+              {nRanked ? (
+                <>
+                  <Funnel data={proofFunnel} h={72} />
+                  <div className="mt-1.5 text-[9px] leading-tight text-ink-faint">ranked {nRanked} → credentialed {nCred} → delivering {nShipping}</div>
+                </>
+              ) : <p className="text-[11px] text-ink-faint">No ranked builders yet.</p>}
             </PanelChart>
 
             <div className="ng-card mt-4 p-3">
@@ -177,11 +204,11 @@ export default function Leaderboard() {
           <Panel scroll title="THE FLYWHEEL" icon={<IconBolt className="h-4 w-4" />} bodyClass="p-3.5">
             <p className="text-[11px] leading-relaxed text-ink-dim">Reputation is earned from verified work and sealed as soulbound credentials. Higher signal → more discovery → more work → more signal.</p>
 
-            <PanelChart title="Activity · distribution" read={`peak ${maxRep.toLocaleString()}`}>
-              {heatData.length ? <Heatmap rows={HM_ROWS} cols={HM_COLS} data={heatData} /> : <p className="text-[11px] text-ink-faint">No ranked builders yet.</p>}
+            <PanelChart title="Agents · rating & trust" read={`${agents.length} ranked`}>
+              {agentBubbles.length ? <Bubble data={agentBubbles} h={128} /> : <p className="text-[11px] text-ink-faint">No ranked agents yet.</p>}
             </PanelChart>
-            <PanelChart title="Curve · ranked" read={`${totalRep.toLocaleString()} total`}>
-              {curveData.length ? <Area data={curveData.length > 1 ? curveData : [0, curveData[0]]} gid="lb-curve" color="var(--ng-cyan)" h={48} /> : <p className="text-[11px] text-ink-faint">No ranked builders yet.</p>}
+            <PanelChart title="Reputation share · top 3 vs field" read={`top 3 = ${top3Pct}%`}>
+              {totalRep > 0 ? <div className="flex items-center justify-center py-1"><Waffle data={repShare} side={10} cell={9} gap={2} /></div> : <p className="text-[11px] text-ink-faint">No ranked builders yet.</p>}
             </PanelChart>
 
             <div className="ng-label mb-2 mt-4 !text-ink-dim">Why it&apos;s fair</div>

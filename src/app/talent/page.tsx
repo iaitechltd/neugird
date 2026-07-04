@@ -13,7 +13,7 @@ import NeuHeader from "@/components/app/NeuHeader";
 import OrbPanel from "@/components/app/OrbPanel";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import { Panel, Tag, Mark, DataRow, IconActivity, IconBriefcase, IconUser, IconSparkle , kpiColor } from "@/components/app/ui";
-import { Area, Radar, Spark, Bars, Ring } from "@/components/app/charts";
+import { Area, Radar, Spark, Beeswarm, Donut, RadialBars, Lollipop } from "@/components/app/charts";
 import { PanelChart } from "@/components/app/terminal";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 
@@ -88,29 +88,18 @@ export default function TalentDirectory() {
   const verifiedCount = list.filter((t) => t.verified).length;
   const avgRep = list.length ? Math.round(list.reduce((s, t) => s + t.reputation, 0) / list.length) : 0;
 
-  // ── side-rail chart data (derived, SSR-safe) ──────────────────────────────
-  const rankedByRep = useMemo(
-    () => [...list].sort((a, b) => (b.reputation ?? 0) - (a.reputation ?? 0)),
-    [list],
-  );
-  // LEFT-1 · reputation of the top talent
-  const repBars = rankedByRep.slice(0, 10).map((t) => t.reputation ?? 0);
-  const topRep = repBars[0] ?? 0;
-  // LEFT-2 · verified / badged share (verified flag OR reputation ≥ 100)
-  const badgedCount = list.filter((t) => t.verified || (t.reputation ?? 0) >= 100).length;
-  const badgedPct = list.length ? Math.round((badgedCount / list.length) * 100) : 0;
-  // RIGHT-1 · skill demand — top-5 most-listed skills (`skills` = [name, count] desc)
-  const topSkills = skills.slice(0, 5);
-  const maxSkill = Math.max(1, ...topSkills.map(([, n]) => n));
-  const skillAxes = topSkills.map(([s]) => s);
-  const skillVals = topSkills.map(([, n]) => Math.round((n / maxSkill) * 100));
-  const skillCounts = topSkills.map(([, n]) => n);
-  const radarOk = skillAxes.length >= 3 && skillVals.some((v) => v > 0);
-  // RIGHT-2 · cumulative reputation curve across ranked talent (running sum)
-  const repCumulative = rankedByRep.reduce<number[]>((acc, t) => {
-    acc.push((acc[acc.length - 1] ?? 0) + (t.reputation ?? 0));
-    return acc;
-  }, []);
+  // ── side-rail chart data (derived, SSR-safe, all real) ───────────────────
+  // LEFT-1 · Beeswarm — the whole field's reputation spread (dot = talent, size = $ earned, cyan = verified)
+  const repSwarm = list.map((t) => ({ value: t.reputation ?? 0, size: (t.earned ?? 0) + 1, color: t.verified ? "#48f5ff" : "#00ff00" }));
+  // LEFT-2 · Donut — verified vs the rest of the field
+  const unverified = Math.max(0, list.length - verifiedCount);
+  // RIGHT-1 · RadialBars — the most-listed skills (labeled petals; `skills` = [name, count] desc)
+  const skillTop = skills.slice(0, 8);
+  // RIGHT-2 · Lollipop — top earners against the field average
+  const rankedByEarn = useMemo(() => [...list].sort((a, b) => (b.earned ?? 0) - (a.earned ?? 0)).slice(0, 7), [list]);
+  const earnLollipop = rankedByEarn.map((t) => ({ value: t.earned ?? 0, label: t.username }));
+  const avgEarn = list.length ? Math.round(list.reduce((s, t) => s + (t.earned ?? 0), 0) / list.length) : 0;
+  const earnOk = earnLollipop.some((d) => d.value > 0);
 
   const kpis: [string, number, string?][] = [
     ["Talents", list.length],
@@ -155,18 +144,24 @@ export default function TalentDirectory() {
               <DataRow k="Open roles" v={data?.open_roles ?? 0} />
             </div>
 
-            {/* reputation of the top-ranked talent */}
-            <PanelChart title="Reputation · top talent" read={topRep ? `hi ${topRep}` : "—"}>
-              {repBars.length > 0
-                ? <Bars data={repBars} h={44} />
+            {/* the whole field's reputation spread — dot = talent, size = earnings, cyan = verified */}
+            <PanelChart title="Reputation · field spread" read={list.length ? `${list.length} talent` : "—"}>
+              {repSwarm.length > 0
+                ? <Beeswarm data={repSwarm} h={70} />
                 : <p className="py-3 text-center text-[10px] text-ink-faint">No reputation data yet.</p>}
             </PanelChart>
 
-            {/* share of talent carrying a verified badge / rep ≥ 100 */}
-            <PanelChart title="Trust · verified share" read={list.length ? `${badgedCount}/${list.length}` : "—"}>
-              {list.length > 0
-                ? <div className="flex justify-center py-1"><Ring percent={badgedPct} label="verified" size={80} stroke={6} color="var(--ng-cyan)" /></div>
-                : <p className="py-3 text-center text-[10px] text-ink-faint">No talent listed yet.</p>}
+            {/* verified vs the rest — the earned badge */}
+            <PanelChart title="Trust · verified" read={list.length ? `${verifiedCount}/${list.length}` : "—"}>
+              {list.length > 0 ? (
+                <div className="flex items-center gap-3 py-1">
+                  <Donut data={[verifiedCount, unverified]} size={78} thickness={12} colors={["#48f5ff", "rgba(0,255,0,0.16)"]} center={String(verifiedCount)} />
+                  <div className="space-y-1 text-[10px] text-ink-dim">
+                    <div className="flex items-center gap-1.5"><span className="text-cyan">■</span>verified <span className="text-ink-faint">· {verifiedCount}</span></div>
+                    <div className="flex items-center gap-1.5"><span className="text-ink-faint">■</span>unverified <span className="text-ink-faint">· {unverified}</span></div>
+                  </div>
+                </div>
+              ) : <p className="py-3 text-center text-[10px] text-ink-faint">No talent listed yet.</p>}
             </PanelChart>
 
             <div className="mb-2 mt-5 flex items-center justify-between">
@@ -342,22 +337,18 @@ export default function TalentDirectory() {
               <p className="text-[11px] text-ink-faint">Loading…</p>
             ) : (
               <>
-                {/* skill demand — the top-5 most-listed skills across all talent */}
-                <PanelChart title="Skills · demand spread" read={skillAxes.length ? `${skillAxes.length} skills` : "—"}>
-                  {radarOk ? (
-                    <div className="flex justify-center py-1"><Radar axes={skillAxes} values={skillVals} size={180} /></div>
-                  ) : skillCounts.length > 0 ? (
-                    <Bars data={skillCounts} h={44} />
-                  ) : (
-                    <p className="py-3 text-center text-[10px] text-ink-faint">No skills listed yet.</p>
-                  )}
+                {/* skill demand — the most-listed skills across all talent (labeled petals) */}
+                <PanelChart title="Skills · market demand" read={skillTop.length ? `${skillTop.length} skills` : "—"}>
+                  {skillTop.length > 0
+                    ? <div className="flex justify-center py-1"><RadialBars data={skillTop.map(([, n]) => n)} labels={skillTop.map(([s]) => s)} size={150} /></div>
+                    : <p className="py-3 text-center text-[10px] text-ink-faint">No skills listed yet.</p>}
                 </PanelChart>
 
-                {/* cumulative reputation across ranked talent (running sum) */}
-                <PanelChart title="Reputation · cumulative" read={repCumulative.length ? `Σ ${repCumulative[repCumulative.length - 1]}` : "—"}>
-                  {repCumulative.length > 1
-                    ? <Area data={repCumulative} gid="tx-rep" color="var(--ng-cyan)" h={48} />
-                    : <p className="py-3 text-center text-[10px] text-ink-faint">Not enough talent to chart.</p>}
+                {/* top earners against the field average */}
+                <PanelChart title="Earnings · top talent" read={avgEarn ? `avg $${avgEarn}` : "—"}>
+                  {earnOk
+                    ? <Lollipop data={earnLollipop} target={avgEarn} />
+                    : <p className="py-3 text-center text-[10px] text-ink-faint">No earnings yet.</p>}
                 </PanelChart>
 
                 <div className="ng-label mb-1 mt-5 !text-ink-dim">What to improve</div>

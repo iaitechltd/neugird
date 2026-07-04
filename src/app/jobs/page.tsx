@@ -14,7 +14,7 @@ import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, Tag, Mark, DataRow, IconBriefcase, IconActivity, IconBolt, IconCheck , kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import { PanelChart } from "@/components/app/terminal";
-import { Bars, Ring } from "@/components/app/charts";
+import { LabeledBars, Marimekko, Pie, Histogram, SERIES } from "@/components/app/charts";
 import type { Job } from "@/lib/types";
 
 type View = "open" | "doing" | "created" | "all";
@@ -75,18 +75,38 @@ export default function JobsPage() {
     ["Agent-eligible", list.filter((j) => j.status === "open" && j.executor_kind !== "human").length],
   ];
 
-  // ── side-rail chart data (derived, SSR-safe) ─────────────────────────
+  // ── side-rail chart data (derived, SSR-safe, all real) ───────────────
   const openJobs = useMemo(() => list.filter((j) => j.status === "open"), [list]);
-  const rewardBars = openJobs.map((j) => j.reward_amount ?? 0);          // LEFT · Bars
   const totalCount = list.length;
-  const openPct = totalCount ? Math.round((counts.open / totalCount) * 100) : 0; // LEFT · Ring
-  const skillDemand = useMemo(() => {                                    // RIGHT · Bars
+
+  // LabeledBars — demand by skill (top skills across the whole board)
+  const skillBars = useMemo(() => {
     const tally: Record<string, number> = {};
     for (const j of list) for (const s of j.required_skills) tally[s] = (tally[s] ?? 0) + 1;
-    return Object.entries(tally).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    return Object.entries(tally).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([label, value]) => ({ label, value }));
   }, [list]);
-  const paidCount = useMemo(() => list.filter((j) => j.status === "paid").length, [list]);
-  const paidPct = totalCount ? Math.round((paidCount / totalCount) * 100) : 0;    // RIGHT · Ring
+
+  // Marimekko — the pipeline: column width = jobs in the stage, fill height = that stage's share of the reward pool
+  const PIPE_META: [string, string, string][] = useMemo(() => [["open", "open", "#00ff00"], ["in_progress", "doing", "#48f5ff"], ["submitted", "review", "#ffb020"], ["paid", "paid", "#7cf57c"]], []);
+  const pipe = useMemo(() => {
+    const rows = PIPE_META.map(([st, , color]) => {
+      const js = list.filter((j) => j.status === st);
+      return { count: js.length, reward: js.reduce((s, j) => s + (j.reward_amount ?? 0), 0), color };
+    });
+    const maxR = Math.max(1, ...rows.map((r) => r.reward));
+    return rows.map((r) => ({ weight: Math.max(0.02, r.count), fill: r.reward / maxR, color: r.color }));
+  }, [list, PIPE_META]);
+  const pipeHasJobs = list.some((j) => PIPE_META.some(([st]) => st === j.status));
+
+  // Pie — executor mix of the OPEN jobs (who can pick the work up)
+  const execMix = useMemo(() => {
+    const tally: Record<string, number> = {};
+    for (const j of openJobs) { const k = j.executor_kind ?? "either"; tally[k] = (tally[k] ?? 0) + 1; }
+    return Object.entries(tally).map(([label, value]) => ({ label: label.replace(/_/g, " "), value }));
+  }, [openJobs]);
+
+  // Histogram — how rewards are distributed across every job on the board
+  const rewardSpread = list.map((j) => j.reward_amount ?? 0).filter((v) => v > 0);
 
   async function act(url: string, body?: object, msg?: string) {
     if (busy) return;
@@ -135,15 +155,20 @@ export default function JobsPage() {
               <DataRow k="Total Jobs" v={list.length} />
             </div>
 
-            <PanelChart title="Rewards · open jobs" read={`${openJobs.length} live`}>
-              {rewardBars.length > 0
-                ? <Bars data={rewardBars} h={46} />
-                : <p className="py-3 text-center text-[10px] text-ink-faint">no open jobs</p>}
+            <PanelChart title="Demand · by skill" read={`top ${skillBars.length}`}>
+              {skillBars.length > 0
+                ? <LabeledBars data={skillBars} />
+                : <p className="py-3 text-center text-[10px] text-ink-faint">no skills tagged</p>}
             </PanelChart>
-            <PanelChart title="Pipeline · open share" read={`${counts.open}/${totalCount}`}>
-              {totalCount > 0
-                ? <div className="flex justify-center py-1"><Ring percent={openPct} label="open" size={80} stroke={6} color="var(--ng-cyan)" /></div>
-                : <p className="py-3 text-center text-[10px] text-ink-faint">no jobs yet</p>}
+            <PanelChart title="Pipeline · jobs × reward" read={`${totalCount} total`}>
+              {pipeHasJobs ? (
+                <>
+                  <Marimekko data={pipe} h={72} />
+                  <div className="mt-1.5 flex flex-wrap gap-x-2.5 gap-y-0.5 text-[8.5px] text-ink-faint">
+                    {PIPE_META.map(([, label, color]) => <span key={label}><span style={{ color }}>■</span> {label}</span>)}
+                  </div>
+                </>
+              ) : <p className="py-3 text-center text-[10px] text-ink-faint">no jobs yet</p>}
             </PanelChart>
 
             <div className="ng-label mb-2 mt-4 !text-ink-dim">Filter</div>
@@ -247,15 +272,20 @@ export default function JobsPage() {
               <DataRow k="I created" v={counts.created} />
             </div>
 
-            <PanelChart title="Demand · by skill" read={`top ${skillDemand.length}`}>
-              {skillDemand.length > 0
-                ? <Bars data={skillDemand.map(([, n]) => n)} h={46} />
-                : <p className="py-3 text-center text-[10px] text-ink-faint">no skills tagged</p>}
+            <PanelChart title="Executor mix · open jobs" read={`${openJobs.length} open`}>
+              {execMix.length > 0 ? (
+                <div className="flex items-center gap-3 py-1">
+                  <Pie data={execMix} size={78} />
+                  <div className="space-y-1 text-[10px] text-ink-dim">
+                    {execMix.map((e, i) => <div key={e.label} className="flex items-center gap-1.5"><span style={{ color: SERIES[i % SERIES.length] }}>■</span><span className="capitalize">{e.label}</span><span className="text-ink-faint">· {e.value}</span></div>)}
+                  </div>
+                </div>
+              ) : <p className="py-3 text-center text-[10px] text-ink-faint">no open jobs</p>}
             </PanelChart>
-            <PanelChart title="Delivered · paid share" read={`${paidCount}/${totalCount}`}>
-              {totalCount > 0
-                ? <div className="flex justify-center py-1"><Ring percent={paidPct} label="paid" size={80} stroke={6} color="var(--ng-amber)" /></div>
-                : <p className="py-3 text-center text-[10px] text-ink-faint">no jobs yet</p>}
+            <PanelChart title="Reward spread · all jobs" read={`${rewardSpread.length} jobs`}>
+              {rewardSpread.length > 0
+                ? <Histogram data={rewardSpread} bins={6} h={56} />
+                : <p className="py-3 text-center text-[10px] text-ink-faint">no rewards set</p>}
             </PanelChart>
 
             <div className="ng-label mb-2 mt-5 !text-ink-dim">Lifecycle</div>
