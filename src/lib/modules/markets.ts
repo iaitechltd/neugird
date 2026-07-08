@@ -17,10 +17,17 @@ import * as Staking from "./staking";
 import * as Perps from "./perps";
 import * as Params from "./params";
 import * as GridMarket from "./gridMarket";
-import type { Audit, LimitOrder, Market, MarketStage, Token } from "../types";
+import type { Audit, Backing, LimitOrder, Market, MarketStage, Token, Vesting } from "../types";
 
 const INITIAL_SUPPLY = 1_000_000;
 const SEED_LIQUIDITY = 10_000;
+
+/* Backer allocation vesting: 20% unlocks at launch (day-one skin in the market),
+ * the rest linear over 60 days (no cliff) — enough to blunt a day-one dump without
+ * turning the reward into an IOU. The SHARE of supply is the governable
+ * `backer_allocation_bps` Param; the vesting shape is a module constant. */
+const BACKER_UPFRONT_BPS = 2000;
+const BACKER_VEST_DAYS = 60;
 
 /* Stage gates (locked mechanism): real market cap (the Ascension Arc) + a real
  * liquidity floor + a community GRID stake (./staking). Earned, not bought. */
@@ -168,17 +175,86 @@ export function launchToken(grid_id: string, user_id: string, symbol?: string): 
   const token: Token = { token_id: newId("tok"), layer: "project", symbol: sym, name: grid.name, grid_id, total_supply: INITIAL_SUPPLY, launched_at: nowISO() };
   db.tokens.push(token);
 
+  // BACKER ALLOCATION — the upside side of milestone funding. A share of supply
+  // (governable `backer_allocation_bps`) is carved out BEFORE the pool is seeded
+  // and owed pro-rata to the raise's backers: back early → own the earliest
+  // position in the market your conviction created. Product-path launches (no
+  // backers) put the full supply in the pool, unchanged.
+  const backings = db.backings.filter((b) => b.grid_id === grid_id && !b.refunded);
+  const backedTotal = backings.reduce((s, b) => s + b.amount, 0);
+  const backerPool = backedTotal > 0 ? INITIAL_SUPPLY * (Params.get("backer_allocation_bps") / 10000) : 0;
+  const launchedAt = nowISO();
+  if (backerPool > 0) {
+    for (const b of backings) {
+      const alloc = backerPool * (b.amount / backedTotal);
+      b.token_allocation = alloc;
+      b.vesting = { start_at: launchedAt, cliff_days: 0, duration_days: BACKER_VEST_DAYS, released: 0, total: alloc, upfront_bps: BACKER_UPFRONT_BPS };
+    }
+  }
+  const poolBase = INITIAL_SUPPLY - backerPool;
+
   const market: Market = {
     market_id: newId("mkt"), token_id: token.token_id, grid_id, stage: "alpha",
     base_symbol: sym, quote_symbol: "USDC",
-    base_reserve: INITIAL_SUPPLY, quote_reserve: SEED_LIQUIDITY, price: SEED_LIQUIDITY / INITIAL_SUPPLY,
-    liquidity_usd: 2 * SEED_LIQUIDITY, holders: 0, volume: 0, status: "active", created_at: nowISO(),
+    base_reserve: poolBase, quote_reserve: SEED_LIQUIDITY, price: SEED_LIQUIDITY / poolBase,
+    liquidity_usd: 2 * SEED_LIQUIDITY, holders: 0, volume: 0, status: "active", created_at: launchedAt,
   };
   db.markets.push(market);
   grid.lifecycle_stage = "alpha";
   grid.token_id = token.token_id;
   Pulse.recordEvent({ target_type: "grid", target_id: grid_id, action_type: "campaign_completed", weight: 40, reason: `Launched ${sym} on Alpha`, verification_source: "auto" });
   return { market, token };
+}
+
+/* --- Backer allocation: vesting math + claim (the tokens land in holdings) --- */
+
+function vestedOf(v: Vesting, at = Date.now()): number {
+  const start = Date.parse(v.start_at);
+  const elapsedDays = Math.max(0, (at - start) / 86_400_000);
+  if (elapsedDays < (v.cliff_days ?? 0)) return 0;
+  const upfront = v.total * ((v.upfront_bps ?? 0) / 10000);
+  const linear = (v.total - upfront) * Math.min(1, v.duration_days > 0 ? elapsedDays / v.duration_days : 1);
+  return Math.min(v.total, upfront + linear);
+}
+
+export interface BackerAllocation {
+  total: number;
+  vested: number;
+  claimed: number;
+  claimable: number;
+  vest_days: number;
+  upfront_bps: number;
+}
+/** The caller's project-token allocation on a market (null = wasn't a backer). */
+export function backerAllocation(market_id: string, user_id: string): BackerAllocation | null {
+  const m = getMarket(market_id);
+  if (!m) return null;
+  const mine = db.backings.filter((b) => b.grid_id === m.grid_id && b.backer_id === user_id && !b.refunded && (b.token_allocation ?? 0) > 0 && b.vesting);
+  if (!mine.length) return null;
+  const total = mine.reduce((s, b) => s + (b.token_allocation ?? 0), 0);
+  const vested = mine.reduce((s, b) => s + vestedOf(b.vesting as Vesting), 0);
+  const claimed = mine.reduce((s, b) => s + (b.vesting?.released ?? 0), 0);
+  return { total, vested, claimed, claimable: Math.max(0, vested - claimed), vest_days: BACKER_VEST_DAYS, upfront_bps: BACKER_UPFRONT_BPS };
+}
+
+/** Claim every vested-but-unclaimed backer token into a real, tradable holding. */
+export function claimBackerAllocation(market_id: string, user_id: string): { claimed?: number; holding?: number; error?: string } {
+  const m = getMarket(market_id);
+  if (!m) return { error: "not_found" };
+  const mine: Backing[] = db.backings.filter((b) => b.grid_id === m.grid_id && b.backer_id === user_id && !b.refunded && (b.token_allocation ?? 0) > 0 && b.vesting);
+  if (!mine.length) return { error: "no_allocation" };
+  let claimTotal = 0;
+  for (const b of mine) {
+    const v = b.vesting as Vesting;
+    const due = vestedOf(v) - (v.released ?? 0);
+    if (due > 1e-9) { v.released = (v.released ?? 0) + due; claimTotal += due; }
+  }
+  if (claimTotal <= 1e-9) return { error: "nothing_vested" };
+  let holding = db.holdings.find((h) => h.market_id === market_id && h.user_id === user_id);
+  if (!holding) { holding = { market_id, user_id, base: 0 }; db.holdings.push(holding); }
+  holding.base += claimTotal;
+  m.holders = recountHolders(market_id);
+  return { claimed: claimTotal, holding: holding.base };
 }
 
 function recountHolders(market_id: string): number {

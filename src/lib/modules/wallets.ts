@@ -29,9 +29,9 @@ export function get(user_id: string): Wallet {
   return w;
 }
 
-export function balances(user_id: string): { usdc: number; grid: number } {
+export function balances(user_id: string): { usdc: number; grid: number; starter_credit: number } {
   const w = get(user_id);
-  return { usdc: w.usdc, grid: w.grid };
+  return { usdc: w.usdc, grid: w.grid, starter_credit: w.starter_credit ?? 0 };
 }
 
 export function debitUsdc(user_id: string, amount: number): boolean {
@@ -58,4 +58,41 @@ export function debitGrid(user_id: string, amount: number): boolean {
 }
 export function creditGrid(user_id: string, amount: number): void {
   get(user_id).grid += amount;
+}
+
+/* --- Starter Echo credit — the onboarding scholarship (non-transferable) ---
+ * Spendable ONLY on Echo compute. The starter portion of a charge BURNS (it was
+ * protocol-issued, never circulating GRID — so it must not credit the treasury
+ * and can never be sold on the GRID market); only the real-GRID portion flows
+ * to the treasury as usual. */
+
+export interface ComputeCharge {
+  starter: number; // paid from starter credit (burned)
+  grid: number; // paid from real GRID (→ treasury, refundable from treasury)
+}
+
+/** Grant starter credit (one-time onboarding — gated by Onboarding.claimStarterGrant). */
+export function grantStarterCredit(user_id: string, amount: number): void {
+  const w = get(user_id);
+  w.starter_credit = (w.starter_credit ?? 0) + amount;
+}
+
+/** Charge an Echo compute cost — starter credit first, real GRID for the rest.
+ *  Returns the breakdown (so refunds restore each bucket), or null if short. */
+export function debitCompute(user_id: string, amount: number): ComputeCharge | null {
+  const w = get(user_id);
+  const starterAvail = w.starter_credit ?? 0;
+  const starter = Math.min(starterAvail, amount);
+  const grid = amount - starter;
+  if (w.grid < grid) return null;
+  if (starter > 0) w.starter_credit = starterAvail - starter;
+  w.grid -= grid;
+  return { starter, grid };
+}
+
+/** Reverse a compute charge (synthesis failure) — each bucket goes back where it came from. */
+export function refundCompute(user_id: string, charge: ComputeCharge): void {
+  const w = get(user_id);
+  if (charge.starter > 0) w.starter_credit = (w.starter_credit ?? 0) + charge.starter;
+  w.grid += charge.grid;
 }

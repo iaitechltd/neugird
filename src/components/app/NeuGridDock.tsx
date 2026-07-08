@@ -27,6 +27,7 @@ const IRocket = () => <svg {...S}><path d="M12 3c3 1.5 5 5 5 9l-3 3h-4l-3-3c0-4 
 const IGov = () => <svg {...S}><path d="M3 10l9-6 9 6" /><path d="M4 21h16" /><path d="M6 21V11M10 21V11M14 21V11M18 21V11" /></svg>;
 const IEcho = () => <svg {...S}><rect x="3" y="4" width="18" height="16" rx="1.5" /><path d="M7 9l3 3-3 3" /><path d="M13 15h4" /></svg>;
 const IUser = () => <svg {...S}><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 4-6 8-6s8 2 8 6" /></svg>;
+const ISkills = () => <svg {...S}><path d="M12 3 3 8l9 5 9-5-9-5Z" /><path d="M3 13l9 5 9-5" /></svg>;
 
 type NavItem = { key: string; label: string; href: string; Icon: () => ReactNode };
 
@@ -37,6 +38,7 @@ const NAV: NavItem[] = [
   { key: "x", label: "gridx", href: "/gridx", Icon: IStore },
   { key: "t", label: "trade", href: "/markets", Icon: ITrade },
   { key: "a", label: "agents", href: "/agents", Icon: IAgent },
+  { key: "s", label: "skills", href: "/skills", Icon: ISkills },
   { key: "l", label: "talent", href: "/talent", Icon: ITalent },
   { key: "m", label: "messages", href: "/messages", Icon: IMsg },
   { key: "n", label: "fund", href: "/genesis/board", Icon: IRocket },

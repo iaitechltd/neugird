@@ -8,7 +8,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getCurrentUser, SESSION_COOKIE, userExists } from "@/lib/session";
-import { Wallets, Rewards, Pulse, Social } from "@/lib/modules";
+import { Wallets, Rewards, Pulse, Social, Onboarding } from "@/lib/modules";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +37,7 @@ export async function GET() {
     })(),
     income: Social.incomeFor(user.id), // real money in — settlements + agent earnings
     follows: Social.followCounts(user.id),
+    starter: Onboarding.starterState(user.id), // the 3-step starter path (drives the /home strip)
   });
 }
 

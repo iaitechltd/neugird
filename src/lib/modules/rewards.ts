@@ -57,7 +57,7 @@ export const SCHEDULE: { action: string; pulse: number | null; formula?: string;
 /** Who an event's allocation belongs to: the user target, an agent's owner, or
  *  (for grid/subgrid/campaign events) the human actor who did the work. */
 function beneficiaryOf(e: PulseEvent): string | undefined {
-  if (!(e.weight > 0) || !REWARDABLE.has(e.action_type)) return undefined;
+  if (!(e.weight > 0) || e.reward_excluded || !REWARDABLE.has(e.action_type)) return undefined; // subsidized work earns rep, not allocation
   if (e.target_type === "user") return e.target_id;
   if (e.target_type === "agent") return db.agents.find((a) => a.agent_id === e.target_id)?.owner_id;
   return e.user_id;

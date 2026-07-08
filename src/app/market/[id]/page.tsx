@@ -47,7 +47,7 @@ type Prov = {
   backers: { id: string; username: string; amount: number; reputation: number }[];
 } | null;
 type Data =
-  | { market: Market & { grid_name?: string; marketcap?: number }; grid: GridInfo; trades: Trade[]; holders: Holder[]; holder_count: number; stats: Stats; holding: number; wallet: { usdc: number; grid: number }; progress: Progress; graduation: Grad; stake: StakeInfo; roadmap: Milestone[]; orderBook: Book; orders: Order[]; positions: Pos[]; maxLeverage: number; funding: Funding; provenance: Prov; my_stakes: MyStake[]; staker_fees: number; can_flag: boolean; flagged: boolean; fraud_flags?: number; fraud_quorum?: number }
+  | { market: Market & { grid_name?: string; marketcap?: number }; grid: GridInfo; trades: Trade[]; holders: Holder[]; holder_count: number; stats: Stats; holding: number; allocation?: { total: number; vested: number; claimed: number; claimable: number; vest_days: number; upfront_bps: number } | null; wallet: { usdc: number; grid: number }; progress: Progress; graduation: Grad; stake: StakeInfo; roadmap: Milestone[]; orderBook: Book; orders: Order[]; positions: Pos[]; maxLeverage: number; funding: Funding; provenance: Prov; my_stakes: MyStake[]; staker_fees: number; can_flag: boolean; flagged: boolean; fraud_flags?: number; fraud_quorum?: number }
   | null
   | "missing";
 
@@ -150,7 +150,9 @@ function ChatPanel({ messages, onSend, onLike, busy }: { messages: ChatMsg[]; on
 
 /* ----------------------------- Agent Mode ----------------------------- */
 type AgentInfo = { agent_id: string; name: string; origin: string; trust_tier: string; rating: number; trading_rating: number | null };
-type AgentAct = { action_id: string; kind: string; rationale: string; amount?: number; price?: number; pnl?: number; ok: boolean; detail?: string; at: string; ago: string };
+type AgentAct = { action_id: string; kind: string; rationale: string; amount?: number; price?: number; pnl?: number; ok: boolean; detail?: string; risk_grade?: "low" | "medium" | "high" | "critical"; sim?: { price_impact_pct: number; budget_after_pct: number; leverage_ratio?: number }; at: string; ago: string };
+
+const RISK_C: Record<string, string> = { low: "text-neon/70", medium: "text-cyan", high: "text-amber", critical: "text-danger" };
 type AgentPos = { position_id: string; side: string; size: number; leverage: number; entry_price: number; margin: number; liquidation_price: number; mark: number; upnl: number };
 type MandateView = {
   mandate_id: string; agent_id: string; strategy: string; status: string;
@@ -249,11 +251,12 @@ function AgentPanel({ state, stage, maxLeverage, onArm, onStop, busy }: { state:
                 <div key={a.action_id} className={`text-[10.5px] ${a.ok ? "" : "opacity-60"}`}>
                   <div className="flex items-center gap-1.5">
                     <span className={`shrink-0 font-semibold ${k.c}`}>{k.label}</span>
-                    {!a.ok && <span className="shrink-0 rounded bg-amber/15 px-1 text-[8px] uppercase text-amber">blocked</span>}
+                    {a.detail === "risk_critical" ? <span className="shrink-0 rounded bg-danger/15 px-1 text-[8px] uppercase text-danger">risk-blocked</span> : !a.ok && <span className="shrink-0 rounded bg-amber/15 px-1 text-[8px] uppercase text-amber">blocked</span>}
+                    {a.risk_grade && <span className={`shrink-0 text-[8px] uppercase ${RISK_C[a.risk_grade]}`} title={a.sim ? `impact ${(a.sim.price_impact_pct * 100).toFixed(1)}% · budget ${(a.sim.budget_after_pct * 100).toFixed(0)}%` : undefined}>{a.risk_grade}</span>}
                     {a.pnl != null && <span className={`shrink-0 ${pnlClass(a.pnl)}`}>{usd2(a.pnl)}</span>}
                     <span className="ml-auto shrink-0 text-[9px] text-ink-faint">{a.ago}</span>
                   </div>
-                  <p className="leading-snug text-ink-dim">{a.rationale}{a.detail && !a.ok ? ` (${a.detail})` : ""}</p>
+                  <p className="leading-snug text-ink-dim">{a.rationale}{a.detail && !a.ok ? ` (${a.detail === "risk_critical" ? "critical risk — auto-blocked" : a.detail})` : ""}{a.sim && a.ok && a.sim.price_impact_pct >= 0.02 ? ` · ${(a.sim.price_impact_pct * 100).toFixed(1)}% impact` : ""}</p>
                 </div>
               );
             })}
@@ -812,6 +815,21 @@ export default function MarketTerminal() {
                   <span className="flex h-1 overflow-hidden rounded-full bg-danger/30"><span className="block h-full bg-neon" style={{ width: `${st.buyVol + st.sellVol > 0 ? (st.buyVol / (st.buyVol + st.sellVol)) * 100 : 50}%` }} /></span>
                   <div className="flex items-center justify-between text-[10px]"><span className="text-neon">Buy {money(st.buyVol)}</span><span className="text-danger">Sell {money(st.sellVol)}</span></div>
                 </div>
+
+                {/* BACKER ALLOCATION — the upside side of backing the raise */}
+                {d.allocation && (
+                  <div className="mt-5 border-t border-line pt-3">
+                    <div className="ng-label mb-1 flex items-center gap-2 !text-cyan"><IconCheck className="h-3.5 w-3.5" />Backer allocation</div>
+                    <p className="text-[10px] leading-relaxed text-ink-dim">Your share of {m.base_symbol} for backing the raise — {d.allocation.upfront_bps / 100}% unlocked at launch, the rest vesting over {d.allocation.vest_days} days. Claimed tokens become a real, tradable holding.</p>
+                    <div className="mt-2 divide-y divide-line text-[11px]">
+                      <div className="ng-row !py-1"><span className="ng-row__k">Total</span><Mark plain className="!text-[11px]">{Math.round(d.allocation.total).toLocaleString()} {m.base_symbol}</Mark></div>
+                      <div className="ng-row !py-1"><span className="ng-row__k">Vested</span><span className="ng-row__v font-normal">{Math.round(d.allocation.vested).toLocaleString()}</span></div>
+                      <div className="ng-row !py-1"><span className="ng-row__k">Claimed</span><span className="ng-row__v font-normal text-ink-dim">{Math.round(d.allocation.claimed).toLocaleString()}</span></div>
+                      <div className="ng-row !py-1"><span className="ng-row__k">Claimable</span><Mark plain accent="cyan" className="!text-[11px]">{Math.floor(d.allocation.claimable).toLocaleString()}</Mark></div>
+                    </div>
+                    <button onClick={() => act(`/api/markets/${id}/claim-allocation`, {}, `Claimed ${Math.floor(d.allocation?.claimable ?? 0).toLocaleString()} ${m.base_symbol}`, { nothing_vested: "Nothing vested yet — check back as the schedule unlocks" })} disabled={busy || (d.allocation.claimable ?? 0) < 1} className="ng-btn ng-btn-cyan ng-btn--block mt-2 disabled:opacity-40"><IconBolt className="h-3.5 w-3.5" /> Claim vested {m.base_symbol}</button>
+                  </div>
+                )}
 
                 {/* STAKE TO LIST */}
                 {d.stake && (

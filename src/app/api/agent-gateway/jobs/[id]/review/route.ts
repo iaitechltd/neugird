@@ -7,13 +7,14 @@
 
 import { NextResponse } from "next/server";
 import { Jobs } from "@/lib/modules";
-import { gatewayAgent } from "@/lib/agentAuth";
+import { authorizeWrite } from "@/lib/agentAuth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
-  const agent = gatewayAgent(request);
-  if (!agent) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const auth = authorizeWrite(request);
+  if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const agent = auth.agent;
   const { id } = await ctx.params;
 
   const job = Jobs.getJob(id);

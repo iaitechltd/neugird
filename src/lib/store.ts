@@ -26,6 +26,8 @@ import type {
   DirectMessage,
   Agreement,
   Follow,
+  Dispute,
+  PublishedSkill,
   Grid,
   Job,
   LimitOrder,
@@ -97,6 +99,8 @@ export interface DB {
   directMessages: DirectMessage[]; // messages within conversations (text / deal / hire)
   agreements: Agreement[]; // struck deals from accepted DEAL offers in messaging
   follows: Follow[]; // user→user follow graph (activity surfaces in the bell)
+  disputes: Dispute[]; // reputation-staked evaluator adjudication of contested job rejections
+  publishedSkills: PublishedSkill[]; // the skills marketplace — learned skills published for other owners to install
   /** The GRID/USDC AMM pool — protocol-owned (treasury-seeded) liquidity for buying
    *  GRID. A singleton (not a collection), lazy-seeded by the gridMarket module — kept
    *  out of seed() so normalize() doesn't array-default it. */
@@ -392,6 +396,8 @@ function seed(): DB {
     directMessages: [],
     agreements: [],
     follows: [],
+    disputes: [],
+    publishedSkills: [],
     applications: [],
   };
 }

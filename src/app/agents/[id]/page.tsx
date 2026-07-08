@@ -47,10 +47,18 @@ export default function AgentDetail() {
 
   const [view, setView] = useState<View | null>(null);
   const [loaded, setLoaded] = useState(false);
-  useEffect(() => {
+  const [meId, setMeId] = useState<string | null>(null);
+  const loadView = useCallback(() => {
     if (!id) return;
     fetch(`/api/agents/${id}`).then((r) => (r.ok ? r.json() : null)).then((d) => { setView(d?.agent ? d : null); setLoaded(true); }).catch(() => setLoaded(true));
   }, [id]);
+  useEffect(() => { loadView(); }, [loadView]);
+  useEffect(() => { fetch("/api/me").then((r) => (r.ok ? r.json() : null)).then((d) => { if (d?.id) setMeId(d.id); }).catch(() => {}); }, []);
+
+  async function saveGateway(patch: { gateway_mode?: "live" | "read_only"; rate_limit_per_hour?: number | null }) {
+    const r = await fetch(`/api/agents/${id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(patch) }).catch(() => null);
+    if (r?.ok) { notify("Gateway safety updated"); loadView(); } else notify("Update failed");
+  }
 
   // native-agent framework — the owner-only work runtime (the /work fetch is owner-gated).
   const [work, setWork] = useState<WorkView | null>(null);
@@ -59,6 +67,14 @@ export default function AgentDetail() {
   const [armForm, setArmForm] = useState({ skills: "", max_jobs: 5, max_reward: 0 });
   const [policyForm, setPolicyForm] = useState({ auto_resolve: false, min_amount: "", skills: "" });
   const [busy, setBusy] = useState(false);
+  // skills marketplace — this owner's published listings (by source skill_id)
+  const [listings, setListings] = useState<{ published_id: string; skill_id: string; installs: number; price_grid: number }[]>([]);
+  const [pubFor, setPubFor] = useState<string | null>(null); // skill_id whose publish form is open
+  const refreshMarket = useCallback(() => {
+    fetch("/api/skills").then((r) => (r.ok ? r.json() : null)).then((d) => {
+      if (d?.listings) setListings((d.listings as { published_id: string; skill_id: string; installs: number; price_grid: number; mine: boolean }[]).filter((p) => p.mine));
+    }).catch(() => {});
+  }, []);
 
   const refreshWork = useCallback(() => {
     if (!id) return;
@@ -71,7 +87,25 @@ export default function AgentDetail() {
       if (d.offer_policy) setPolicyForm({ auto_resolve: d.offer_policy.auto_resolve, min_amount: String(d.offer_policy.min_amount || ""), skills: (d.offer_policy.skills ?? []).join(", ") });
     }).catch(() => {});
   }, [id]);
-  useEffect(() => { if (view && view.agent.origin !== "external") refreshWork(); }, [view, refreshWork]);
+  useEffect(() => { if (view && view.agent.origin !== "external") { refreshWork(); refreshMarket(); } }, [view, refreshWork, refreshMarket]);
+
+  async function publishSkill(skill_id: string, price: number) {
+    setBusy(true);
+    try {
+      const r = await fetch("/api/skills", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ agent_id: id, skill_id, price_grid: price }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { notify((d as { error?: string }).error === "already_listed" ? "Already listed" : "Publish failed"); return; }
+      notify(price > 0 ? `Published to the skills market · ${price} GRID` : "Published (free) to the skills market");
+      setPubFor(null); refreshMarket();
+    } finally { setBusy(false); }
+  }
+  async function delistSkill(published_id: string) {
+    setBusy(true);
+    try {
+      await fetch(`/api/skills/${published_id}`, { method: "DELETE" });
+      notify("Delisted"); refreshMarket();
+    } finally { setBusy(false); }
+  }
 
   async function workPost(path: string, body?: unknown): Promise<Record<string, unknown> | null> {
     setBusy(true);
@@ -161,9 +195,14 @@ export default function AgentDetail() {
         {/* CENTER — overview + job history */}
         <main className="@container order-1 space-y-4 lg:order-2 lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
           <Bracket className="ng-panel p-5">
-            <div className="flex items-center gap-2 text-[12px] text-neon"><IconBot className="h-4 w-4" /><Decrypt text={isExternal ? "External agent · via MCP" : "Native agent"} /></div>
-            <div className="ng-title mt-1 text-2xl font-bold text-neon text-glow">{a.name}</div>
-            <p className="text-sm text-ink-dim">A first-class economic actor — claims Jobs, earns reputation + a rating, and splits the reward with {owner?.username ?? "its owner"}.</p>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <div className="flex items-center gap-2 text-[12px] text-neon"><IconBot className="h-4 w-4" /><Decrypt text={isExternal ? "External agent · via MCP" : "Native agent"} /></div>
+                <div className="ng-title mt-1 text-2xl font-bold text-neon text-glow">{a.name}</div>
+                <p className="text-sm text-ink-dim">A first-class economic actor — claims Jobs, earns reputation + a rating, and splits the reward with {owner?.username ?? "its owner"}.</p>
+              </div>
+              <Link href={`/passport/${a.agent_id}`} className="ng-btn ng-btn--sm shrink-0"><IconShield className="h-3.5 w-3.5" />Passport ↗</Link>
+            </div>
           </Bracket>
 
           <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 4 + closed } as React.CSSProperties}>
@@ -249,13 +288,32 @@ export default function AgentDetail() {
               <Sec icon={<IconLayers className="h-3.5 w-3.5" />} title="Skill Library" action={<Mark plain className="!text-[10px]">{work.skills.length}</Mark>}>
                 {work.skills.length ? (
                   <div className="space-y-1.5">
-                    {work.skills.map((s) => (
-                      <div key={s.skill_id} className="flex items-center justify-between gap-2 border-b border-neon/10 pb-1.5 text-[11px] last:border-0 last:pb-0">
-                        <div className="flex min-w-0 items-center gap-1.5"><span className="truncate text-ink">{s.title}</span><Tag className="!text-[9px] shrink-0">{s.domain}</Tag></div>
-                        <span className="shrink-0 text-[10px] text-neon" title="mastery (reuses)">×{s.uses}</span>
-                      </div>
-                    ))}
-                    <p className="pt-1 text-[10px] text-ink-faint">Skills the agent wrote from delivered Jobs — reused on matching work; mastery grows with use (Hermes-style self-improvement).</p>
+                    {work.skills.map((s) => {
+                      const listed = listings.find((p) => p.skill_id === s.skill_id);
+                      return (
+                        <div key={s.skill_id} className="border-b border-neon/10 pb-1.5 last:border-0 last:pb-0">
+                          <div className="flex items-center justify-between gap-2 text-[11px]">
+                            <div className="flex min-w-0 items-center gap-1.5"><span className="truncate text-ink">{s.title}</span><Tag className="!text-[9px] shrink-0">{s.domain}</Tag>{s.from_published && <Mark plain accent="cyan" className="!text-[8px] shrink-0">installed</Mark>}</div>
+                            <div className="flex shrink-0 items-center gap-2">
+                              <span className="text-[10px] text-neon" title="mastery (reuses)">×{s.uses}</span>
+                              {listed ? (
+                                <span className="flex items-center gap-1 text-[9px] text-cyan">listed · {listed.installs}↓ <button onClick={() => delistSkill(listed.published_id)} disabled={busy} className="text-ink-faint hover:text-danger">delist</button></span>
+                              ) : (
+                                <button onClick={() => setPubFor(pubFor === s.skill_id ? null : s.skill_id)} disabled={busy} className="text-[9px] text-ink-faint transition hover:text-neon">publish →</button>
+                              )}
+                            </div>
+                          </div>
+                          {pubFor === s.skill_id && !listed && (
+                            <form onSubmit={(e) => { e.preventDefault(); const price = Number(new FormData(e.currentTarget).get("price")) || 0; publishSkill(s.skill_id, price); }} className="mt-1.5 flex items-center gap-1.5">
+                              <input name="price" type="number" min={0} defaultValue={50} className="ng-input !w-24 !py-1 text-[10px]" placeholder="GRID" />
+                              <button type="submit" disabled={busy} className="ng-btn ng-btn-primary ng-btn--sm !py-1 !text-[10px] disabled:opacity-50">List it</button>
+                              <span className="text-[9px] text-ink-faint">price to install (0 = free)</span>
+                            </form>
+                          )}
+                        </div>
+                      );
+                    })}
+                    <p className="pt-1 text-[10px] text-ink-faint">Skills the agent wrote from delivered Jobs. <span className="text-ink-dim">Publish one to the <Link href="/skills" className="text-neon hover:underline">skills market</Link> and earn GRID each time another builder installs it.</span></p>
                   </div>
                 ) : <p className="text-[11px] text-ink-dim">No skills yet — the agent writes a reusable skill each time it delivers a Job, getting better over time.</p>}
               </Sec>
@@ -329,6 +387,25 @@ export default function AgentDetail() {
             <div className="flex items-center gap-1.5 text-[11px]"><IconCheck className="h-3.5 w-3.5 text-neon" /><Mark plain accent={isExternal ? "cyan" : "neon"}>{isExternal ? "External · connected via MCP" : "Native · built in-platform"}</Mark></div>
             {isExternal && <p className="mt-1 flex items-center gap-1.5 text-[10px] text-ink-dim"><IconCode className="h-3 w-3" />Operates over the agent-gateway (list/claim/submit).</p>}
           </Sec>
+
+          {/* GATEWAY SAFETY (owner-only, external agents) — read-only mode + write rate limit */}
+          {isExternal && meId === a.owner_id && (
+            <Sec icon={<IconShield className="h-3.5 w-3.5" />} title="Gateway safety">
+              <div className="flex items-center justify-between text-[11px]">
+                <div><div className="text-ink">Read-only mode</div><div className="text-[10px] text-ink-faint">query only — blocks claim/submit/trade/pay</div></div>
+                <button onClick={() => saveGateway({ gateway_mode: a.gateway_mode === "read_only" ? "live" : "read_only" })} className={`rounded-full border px-2 py-0.5 text-[10px] transition ${a.gateway_mode === "read_only" ? "border-amber/50 bg-amber/15 text-amber" : "border-neon/40 text-neon"}`}>{a.gateway_mode === "read_only" ? "ON" : "off"}</button>
+              </div>
+              <form onSubmit={(e) => { e.preventDefault(); const v = Number(new FormData(e.currentTarget).get("rl")); saveGateway({ rate_limit_per_hour: v > 0 ? v : null }); }} className="mt-2.5 border-t border-neon/10 pt-2.5">
+                <div className="text-[11px] text-ink">Write rate limit</div>
+                <div className="mt-1 flex items-center gap-1.5">
+                  <input name="rl" type="number" min={0} defaultValue={a.rate_limit_per_hour ?? ""} placeholder="0 = unlimited" className="ng-input !py-1 text-[10px]" />
+                  <span className="text-[10px] text-ink-faint">/hr</span>
+                  <button type="submit" className="ng-btn ng-btn--sm !py-1 !text-[10px]">Set</button>
+                </div>
+                <p className="mt-1.5 text-[9.5px] leading-relaxed text-ink-faint">Enforced on every gateway write. A read-only or throttled agent can still read market data + its mandate.</p>
+              </form>
+            </Sec>
+          )}
         </OrbPanel>
       </div>
 

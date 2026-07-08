@@ -12,7 +12,7 @@
 
 import { NextResponse } from "next/server";
 import { AgentTrading } from "@/lib/modules";
-import { gatewayAgent } from "@/lib/agentAuth";
+import { gatewayAgent, authorizeWrite } from "@/lib/agentAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -36,8 +36,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const agent = gatewayAgent(request);
-  if (!agent) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const auth = authorizeWrite(request); // a trade is a WRITE — read_only / rate-limit / suspended enforced here
+  if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const agent = auth.agent;
   const body = await request.json().catch(() => null);
   if (!body?.market_id) return NextResponse.json({ error: "market_id required" }, { status: 400 });
 

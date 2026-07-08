@@ -141,6 +141,7 @@ create table if not exists pulse_events (
   reason              text        not null,
   verification_source text        not null,
   dimension           text,                 -- builder | backer | reviewer | creator | agent
+  reward_excluded     boolean,              -- reputation yes, GRID allocation no (subsidized work)
   created_at          timestamptz not null default now()
 );
 
@@ -166,6 +167,8 @@ create table if not exists agents (
   trust_tier          text,       -- probation | trusted | suspended
   bond_amount         numeric,
   spend_limit_per_job numeric,
+  gateway_mode        text,       -- live | read_only (gateway write-safety)
+  rate_limit_per_hour numeric,    -- max external write actions/hour
   earnings            numeric     not null default 0,
   api_key             text,       -- legacy plaintext (seed agents only)
   api_key_hash        text,       -- sha256 of the gateway key (new agents)
@@ -198,8 +201,47 @@ create table if not exists jobs (
   verification   jsonb,      -- Verification (reviewer stakes, outcome, …)
   status         text        not null default 'open',
   created_by     text        not null references users(id),
+  dispute_deadline timestamptz,          -- a rejected escrowed job's contest window
   created_at     timestamptz not null default now(),
   updated_at     timestamptz
+);
+
+-- The skills marketplace: learned agent skills published for other owners to install.
+create table if not exists published_skills (
+  published_id    text primary key,
+  skill_id        text        not null,
+  title           text        not null,
+  domain          text,
+  recipe          text        not null,
+  summary         text,
+  author_agent_id text        not null,
+  author_id       text        not null references users(id),
+  source_uses     numeric     not null default 0,
+  price_grid      numeric     not null default 0,
+  installs        numeric     not null default 0,
+  status          text        not null default 'listed', -- listed | delisted
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz
+);
+create index if not exists idx_pskills_status on published_skills(status);
+create index if not exists idx_pskills_author on published_skills(author_id);
+
+-- Reputation-staked evaluator adjudication of contested job rejections.
+create table if not exists disputes (
+  dispute_id   text primary key,
+  subject_type text        not null,     -- job | milestone | campaign_deal
+  subject_id   text        not null,     -- the job_id
+  raised_by    text        not null references users(id),
+  against      text        not null references users(id),
+  amount       numeric,                  -- escrow at stake
+  reason       text        not null,
+  status       text        not null default 'open', -- open | upheld | dismissed
+  votes        jsonb       not null default '[]',    -- DisputeVote[]
+  quorum       integer     not null default 3,
+  outcome      jsonb,                    -- { for_worker, for_creator }
+  resolution   text,
+  created_at   timestamptz not null default now(),
+  resolved_at  timestamptz
 );
 
 -- CampaignX applications — a worker (human or agent) applies to a posting; the poster
@@ -464,9 +506,11 @@ create table if not exists settlements (
 -- "neugrid:*" protocol sink (e.g. neugrid:treasury) — so no FK to users.
 
 create table if not exists wallets (
-  user_id text primary key,
-  usdc    numeric not null default 0,
-  grid    numeric not null default 0
+  user_id          text primary key,
+  usdc             numeric not null default 0,
+  grid             numeric not null default 0,
+  pay_fees_in_grid boolean,        -- opt-in: pay protocol fees in GRID at the discount
+  starter_credit   numeric         -- non-transferable starter Echo credit (onboarding)
 );
 
 -- GRID locked to graduate a market to its next stage (stake-to-list).
@@ -581,6 +625,8 @@ create table if not exists agent_actions (
   pnl        numeric,
   ok         boolean     not null default true,
   detail     text,
+  risk_grade text,                      -- low | medium | high | critical (pre-trade risk grade)
+  sim        jsonb,                      -- { price_impact_pct, budget_after_pct, leverage_ratio }
   at         timestamptz not null default now()
 );
 

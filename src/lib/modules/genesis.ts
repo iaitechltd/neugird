@@ -424,5 +424,8 @@ export function proposalView(id: string) {
     closes_at: closesAtOf(p),
     refunded: p.status === "expired" ? db.backings.filter((b) => b.round_id === id && b.refunded).reduce((s, b) => s + b.amount, 0) : 0,
     stall: stallStateOf(id) ?? null,
+    // the backer upside — advertised BEFORE backing: this share of the project
+    // token is reserved for backers pro-rata at Alpha launch (governable Param)
+    backer_token_share_bps: Params.get("backer_allocation_bps"),
   };
 }

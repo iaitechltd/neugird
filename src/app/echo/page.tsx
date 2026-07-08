@@ -107,6 +107,12 @@ export default function EchoPage() {
   const notify = (m: string) => { setToast(m); window.clearTimeout((notify as unknown as { t?: number }).t); (notify as unknown as { t?: number }).t = window.setTimeout(() => setToast(null), 2400); };
 
   const [gridBal, setGridBal] = useState<number | null>(null);
+  const [starterBal, setStarterBal] = useState<number>(0); // non-transferable Echo credit (starter grant)
+  const applyBalances = (b?: { grid: number; starter_credit?: number } | null) => {
+    if (!b) return;
+    setGridBal(b.grid);
+    if (b.starter_credit != null) setStarterBal(b.starter_credit);
+  };
 
   /* Echo Builder — REAL model codegen (files + interactive preview + sha256 proof). */
   const [bPrompt, setBPrompt] = useState("");
@@ -157,7 +163,7 @@ export default function EchoPage() {
       const agents: AgentRow[] = (a.agents ?? []).slice().sort((x: AgentRow, y: AgentRow) => y.rating - x.rating).slice(0, 4);
       const talent: TalentRow[] = (t.talent ?? []).slice().sort((x: TalentRow, y: TalentRow) => y.reputation - x.reputation).slice(0, 4);
       setExecs({ agents, talent });
-      if (me?.balances) setGridBal(me.balances.grid);
+      if (me?.balances) applyBalances(me.balances);
     });
     // real past builds — the Builder can resume any build that has real files
     fetch("/api/echo/builds").then((r) => r.json()).then((d) => { if (live) setPastBuilds(((d.builds ?? []) as Build[]).filter((b) => b.artifact?.files?.length)); }).catch(() => {});
@@ -226,7 +232,7 @@ export default function EchoPage() {
       data = await res.json();
     } catch { /* network */ }
     window.clearInterval(timer);
-    if (data?.balances) setGridBal(data.balances.grid);
+    if (data?.balances) applyBalances(data.balances);
     if (data?.url && data.deployment) {
       setDepSteps(4);
       setBBuild({ ...bBuild, deployment: { ...data.deployment, html: "" } });
@@ -258,7 +264,7 @@ export default function EchoPage() {
     try {
       const res = await fetch("/api/echo/ask", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: target, question }) });
       const d = await res.json();
-      if (d.balances) setGridBal(d.balances.grid);
+      if (d.balances) applyBalances(d.balances);
       if (d.answer) setAskA(String(d.answer).replace(/\*\*/g, ""));
       else if (d.error === "insufficient_grid") notify(`Not enough GRID — a question costs ${d.cost ?? ASK_COST} GRID`);
       else if (d.error === "brain_inactive") notify("This mode needs the model brain (API key) active");
@@ -277,7 +283,7 @@ export default function EchoPage() {
       const res = await fetch("/api/echo/builds", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt: p }) });
       data = await res.json();
     } catch { /* network */ }
-    if (data?.balances) setGridBal(data.balances.grid);
+    if (data?.balances) applyBalances(data.balances);
     if (data?.error === "insufficient_grid") { setBBuilding(false); notify(`Not enough GRID — Echo compute costs ${data.cost ?? BUILD_COST} GRID`); return; }
     if (data?.error === "synthesis_failed") { setBBuilding(false); notify("Echo couldn't complete this build — your GRID was refunded. Try again."); return; }
     if (!data?.build) { setBBuilding(false); notify("Build failed — is the server up?"); return; }
@@ -305,7 +311,7 @@ export default function EchoPage() {
       data = await res.json();
     } catch { /* network */ }
     setRevBusy(false);
-    if (data?.balances) setGridBal(data.balances.grid);
+    if (data?.balances) applyBalances(data.balances);
     if (data?.error === "insufficient_grid") { notify(`Not enough GRID — a revision costs ${data.cost ?? REVISION_COST} GRID`); return; }
     if (data?.error === "synthesis_failed") { notify("Echo couldn't complete this revision — your GRID was refunded."); return; }
     if (!data?.build) { notify("Revision failed"); return; }
@@ -446,7 +452,7 @@ export default function EchoPage() {
               </div></div>
               {mode === "select" && <><div className="mt-3 flex flex-wrap gap-2">{["Founder", "Builder"].map((t) => <Tag key={t}>{t}</Tag>)}</div><div className="ng-row mt-3 !text-[11px]"><span className="ng-row__k">Wallet Status</span><span className="ng-row__v flex items-center gap-1 text-neon"><IconCheck className="h-3 w-3" />Connected</span></div></>}
               {mode === "personal" && <div className="mt-3 divide-y divide-line"><DataRow k="Reputation" v={<span className="flex items-center gap-1"><Mark plain>{(askSnap?.reputation ?? 0).toLocaleString()}</Mark><span className="ng-led" /></span>} /><DataRow k="GRID" v={<Mark plain>{(askSnap?.grid ?? 0).toLocaleString()}</Mark>} /></div>}
-              {mode === "builder" && <div className="mt-3 divide-y divide-line"><DataRow k="GRID balance" v={<Mark plain>{gridBal != null ? Math.round(gridBal).toLocaleString() : "—"}</Mark>} /><DataRow k="Build cost" v={<Mark plain>{BUILD_COST} GRID</Mark>} /><DataRow k="Revision cost" v={<Mark plain>{REVISION_COST} GRID</Mark>} /></div>}
+              {mode === "builder" && <div className="mt-3 divide-y divide-line"><DataRow k="GRID balance" v={<Mark plain>{gridBal != null ? Math.round(gridBal).toLocaleString() : "—"}</Mark>} />{starterBal > 0 && <DataRow k="Starter credit" v={<Mark plain accent="cyan">{Math.round(starterBal).toLocaleString()}</Mark>} />}<DataRow k="Build cost" v={<Mark plain>{BUILD_COST} GRID</Mark>} /><DataRow k="Revision cost" v={<Mark plain>{REVISION_COST} GRID</Mark>} /></div>}
               {mode === "analyst" && <div className="mt-3 divide-y divide-line"><DataRow k="Markets" v={<Mark plain>{askSnap?.markets?.length ?? "—"}</Mark>} /><DataRow k="Data" v={<Mark>Live only</Mark>} /></div>}
               {mode === "observer" && <div className="mt-3 divide-y divide-line"><DataRow k="Role" v={<Mark plain>Network Observer</Mark>} /><DataRow k="Type" v={<Mark accent="cyan">Auditor</Mark>} /><DataRow k="Access" v={<Mark>Read-only</Mark>} /></div>}
             </Card>
@@ -628,7 +634,7 @@ export default function EchoPage() {
               <SecLabel icon={<IconSparkle className="h-3.5 w-3.5" />}>DESCRIBE YOUR BUILD</SecLabel>
               <textarea value={bPrompt} onChange={(e) => setBPrompt(e.target.value)} onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") runBuild(); }} rows={2} placeholder="Build a Solana yield vault with auto-compounding and a DAO governance layer…" className="w-full resize-none bg-transparent text-[13px] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-none" />
               <div className="mt-2 flex items-center justify-between gap-3">
-                <span className="text-[10px] text-ink-faint">Compute · <span className="text-neon/80">{BUILD_COST} GRID</span>{gridBal != null ? <span className={gridBal < BUILD_COST ? " text-danger" : ""}> · bal {Math.round(gridBal).toLocaleString()}</span> : null} → real code + proof of build · ⌘↵</span>
+                <span className="text-[10px] text-ink-faint">Compute · <span className="text-neon/80">{BUILD_COST} GRID</span>{gridBal != null ? <span className={gridBal + starterBal < BUILD_COST ? " text-danger" : ""}> · bal {Math.round(gridBal).toLocaleString()}{starterBal > 0 && <span className="text-cyan/80"> +{Math.round(starterBal).toLocaleString()} credit</span>}</span> : null} → real code + proof of build · ⌘↵</span>
                 <button onClick={runBuild} disabled={bBuilding || !bPrompt.trim()} className="ng-btn ng-btn-primary ng-btn--sm disabled:opacity-40">{bBuilding ? <><IconRefresh className="h-3.5 w-3.5 animate-spin" /> Echo is writing your code…</> : <><IconBolt className="h-3.5 w-3.5" /> Build with Echo</>}</button>
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">{["a Solana yield vault", "an NFT mint with a candy machine", "an AI research agent"].map((ex) => <button key={ex} onClick={() => setBPrompt("Build " + ex)} disabled={bBuilding} className="ng-btn ng-btn-ghost ng-btn--sm">{ex}</button>)}</div>

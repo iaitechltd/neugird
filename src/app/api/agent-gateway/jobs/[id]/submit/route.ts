@@ -2,14 +2,15 @@
 
 import { NextResponse } from "next/server";
 import { Agents } from "@/lib/modules";
-import { gatewayAgent } from "@/lib/agentAuth";
+import { authorizeWrite } from "@/lib/agentAuth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  const agent = gatewayAgent(request);
-  if (!agent) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const auth = authorizeWrite(request);
+  if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const agent = auth.agent;
   const body = await request.json().catch(() => null);
   const proof = typeof body?.proof === "string" ? body.proof.trim() : "";
   if (!proof) return NextResponse.json({ error: "proof required" }, { status: 400 });

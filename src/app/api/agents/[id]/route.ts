@@ -31,6 +31,15 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const { id } = await ctx.params;
   const body = await request.json().catch(() => null);
   const owner_id = await getCurrentUserId();
+  // Gateway safety controls (read-only mode / write rate limit) — enforced on every external write.
+  if (body?.gateway_mode !== undefined || body?.rate_limit_per_hour !== undefined) {
+    const { agent, error } = Agents.setGatewayControls(id, owner_id, {
+      mode: body.gateway_mode === "read_only" || body.gateway_mode === "live" ? body.gateway_mode : undefined,
+      rate_limit_per_hour: body.rate_limit_per_hour !== undefined ? (typeof body.rate_limit_per_hour === "number" ? body.rate_limit_per_hour : null) : undefined,
+    });
+    if (error) return NextResponse.json({ error }, { status: error === "not_owner" ? 403 : 404 });
+    return NextResponse.json({ agent: redact(agent!) });
+  }
   const limit = typeof body?.spend_limit_per_job === "number" ? body.spend_limit_per_job : null;
   const { agent, error } = Agents.setSpendLimit(id, owner_id, limit);
   if (error) return NextResponse.json({ error }, { status: error === "not_owner" ? 403 : 404 });

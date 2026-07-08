@@ -57,9 +57,13 @@ export async function runBuild(input: RunBuildInput): Promise<{ build?: Build; c
   const prompt = input.prompt.trim();
   // Echo compute is metered in GRID — the platform-token utility sink (governable cost).
   const cost = buildCost();
+  // Starter credit pays first (the onboarding scholarship — it burns); only the
+  // real-GRID portion of the charge flows to the treasury.
+  let charge: Wallets.ComputeCharge | null = null;
   if (!input.paid_externally) {
-    if (!Wallets.debitGrid(input.owner_id, cost)) return { error: "insufficient_grid", cost };
-    Wallets.creditGrid(Wallets.TREASURY, cost); // → protocol treasury
+    charge = Wallets.debitCompute(input.owner_id, cost);
+    if (!charge) return { error: "insufficient_grid", cost };
+    if (charge.grid > 0) Wallets.creditGrid(Wallets.TREASURY, charge.grid); // → protocol treasury
   }
 
   const build_id = newId("build");
@@ -78,7 +82,7 @@ export async function runBuild(input: RunBuildInput): Promise<{ build?: Build; c
     // REAL codegen — the model writes the project; a failure refunds, never fakes.
     const synth = await Brain.synthesizeBuild(prompt);
     if (!synth) {
-      if (!input.paid_externally && Wallets.debitGrid(Wallets.TREASURY, cost)) Wallets.creditGrid(input.owner_id, cost); // refund
+      if (charge) Wallets.refundCompute(input.owner_id, { starter: charge.starter, grid: charge.grid > 0 && Wallets.debitGrid(Wallets.TREASURY, charge.grid) ? charge.grid : 0 }); // refund each bucket
       return { error: "synthesis_failed", cost };
     }
     title = (input.title?.trim() || synth.title || deriveTitle(prompt)).slice(0, 60);
@@ -129,17 +133,26 @@ export async function runBuild(input: RunBuildInput): Promise<{ build?: Build; c
   };
   db.builds.unshift(build);
 
+  // A build subsidized by the starter credit earns full reputation + the sealed
+  // proof-of-build credential, but NOT GRID allocation — free credit must never
+  // mint transferable ownership (else every fresh wallet farms it). A build paid
+  // with real GRID (or externally via x402) counts normally.
+  const starterFunded = !input.paid_externally && (charge?.starter ?? 0) > 0;
+  const realPayment = !!input.paid_externally || (charge?.grid ?? 0) > 0;
   Pulse.recordEvent({
     target_type: "user",
     target_id: input.owner_id,
     user_id: input.owner_id,
     action_type: "build_completed",
     weight: BUILD_REPUTATION,
-    reason: `Echo witnessed a build: "${title}"`,
+    reason: `Echo witnessed a build: "${title}"${starterFunded ? " (starter — reputation only)" : ""}`,
     verification_source: "echo:witness",
     dimension: "builder",
+    reward_excluded: starterFunded,
   });
-  Referrals.checkVerify(input.owner_id); // a shipped build = a verified first action
+  // A referral verifies on a REAL economic action — a free starter build doesn't
+  // count (else the starter grant funds a referral-bonus farm).
+  if (realPayment) Referrals.checkVerify(input.owner_id);
 
   return { build, cost };
 }
@@ -172,14 +185,16 @@ export async function reviseBuild(input: ReviseBuildInput): Promise<{ build?: Bu
   if ((build.revisions?.length ?? 0) >= REVISIONS_MAX) return { error: "too_many_revisions" };
 
   const cost = revisionCost();
+  let charge: Wallets.ComputeCharge | null = null;
   if (cost > 0) {
-    if (!Wallets.debitGrid(input.owner_id, cost)) return { error: "insufficient_grid", cost };
-    Wallets.creditGrid(Wallets.TREASURY, cost);
+    charge = Wallets.debitCompute(input.owner_id, cost);
+    if (!charge) return { error: "insufficient_grid", cost };
+    if (charge.grid > 0) Wallets.creditGrid(Wallets.TREASURY, charge.grid);
   }
 
   const revised = await Brain.reviseBuild({ title: build.title, summary: build.summary, stack: build.stack, files }, instruction);
   if (!revised) {
-    if (cost > 0 && Wallets.debitGrid(Wallets.TREASURY, cost)) Wallets.creditGrid(input.owner_id, cost); // refund
+    if (charge) Wallets.refundCompute(input.owner_id, { starter: charge.starter, grid: charge.grid > 0 && Wallets.debitGrid(Wallets.TREASURY, charge.grid) ? charge.grid : 0 }); // refund
     return { error: "synthesis_failed", cost };
   }
 
@@ -326,14 +341,16 @@ export async function askEcho(mode: EchoAskMode, user_id: string, question: stri
   if (!q) return { error: "question_required" };
   if (!Brain.activeBrain()) return { error: "brain_inactive" };
   const cost = askCost();
+  let charge: Wallets.ComputeCharge | null = null;
   if (cost > 0) {
-    if (!Wallets.debitGrid(user_id, cost)) return { error: "insufficient_grid", cost };
-    Wallets.creditGrid(Wallets.TREASURY, cost);
+    charge = Wallets.debitCompute(user_id, cost);
+    if (!charge) return { error: "insufficient_grid", cost };
+    if (charge.grid > 0) Wallets.creditGrid(Wallets.TREASURY, charge.grid);
   }
   const { context } = askSnapshot(mode, user_id);
   const answer = await Brain.echoAsk(mode, q, context);
   if (!answer) {
-    if (cost > 0 && Wallets.debitGrid(Wallets.TREASURY, cost)) Wallets.creditGrid(user_id, cost); // refund
+    if (charge) Wallets.refundCompute(user_id, { starter: charge.starter, grid: charge.grid > 0 && Wallets.debitGrid(Wallets.TREASURY, charge.grid) ? charge.grid : 0 }); // refund
     return { error: "synthesis_failed", cost };
   }
   return { answer, cost };
@@ -368,8 +385,9 @@ export function deployBuild(build_id: string, owner_id: string): { deployment?: 
 
   const cost = deployCost();
   if (cost > 0) {
-    if (!Wallets.debitGrid(owner_id, cost)) return { error: "insufficient_grid", cost };
-    Wallets.creditGrid(Wallets.TREASURY, cost);
+    const charge = Wallets.debitCompute(owner_id, cost);
+    if (!charge) return { error: "insufficient_grid", cost };
+    if (charge.grid > 0) Wallets.creditGrid(Wallets.TREASURY, charge.grid);
   }
 
   const prior = build.deployment;

@@ -6,13 +6,14 @@
 
 import { NextResponse } from "next/server";
 import { X402 } from "@/lib/modules";
-import { gatewayAgent } from "@/lib/agentAuth";
+import { authorizeWrite } from "@/lib/agentAuth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const agent = gatewayAgent(request);
-  if (!agent) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const auth = authorizeWrite(request);
+  if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const agent = auth.agent;
   const body = await request.json().catch(() => null);
   const resource = typeof body?.resource === "string" ? body.resource : "";
   const { proof, settlement, error } = X402.settle(agent.agent_id, resource);

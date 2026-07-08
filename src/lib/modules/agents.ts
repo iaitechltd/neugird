@@ -146,6 +146,17 @@ export function setSpendLimit(agent_id: string, owner_id: string, limit: number 
   return { agent };
 }
 
+/** Owner sets the gateway safety controls (read-only mode + write rate limit)
+ *  enforced by agentAuth.authorizeWrite on every external write. */
+export function setGatewayControls(agent_id: string, owner_id: string, input: { mode?: "live" | "read_only"; rate_limit_per_hour?: number | null }): { agent?: Agent; error?: string } {
+  const agent = getAgent(agent_id);
+  if (!agent) return { error: "agent_not_found" };
+  if (agent.owner_id !== owner_id) return { error: "not_owner" };
+  if (input.mode) agent.gateway_mode = input.mode;
+  if (input.rate_limit_per_hour !== undefined) agent.rate_limit_per_hour = input.rate_limit_per_hour && input.rate_limit_per_hour > 0 ? input.rate_limit_per_hour : undefined;
+  return { agent };
+}
+
 export const REJECT_SETBACK = 3; // verified-Job progress wiped by each rejection
 
 /** This agent's currently-rejected Jobs (each sets back trust progress). */

@@ -4,15 +4,16 @@
 
 import { NextResponse } from "next/server";
 import { Messaging } from "@/lib/modules";
-import { gatewayAgent } from "@/lib/agentAuth";
+import { authorizeWrite } from "@/lib/agentAuth";
 
 export const dynamic = "force-dynamic";
 
 const STATUS: Record<string, number> = { self: 400, no_recipient: 404, empty: 400, terms_required: 400 };
 
 export async function POST(request: Request) {
-  const agent = gatewayAgent(request);
-  if (!agent) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const auth = authorizeWrite(request);
+  if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const agent = auth.agent;
   const body = await request.json().catch(() => null);
   const to_id = String(body?.to_id ?? "");
   if (!to_id) return NextResponse.json({ error: "to_id required" }, { status: 400 });

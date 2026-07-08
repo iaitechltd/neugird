@@ -42,6 +42,7 @@ type View = {
   closes_at?: string;
   refunded?: number;
   stall?: { stalled: boolean; last_activity: string; deadline: string; auto_at: string; remaining: number } | null;
+  backer_token_share_bps?: number;
 };
 
 const daysLeft = (iso?: string) => (iso ? Math.max(0, Math.ceil((Date.parse(iso) - Date.now()) / 86_400_000)) : null);
@@ -49,7 +50,7 @@ const daysLeft = (iso?: string) => (iso ? Math.max(0, Math.ceil((Date.parse(iso)
 const M_ACCENT: Record<string, "neon" | "cyan" | "amber"> = { pending: "amber", submitted: "cyan", released: "neon", rejected: "amber" };
 
 /** Hoisted (stable identity) so a parent re-render can't remount it and wipe a half-typed amount. */
-function FundForm({ busy, balance, onSubmit }: { busy: boolean; balance?: number; onSubmit: (e: React.FormEvent<HTMLFormElement>) => void }) {
+function FundForm({ busy, balance, shareBps, onSubmit }: { busy: boolean; balance?: number; shareBps?: number; onSubmit: (e: React.FormEvent<HTMLFormElement>) => void }) {
   return (
     <div>
       <form onSubmit={onSubmit} className="flex gap-2">
@@ -60,6 +61,9 @@ function FundForm({ busy, balance, onSubmit }: { busy: boolean; balance?: number
         <span>USDC leaves your wallet into milestone escrow</span>
         {balance != null && <span>bal ${balance.toLocaleString()}</span>}
       </div>
+      {(shareBps ?? 0) > 0 && (
+        <p className="mt-1.5 text-[10px] leading-relaxed text-cyan/80">Backers share <span className="font-semibold text-cyan">{(shareBps ?? 0) / 100}% of the project token</span> at Alpha launch — pro-rata to your backing, vested. Back the raise, own the earliest position.</p>
+      )}
     </div>
   );
 }
@@ -194,7 +198,7 @@ export default function ProposalDetail() {
 
           <div className="ng-card p-3.5">
             <div className="ng-label mb-2 flex items-center gap-2 !text-ink-dim"><span className="text-neon"><IconBolt className="h-4 w-4" /></span>Action</div>
-            {isOpen && !view.is_author && <FundForm busy={busy} balance={view.me.usdc} onSubmit={fund} />}
+            {isOpen && !view.is_author && <FundForm busy={busy} balance={view.me.usdc} shareBps={view.backer_token_share_bps} onSubmit={fund} />}
             {isOpen && view.is_author && <p className="text-[11px] text-ink-dim">Your raise is open — share it to attract backers. (You can&rsquo;t back your own raise — self-funding is blocked.)</p>}
             {!isOpen && view.spawned_grid_slug && <Link href={`/grid/${view.spawned_grid_slug}`} className="ng-btn ng-btn-primary ng-btn--block"><IconNetwork className="h-3.5 w-3.5" /> Open Project Grid</Link>}
             {!isOpen && !view.spawned_grid_slug && <p className="text-[11px] text-ink-dim">This raise is {p.status}.</p>}
@@ -229,7 +233,7 @@ export default function ProposalDetail() {
                 <div className="text-right text-[11px] text-ink-dim">{view.backers} backers · {pct}%{isOpen && daysLeft(view.closes_at) != null && <span className="text-amber"> · closes in {daysLeft(view.closes_at)}d</span>}</div>
               </div>
               <ProgressBar percent={pct} />
-              {isOpen && !view.is_author && <div className="mt-3 max-w-sm"><FundForm busy={busy} balance={view.me.usdc} onSubmit={fund} /></div>}
+              {isOpen && !view.is_author && <div className="mt-3 max-w-sm"><FundForm busy={busy} balance={view.me.usdc} shareBps={view.backer_token_share_bps} onSubmit={fund} /></div>}
               {p.status === "funded" && <div className="mt-2 text-[11px] text-ink-faint">{released.toLocaleString()} released to the project via milestones.</div>}
               {p.status === "expired" && <div className="mt-2 rounded border border-amber/25 bg-amber/[0.06] px-2.5 py-1.5 text-[11px] text-amber">Raise window closed unfilled — ${Math.round(view.refunded ?? 0).toLocaleString()} in escrowed backings refunded to backers.</div>}
               {p.status === "refunded" && <div className="mt-2 rounded border border-danger/25 bg-danger/[0.06] px-2.5 py-1.5 text-[11px] text-danger">Kill-switch fired — the project stalled and the unreleased treasury was returned to backers pro-rata. The founder&rsquo;s reputation took the hit.</div>}

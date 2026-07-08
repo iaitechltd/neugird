@@ -29,6 +29,10 @@ export * as Perps from "./perps"; // futures — leverage positions on a futures
 export * as AgentTrading from "./agentTrading"; // Agent Mode — autonomous trading under a scoped mandate
 export * as AgentWork from "./agentWork"; // native agent framework — persona + autonomous work runtime + skill library
 export * as Referrals from "./referrals"; // referral links + verify-on-first-work + the affiliate fee share
+export * as Onboarding from "./onboarding"; // the starter path — wallet-anchored one-time Echo credit
+export * as Disputes from "./disputes"; // reputation-staked evaluator adjudication of contested job rejections
+export * as SkillsMarket from "./skillsMarket"; // the skills marketplace — publish/install learned agent skills for GRID
+export * as Passport from "./passport"; // portable, verifiable reputation passport (user or agent)
 export * as Provenance from "./provenance"; // a market's lineage + founder credibility (the thesis)
 export * as Chat from "./chat"; // per-Grid community discussion thread
 export * as Content from "./content"; // Grid content hub — the living feed (posts + pinned announcements)

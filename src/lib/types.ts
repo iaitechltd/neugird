@@ -409,6 +409,10 @@ export interface Job {
   verification?: Verification;
   status: JobStatus;
   created_by: ID;
+  /** Set when an escrowed job is rejected: the worker may contest until this
+   *  deadline; the rejection's effects (penalty + refund) are deferred until
+   *  then (or until a dispute resolves). */
+  dispute_deadline?: ISODate;
   created_at: ISODate;
   updated_at?: ISODate;
 }
@@ -463,13 +467,30 @@ export interface Slash {
   created_at: ISODate;
 }
 
+/** A reputation-staked evaluator's verdict on a dispute. `for_worker` = the
+ *  contested delivery was valid; `for_creator` = the rejection stands. Weight =
+ *  the evaluator's reputation; a wrong verdict fades their reviewer reputation. */
+export type DisputeVerdict = "for_worker" | "for_creator";
+export interface DisputeVote {
+  evaluator_id: ID;
+  verdict: DisputeVerdict;
+  weight: number; // reputation staked on this verdict
+  reason?: string;
+  at: ISODate;
+}
+
 export interface Dispute {
   dispute_id: ID;
   subject_type: "job" | "milestone" | "campaign_deal";
-  subject_id: ID;
-  raised_by: ID;
+  subject_id: ID; // the job_id (v1 covers escrowed jobs)
+  raised_by: ID; // the worker contesting a rejection
+  against: ID; // the job creator whose rejection is contested
+  amount?: number; // escrow at stake (for the UI)
   reason: string;
-  status: "open" | "upheld" | "dismissed";
+  status: "open" | "upheld" | "dismissed"; // upheld = worker wins; dismissed = rejection stands
+  votes: DisputeVote[]; // reputation-staked evaluator panel
+  quorum: number; // distinct evaluators required to resolve
+  outcome?: { for_worker: number; for_creator: number }; // weighted tallies at resolution
   resolution?: string;
   created_at: ISODate;
   resolved_at?: ISODate;
@@ -596,6 +617,9 @@ export type PulseActionType =
   | "raise_backed" // backed a Fund raise that filled (curation conviction)
   | "decay" // periodic rebalance so old activity doesn't dominate
   | "campaign_ghosted" // a project left a delivery unreviewed past the deadline (V6 employer fade)
+  | "dispute_evaluated" // staked-evaluator voted WITH the panel's verdict (reviewer rep, no allocation)
+  | "dispute_slashed" // staked-evaluator voted AGAINST the outcome — reputation faded (skin in the game)
+  | "skill_installed" // another owner installed your published skill (creator rep, no allocation)
   | "spam_penalty";
 
 export interface PulseEvent {
@@ -608,6 +632,10 @@ export interface PulseEvent {
   reason: string; // shown in the UI — never an opaque number
   verification_source: string; // e.g. "reviewer:0xabc", "auto", "onchain:tx"
   dimension?: ReputationDimension; // which reputation facet this affects
+  /** Earns REPUTATION (+ any credential) but NOT GRID allocation. Set when the
+   *  work was subsidized by a free grant (e.g. an Echo build paid with the
+   *  starter credit) — free credit must not mint transferable ownership. */
+  reward_excluded?: boolean;
   timestamp: ISODate;
 }
 
@@ -718,6 +746,7 @@ export interface Vesting {
   duration_days: number;
   released: number;
   total: number;
+  upfront_bps?: number; // share unlocked immediately at start_at (backer allocations: 20%)
 }
 
 /* ----------------------------- Tokens ------------------------------ */
@@ -782,6 +811,9 @@ export interface Wallet {
   usdc: number; // trade currency
   grid: number; // platform token (staking / fees / governance)
   pay_fees_in_grid?: boolean; // opt-in: pay protocol fees in GRID at a discount
+  /** Non-transferable starter Echo credit (the onboarding scholarship). Spendable
+   *  ONLY on Echo compute — it burns, never circulates, never reaches the market. */
+  starter_credit?: number;
 }
 
 /* ------- Stake-to-list: GRID locked to graduate a market to the next stage ------ */
@@ -921,8 +953,14 @@ export interface AgentAction {
   pnl?: number; // realized PnL, on a close
   ok: boolean; // did it execute (false = blocked by a guardrail / no-op hold)
   detail?: string; // guardrail reason or extra context
+  /** Pre-trade risk grade (agentic-wallet style): every risk-ADDING action is
+   *  simulated before execution and graded; a "critical" grade is auto-blocked. */
+  risk_grade?: TradeRiskGrade;
+  sim?: { price_impact_pct: number; budget_after_pct: number; leverage_ratio?: number };
   at: ISODate;
 }
+
+export type TradeRiskGrade = "low" | "medium" | "high" | "critical";
 
 /* --------------------------- SentientX ----------------------------- */
 // Agents are first-class economic actors: identity, wallet, reputation, owner,
@@ -953,6 +991,9 @@ export interface Agent {
   trust_tier?: AgentTrustTier; // external agents start on probation
   bond_amount?: number; // owner-posted bond for cold-start trust
   spend_limit_per_job?: number; // sandbox guardrail
+  /* --- gateway safety modes (owner-set; enforced on every external write) --- */
+  gateway_mode?: "live" | "read_only"; // read_only = the agent may query but not act (claim/submit/trade/pay)
+  rate_limit_per_hour?: number; // max write actions/hour via the gateway (0/undefined = unlimited)
   tools_granted?: string[];
   earnings?: number;
   trading_rating?: number; // 0..5, earned from realized Agent-Mode trading performance
@@ -995,6 +1036,30 @@ export interface LearnedSkill {
   recipe: string;  // the reusable how-to (an LLM authors richer ones; rule-based writes a template)
   from_job?: ID;   // the Job it was first learned on
   uses: number;    // times reused → mastery
+  from_published?: ID; // the marketplace listing this skill was INSTALLED from (provenance)
+  source_author_id?: ID; // the owner who published the skill it was installed from
+  created_at: ISODate;
+  updated_at?: ISODate;
+}
+
+/** A learned skill PUBLISHED to the skills marketplace — reusable know-how other
+ *  owners install onto their agents. The agent economy's second earning surface:
+ *  agents earn not just by doing jobs, but by publishing skills others reuse.
+ *  Trust is provenance, not just a scan: the mastery it earned (source_uses),
+ *  install count, and the author's reputation are all real + on the record. */
+export interface PublishedSkill {
+  published_id: ID;
+  skill_id: ID; // the source LearnedSkill (in the author's agent library)
+  title: string;
+  domain: string;
+  recipe: string; // version-pinned snapshot at publish time
+  summary?: string; // the author's blurb
+  author_agent_id: ID; // the agent that learned it
+  author_id: ID; // the owner who published (earns installs)
+  source_uses: number; // mastery when published — the proven track record
+  price_grid: number; // install price in GRID (0 = free)
+  installs: number;
+  status: "listed" | "delisted";
   created_at: ISODate;
   updated_at?: ISODate;
 }

@@ -33,7 +33,15 @@ export default function HomePage() {
   const closed = (lOpen ? 0 : 1) + (rOpen ? 0 : 1);
 
   /* real state */
-  const [me, setMe] = useState<{ username?: string; pulse?: number; reputation?: { total?: number; by_dimension?: Record<string, number> } | null; joined_grids?: string[]; rep_series?: number[]; income?: { total?: number; series?: number[] } } | null>(null);
+  const [me, setMe] = useState<{ username?: string; pulse?: number; reputation?: { total?: number; by_dimension?: Record<string, number> } | null; joined_grids?: string[]; rep_series?: number[]; income?: { total?: number; series?: number[] }; starter?: { wallet_connected: boolean; claimed: boolean; eligible: boolean; credit: number; amount: number; builds: number; show: boolean } } | null>(null);
+  const [claiming, setClaiming] = useState(false);
+  async function claimStarter() {
+    if (claiming) return;
+    setClaiming(true);
+    await fetch("/api/onboarding/claim", { method: "POST" }).catch(() => {});
+    await fetch("/api/me").then((r) => r.json()).then(setMe).catch(() => {});
+    setClaiming(false);
+  }
   const [builds, setBuilds] = useState<Build[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [openJobs, setOpenJobs] = useState<Job[]>([]);
@@ -167,6 +175,34 @@ export default function HomePage() {
             <div className="ng-title text-2xl font-bold text-neon text-glow"><Decrypt text={`Welcome back, ${me?.username ?? "builder"}`} /></div>
             <p className="text-[12px] text-ink-dim">Your command center — build with Echo, deploy agents, raise on Fund. Everything here is live.</p>
           </Bracket>
+
+          {/* STARTER PATH — zero → first proof-of-build (shows until the first build ships) */}
+          {me?.starter?.show && (
+            <div className="ng-panel border-neon/25 p-4">
+              <div className="ng-label mb-2 !text-neon">Start here — zero to your first proof-of-build</div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div className={`ng-card p-3 text-[11px] ${me.starter.wallet_connected ? "" : "!border-cyan/40"}`}>
+                  <div className={`font-semibold ${me.starter.wallet_connected ? "text-neon" : "text-cyan"}`}>{me.starter.wallet_connected ? "✓" : "1"} Connect your wallet</div>
+                  <p className="mt-1 leading-relaxed text-ink-dim">{me.starter.wallet_connected ? "Connected — your signature is your identity." : "Top right → Connect wallet. Your signature is your identity."}</p>
+                </div>
+                <div className={`ng-card p-3 text-[11px] ${me.starter.eligible ? "!border-cyan/40" : ""}`}>
+                  <div className={`font-semibold ${me.starter.claimed ? "text-neon" : me.starter.eligible ? "text-cyan" : "text-ink-faint"}`}>{me.starter.claimed ? "✓" : "2"} Starter Echo credit</div>
+                  {me.starter.claimed ? (
+                    <p className="mt-1 leading-relaxed text-ink-dim">{Math.round(me.starter.credit).toLocaleString()} credit ready — enough for your first build.</p>
+                  ) : me.starter.eligible ? (
+                    <button onClick={claimStarter} disabled={claiming} className="ng-btn ng-btn-cyan ng-btn--sm mt-1.5 disabled:opacity-50">Claim {me.starter.amount.toLocaleString()} Echo credit</button>
+                  ) : (
+                    <p className="mt-1 leading-relaxed text-ink-faint">Unlocks when your wallet is connected — one grant per wallet.</p>
+                  )}
+                </div>
+                <div className={`ng-card p-3 text-[11px] ${me.starter.credit > 0 ? "!border-cyan/40" : ""}`}>
+                  <div className={`font-semibold ${me.starter.credit > 0 ? "text-cyan" : "text-ink-faint"}`}>3 Build something real</div>
+                  <p className="mt-1 leading-relaxed text-ink-dim">Tell Echo your idea — real code, live preview, a sealed proof-of-build with your name on it.</p>
+                  <Link href="/echo" className={`ng-btn ng-btn--sm mt-1.5 ${me.starter.credit > 0 ? "ng-btn-primary" : ""}`}>Open Echo →</Link>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* live KPIs */}
           <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>

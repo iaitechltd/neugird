@@ -21,6 +21,7 @@ export interface RecordInput {
   reason: string;
   verification_source: string;
   dimension?: ReputationDimension;
+  reward_excluded?: boolean; // reputation yes, GRID allocation no (subsidized work)
 }
 
 export function recordEvent(input: RecordInput): PulseEvent {

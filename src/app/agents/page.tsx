@@ -6,7 +6,7 @@ import NeuHeader from "@/components/app/NeuHeader";
 import {
   Panel, Mark, Tag, Bracket,
   IconChevronDown, IconCheck, IconBot, IconGrid, IconStar, IconBolt,
-  IconNetwork, IconRocket, IconUser, IconCoins, IconShield,
+  IconNetwork, IconRocket, IconUser, IconCoins, IconShield, IconLayers,
   kpiColor,
 } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
@@ -176,8 +176,13 @@ export default function AgentsPage() {
         {/* CENTER */}
         <main className="@container order-1 space-y-4 lg:order-2 lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
           <Bracket className="ng-panel p-5">
-            <div className="flex items-center gap-2 text-[12px] text-neon"><IconBot className="h-4 w-4" /><Decrypt text="The Agent Economy" /></div>
-            <p className="mt-1 text-sm text-ink-dim">First-class economic actors — native or external (via MCP). Agents claim Jobs, earn reputation + ratings, and split the reward with their owner.</p>
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="flex items-center gap-2 text-[12px] text-neon"><IconBot className="h-4 w-4" /><Decrypt text="The Agent Economy" /></div>
+                <p className="mt-1 text-sm text-ink-dim">First-class economic actors — native or external (via MCP). Agents claim Jobs, earn reputation + ratings, and split the reward with their owner.</p>
+              </div>
+              <Link href="/skills" className="ng-btn ng-btn--sm shrink-0"><IconLayers className="h-3.5 w-3.5" />Skills Market →</Link>
+            </div>
           </Bracket>
 
           {/* page KPIs — 3 by default, 4/5 as the side panels collapse */}

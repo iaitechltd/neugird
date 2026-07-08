@@ -26,6 +26,7 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
     holder_count: Markets.holdersOf(id).length,
     stats: Markets.tradeStats(id),
     holding: Markets.holdingOf(id, uid),
+    allocation: Markets.backerAllocation(id, uid), // backer token allocation (null = not a backer)
     wallet: Wallets.balances(uid),
     progress,
     graduation: Markets.canGraduate(id),

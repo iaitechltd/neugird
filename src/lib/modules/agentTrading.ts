@@ -26,7 +26,7 @@ import * as Perps from "./perps";
 import * as Agents from "./agents";
 import * as Wallets from "./wallets";
 import * as Params from "./params";
-import type { AgentAction, AgentActionKind, Mandate, MandateStrategy, MarketStage, Position } from "../types";
+import type { AgentAction, AgentActionKind, Mandate, MandateStrategy, MarketStage, Position, TradeRiskGrade } from "../types";
 
 /* --- tunables (the native playbooks; deterministic off live market state) --- */
 const MIN_TICK_SECONDS = 6; // rate-limit: at most one action per ~6s of polling
@@ -196,6 +196,52 @@ export function guardrailCheck(m: Mandate, p: Planned): { ok: boolean; reason?: 
   return { ok: true };
 }
 
+/* --- Pre-trade simulation + risk grading (agentic-wallet style) ---
+ * Before a risk-ADDING action runs, project its market impact and grade it. A
+ * "critical" grade is auto-BLOCKED even if it's inside the mandate caps — the
+ * mandate bounds intent, the risk grade catches a locally-legal but dangerous
+ * fill (a thin pool the trade would move violently, near-max leverage into a
+ * tiny liquidation buffer, or the last sliver of budget). Returns null for
+ * de-risking actions (sell/close/hold never blocked). */
+export interface TradeSim {
+  price_impact_pct: number; // how far this trade moves the AMM price (0..1)
+  budget_after_pct: number; // mandate budget utilization after this trade (0..1)
+  leverage_ratio: number; // leverage / max_leverage (perps; 0 for spot)
+  grade: TradeRiskGrade;
+}
+export function simulateTrade(m: Mandate, p: Planned): TradeSim | null {
+  const addsRisk = p.kind === "buy" || p.kind === "open_long" || p.kind === "open_short";
+  if (!addsRisk) return null;
+  const market = Markets.getMarket(m.market_id);
+  if (!market) return null;
+  const notional = p.notional ?? p.amount ?? 0;
+  // AMM price impact: for a `notional` USDC buy against x*y=k, how far price moves.
+  const Q = market.quote_reserve ?? 0, B = market.base_reserve ?? 0;
+  let price_impact_pct = 0;
+  if (Q > 0 && B > 0 && notional > 0) {
+    const k = Q * B;
+    const baseOut = B - k / (Q + notional); // tokens the pool gives out
+    const newPrice = (Q + notional) / (B - baseOut);
+    const oldPrice = Q / B;
+    price_impact_pct = oldPrice > 0 ? Math.max(0, newPrice / oldPrice - 1) : 0;
+  }
+  const budget_after_pct = m.budget_usdc > 0 ? Math.min(2, (consumed(m) + notional) / m.budget_usdc) : 0;
+  const leverage_ratio = (p.kind === "open_long" || p.kind === "open_short") && m.max_leverage > 0
+    ? (p.leverage ?? 1) / m.max_leverage : 0;
+
+  // Escalate to the worst signal. Thresholds are deliberately conservative.
+  let grade: TradeRiskGrade = "low";
+  const bump = (g: TradeRiskGrade) => { const order: TradeRiskGrade[] = ["low", "medium", "high", "critical"]; if (order.indexOf(g) > order.indexOf(grade)) grade = g; };
+  if (price_impact_pct >= 0.05) bump("medium");
+  if (price_impact_pct >= 0.12) bump("high");
+  if (price_impact_pct >= 0.20) bump("critical");
+  if (budget_after_pct >= 0.90) bump("medium");
+  if (budget_after_pct >= 0.99) bump("high");
+  if (leverage_ratio >= 0.9) bump("high");
+  if (leverage_ratio >= 0.999 && price_impact_pct >= 0.10) bump("critical"); // max leverage into a thin pool
+  return { price_impact_pct, budget_after_pct, leverage_ratio, grade };
+}
+
 /** Guardrail then execute one planned action — the SHARED path for both the
  *  native runner and external (gateway-driven) trades, so enforcement is identical.
  *  A blocked action is still recorded (with the reason) for the activity feed. */
@@ -207,9 +253,18 @@ function actOn(m: Mandate, plan: Planned): AgentAction {
     if (last && last.kind === "hold") { m.last_action_at = nowISO(); return last; }
     return record(m, { kind: "hold", ok: true, rationale: plan.rationale });
   }
+  // Pre-trade simulation + risk grade (agentic-wallet style). A CRITICAL grade is
+  // blocked even when the action is inside the mandate caps.
+  const sim = simulateTrade(m, plan);
+  const simRec = sim ? { price_impact_pct: sim.price_impact_pct, budget_after_pct: sim.budget_after_pct, leverage_ratio: sim.leverage_ratio } : undefined;
+  if (sim && sim.grade === "critical") {
+    return record(m, { kind: plan.kind, ok: false, rationale: plan.rationale, detail: "risk_critical", risk_grade: sim.grade, sim: simRec });
+  }
   const gate = guardrailCheck(m, plan);
-  if (!gate.ok) return record(m, { kind: plan.kind, ok: false, rationale: plan.rationale, detail: gate.reason });
-  return execute(m, plan);
+  if (!gate.ok) return record(m, { kind: plan.kind, ok: false, rationale: plan.rationale, detail: gate.reason, risk_grade: sim?.grade, sim: simRec });
+  const action = execute(m, plan);
+  if (sim) { action.risk_grade = sim.grade; action.sim = simRec; }
+  return action;
 }
 
 /* -------------------------------- the runner ----------------------------- */
@@ -227,6 +282,8 @@ function record(m: Mandate, a: Partial<AgentAction> & { kind: AgentActionKind; o
     pnl: a.pnl,
     ok: a.ok,
     detail: a.detail,
+    risk_grade: a.risk_grade,
+    sim: a.sim,
     at: nowISO(),
   };
   actions().unshift(action);

@@ -36,6 +36,9 @@ yarn-error.log*
 # local store snapshot — holds live data incl. working agent-gateway keys; never public
 .neugrid-store.json
 
+# scratchpad — throwaway test harnesses + store backups (the backups copy the store's live keys); never public
+/scratchpad/
+
 # stray design-export assets
 Group 3/
 

@@ -36,6 +36,7 @@ const Star = () => (
 /* A product tile that earns the click: price · rating · REAL numbers · Open. */
 function ProductCard({ product: p, onOpen }: { product: P; onOpen: (p: P) => void }) {
   const live = p.artifact_ref?.preview_url;
+  const hasTraction = (p.onchain_revenue ?? 0) > 0 || (p.active_users ?? 0) > 0 || (p.opens_30d ?? 0) > 0 || (p.purchases ?? 0) > 0;
   return (
     <div className="ng-card mb-3 flex break-inside-avoid flex-col p-3.5 transition hover:!border-neon/40">
       <div className="flex items-center gap-3">
@@ -59,12 +60,18 @@ function ProductCard({ product: p, onOpen }: { product: P; onOpen: (p: P) => voi
         {p.purchased_by_me && <Mark plain accent="neon" className="ml-auto !text-[9px]">owned</Mark>}
         {p.owned_by_me && <Mark plain className="ml-auto !text-[9px]">yours</Mark>}
       </div>
-      {p.description && <p className="mt-2 line-clamp-3 text-[11px] leading-relaxed text-ink-dim">{p.description}</p>}
-      <div className="mt-3 divide-y divide-line border-t border-line pt-2 text-[11px]">
-        <div className="ng-row !py-1"><span className="ng-row__k">Revenue</span><Mark plain accent="cyan" className="!text-[11px]">${(p.onchain_revenue ?? 0).toLocaleString()}</Mark></div>
-        <div className="ng-row !py-1"><span className="ng-row__k">Active users 30d</span><Mark plain className="!text-[11px]">{(p.active_users ?? 0).toLocaleString()}</Mark></div>
-        <div className="ng-row !py-1"><span className="ng-row__k">Opens 30d</span><span className="ng-row__v font-normal text-ink-dim">{p.opens_30d ?? 0}</span></div>
-      </div>
+      {p.description && <p className="mt-2 line-clamp-2 text-[11px] leading-relaxed text-ink-dim">{p.description}</p>}
+      {hasTraction ? (
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line pt-2 text-[10px]">
+          {(p.onchain_revenue ?? 0) > 0 && <span className="flex items-center gap-1 font-bold text-cyan"><IconCoins className="h-3 w-3" />${(p.onchain_revenue ?? 0).toLocaleString()}</span>}
+          {(p.active_users ?? 0) > 0 && <span className="text-ink-dim"><span className="text-ink">{(p.active_users ?? 0).toLocaleString()}</span> users/30d</span>}
+          {(p.opens_30d ?? 0) > 0 && <span className="text-ink-faint"><span className="text-ink-dim">{p.opens_30d}</span> opens</span>}
+        </div>
+      ) : (
+        <div className="mt-3 flex items-center gap-1.5 border-t border-line pt-2 text-[10px] text-ink-faint">
+          <IconBolt className="h-3 w-3 text-neon/60" />Newly listed — be the first to try it
+        </div>
+      )}
       <div className="mt-3 flex gap-2">
         {live && <button onClick={() => onOpen(p)} className="ng-btn ng-btn-primary ng-btn--sm flex-1 justify-center"><IconBolt className="h-3 w-3" /> Open</button>}
         <Link href={`/gridx/${p.product_id}`} className="ng-btn ng-btn--sm flex-1 justify-center">Details</Link>

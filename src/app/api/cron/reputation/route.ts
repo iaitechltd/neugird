@@ -9,7 +9,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { ReputationMaint, Governance, Genesis } from "@/lib/modules";
+import { ReputationMaint, Governance, Genesis, Disputes } from "@/lib/modules";
 import { isDuplicateTick } from "@/lib/cronTick";
 
 export const dynamic = "force-dynamic";
@@ -25,5 +25,6 @@ export async function POST(request: Request) {
   const gov = Governance.sweepExpired();
   const raises = Genesis.sweepExpiredRaises(); // unfilled raise windows → expire + refund escrow
   const stalls = Genesis.sweepStalledProjects(); // funded projects silent past 2× the stall window
-  return NextResponse.json({ ok: true, ...summary, gov_settled: gov.settled, raises_expired: raises.expired, backings_refunded: raises.refunded, projects_killed: stalls.killed, treasury_refunded: stalls.refunded });
+  const disputes = Disputes.sweepExpired(); // finalize lapsed dispute windows + resolve quorum-reached panels
+  return NextResponse.json({ ok: true, ...summary, gov_settled: gov.settled, raises_expired: raises.expired, backings_refunded: raises.refunded, projects_killed: stalls.killed, treasury_refunded: stalls.refunded, rejections_finalized: disputes.finalized, disputes_resolved: disputes.resolved });
 }

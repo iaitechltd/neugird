@@ -128,6 +128,7 @@ export default function TalentProfile() {
                 <IconUser className="h-3.5 w-3.5" /> {(following ?? p.is_following) ? "Following ✓" : "Follow"}
               </button>
             )}
+            <Link href={`/passport/${p.id}`} className="ng-btn ng-btn--block ng-btn--sm mt-2"><IconShield className="h-3.5 w-3.5" /> Reputation passport ↗</Link>
           </div>
 
           {p.skills.length > 0 && (

@@ -13,6 +13,7 @@ import { newId, nowISO } from "../id";
 import * as Pulse from "./pulse";
 import * as Referrals from "./referrals";
 import * as Wallets from "./wallets";
+import * as Params from "./params";
 import type { Application, ExecutorType, Job, JobContext, JobStatus, ProofType, Settlement } from "../types";
 
 /* --------------------------- USDC escrow (x402) --------------------------- */
@@ -38,6 +39,91 @@ function heldEscrow(job_id: string): { funder: string; amount: number } | null {
   const done = led.some((s) => s.resource === `job_payout:${job_id}` || s.resource === `job_refund:${job_id}`);
   return done ? null : { funder: dep.payer_id, amount: dep.amount };
 }
+/** Public: the escrow still locked on a job (for the dispute layer's UI + gates). */
+export function heldEscrowFor(job_id: string): { funder: string; amount: number } | null {
+  return heldEscrow(job_id);
+}
+
+const disputeWindowMs = () => Params.get("dispute_window_days") * 86_400_000;
+
+/**
+ * The FINAL effects of a rejection: fade the worker's reputation, slash an
+ * agent's bond, and refund the escrow to the funder. Deferred for escrowed jobs
+ * (applied only once the dispute window lapses undisputed OR a dispute is
+ * dismissed) so a worker can contest an unfair rejection before losing anything.
+ * Idempotent by construction — the refund no-ops once the escrow is settled.
+ */
+export function applyRejectionEffects(job_id: string, reviewer_id: string): void {
+  const job = getJob(job_id);
+  if (!job || !job.assignee_id) return;
+  const esc = heldEscrow(job.job_id);
+  if (job.reward_token === "USDC" && job.reward_amount > 0 && !esc) return; // already finalized
+  const penalty = -Math.max(5, Math.round((esc?.amount ?? job.reward_amount) * 0.4));
+  Pulse.recordEvent({
+    target_type: job.assignee_type === "agent" ? "agent" : "user",
+    target_id: job.assignee_id,
+    user_id: reviewer_id,
+    action_type: "submission_rejected",
+    weight: penalty,
+    reason: `Delivery rejected on "${job.title}"`,
+    verification_source: `reviewer:${reviewer_id}`,
+    dimension: job.assignee_type === "agent" ? "agent" : "builder",
+  });
+  if (job.assignee_type === "agent") {
+    const agent = db.agents.find((a) => a.agent_id === job.assignee_id);
+    if (agent) {
+      agent.bond_amount = Math.max(0, (agent.bond_amount ?? 0) - 100);
+      if (agent.trust_tier === "trusted") agent.trust_tier = "probation";
+      agent.rating = Math.round(Math.min(5, (agent.rating || 0) * 0.7) * 10) / 10;
+    }
+  }
+  if (esc) {
+    Wallets.debitUsdc(JOB_ESCROW, esc.amount);
+    Wallets.creditUsdc(esc.funder, esc.amount);
+    recordReceipt(JOB_ESCROW, esc.funder, `job_refund:${job.job_id}`, esc.amount);
+  }
+  job.dispute_deadline = undefined;
+  job.updated_at = nowISO();
+}
+
+/** Pay a worker + award the earned reputation on a dispute UPHELD — a contested
+ *  rejection overturned by the evaluator panel. Reuses the normal approval path
+ *  (real-escrow basis + pairwise decay + rating), attributed to "system:dispute". */
+export function payWorkerOnUpheld(job_id: string): Job | undefined {
+  const job = getJob(job_id);
+  if (!job) return undefined;
+  job.status = "submitted"; // reviewJob's approve path requires a submitted job
+  job.dispute_deadline = undefined;
+  return reviewJob(job_id, { reviewer_id: "system:dispute", approve: true, quality_score: 80 });
+}
+
+/* --- Anti-farm: reputation from delivered work must reflect REAL, non-circular
+ * value, or a sockpuppet pair (A posts, B delivers, A approves) mints unbounded
+ * free reputation → GRID allocation → ownership. Three layers, all here so the
+ * invariant lives at the module boundary, not in scattered route checks:
+ *  (1) the reputation BASIS is the escrow actually funded+released (real money
+ *      that moved), NOT the nominal `reward_amount` a poster can type unbacked;
+ *      an unfunded job confers only a small flat delivery credit.
+ *  (2) repeated approvals between the SAME creator→worker principal DECAY toward
+ *      zero (1, ½, ⅓, …) — so even cycling real USDC can't wash rep at scale.
+ *  (3) a self-dealt approval (reviewer == worker principal) mints NOTHING. */
+const UNFUNDED_DELIVERY_PULSE = 5; // flat rep for delivering an unbacked (Pulse) job
+
+/** The economic principal behind a job's worker (an agent's owner, else the user). */
+function workerPrincipalOf(job: Job): string | undefined {
+  if (!job.assignee_id) return undefined;
+  return job.assignee_type === "agent"
+    ? db.agents.find((a) => a.agent_id === job.assignee_id)?.owner_id ?? job.assignee_id
+    : job.assignee_id;
+}
+/** How many times this exact (creator → worker principal) pair has already been paid. */
+function priorApprovedBetween(creator_id: string, worker_principal: string, except_job: string): number {
+  return db.jobs.filter((j) =>
+    j.job_id !== except_job && j.status === "paid" && j.created_by === creator_id &&
+    workerPrincipalOf(j) === worker_principal,
+  ).length;
+}
+const pairwiseDecay = (priorPaid: number) => 1 / (1 + priorPaid); // 1, ½, ⅓, ¼ …
 
 export interface JobFilter {
   context?: JobContext;
@@ -132,6 +218,7 @@ export function postFundedJob(input: CreateJobInput, funder_id: string): { job?:
 export function claimJob(id: string, user_id: string, type: ExecutorType = "user"): Job | undefined {
   const job = getJob(id);
   if (!job || job.status !== "open") return undefined;
+  if (job.created_by === user_id) return undefined; // can't claim your own posting (self-review farm) — boundary guard
   job.assignee_id = user_id;
   job.assignee_type = type;
   job.status = "in_progress";
@@ -259,75 +346,77 @@ export function reviewJob(id: string, input: ReviewInput): Job | undefined {
 
   if (!input.approve) {
     job.status = "rejected";
-    // V6 — reputation FADES on failed delivery, for humans and agents alike.
-    if (job.assignee_id) {
-      const penalty = -Math.max(5, Math.round(job.reward_amount * 0.4));
-      Pulse.recordEvent({
-        target_type: job.assignee_type === "agent" ? "agent" : "user",
-        target_id: job.assignee_id,
-        user_id: input.reviewer_id,
-        action_type: "submission_rejected",
-        weight: penalty,
-        reason: `Delivery rejected on "${job.title}"`,
-        verification_source: `reviewer:${input.reviewer_id}`,
-        dimension: job.assignee_type === "agent" ? "agent" : "builder",
-      });
-    }
-    // Slash an agent's bond on rejected work; demote a trusted agent to probation; fade its rating.
-    if (job.assignee_id && job.assignee_type === "agent") {
-      const agent = db.agents.find((a) => a.agent_id === job.assignee_id);
-      if (agent) {
-        agent.bond_amount = Math.max(0, (agent.bond_amount ?? 0) - 100);
-        if (agent.trust_tier === "trusted") agent.trust_tier = "probation";
-        agent.rating = Math.round(Math.min(5, (agent.rating || 0) * 0.7) * 10) / 10;
-      }
-    }
-    // Refund a USDC escrow to the funder.
-    const esc = heldEscrow(job.job_id);
-    if (esc) {
-      Wallets.debitUsdc(JOB_ESCROW, esc.amount);
-      Wallets.creditUsdc(esc.funder, esc.amount);
-      recordReceipt(JOB_ESCROW, esc.funder, `job_refund:${job.job_id}`, esc.amount);
+    // For an ESCROWED job the worker may CONTEST the rejection: defer the penalty +
+    // refund until the dispute window lapses (Disputes.sweepExpired) or a dispute
+    // resolves. This gives a neutral, reputation-staked evaluator panel the final
+    // say instead of the payer alone. Non-escrowed (Pulse) jobs finalize now.
+    if (heldEscrow(job.job_id)) {
+      job.dispute_deadline = new Date(Date.now() + disputeWindowMs()).toISOString();
+    } else {
+      applyRejectionEffects(job.job_id, input.reviewer_id);
     }
     return job;
   }
 
   job.status = "paid"; // pre-treasury: pay = reputation Pulse
-  if (job.assignee_id && job.assignee_type !== "agent") {
+
+  // Anti-farm reputation basis (see the helpers above): weight from the REAL
+  // escrow (money that actually moved), not the typed reward; unfunded → a flat
+  // delivery credit; decayed by prior same-pair deliveries; ZERO if self-dealt.
+  const escrowHeld = heldEscrow(job.job_id); // read BEFORE the payout settles it
+  const worker_principal = workerPrincipalOf(job);
+  const self_dealt = !!worker_principal && worker_principal === input.reviewer_id;
+  const basis = (escrowHeld?.amount ?? 0) > 0 ? (escrowHeld as { amount: number }).amount : 0;
+  const earned = basis > 0
+    ? Pulse.weightForApproval(basis, quality)
+    : { weight: UNFUNDED_DELIVERY_PULSE, reason: "unfunded delivery" };
+  const decay = worker_principal ? pairwiseDecay(priorApprovedBetween(job.created_by, worker_principal, job.job_id)) : 1;
+  const repWeight = Math.max(1, Math.round(earned.weight * decay));
+  const repReason = basis > 0 ? `${earned.reason}${decay < 1 ? ` × ${decay.toFixed(2)} repeat-pair` : ""}` : earned.reason;
+
+  if (self_dealt) {
+    // reviewer IS the worker — self-review earns no reputation, rating, or credential.
+    // (Public routes already block this at claim/apply/deploy; this is the boundary guard.)
+  } else if (job.assignee_id && job.assignee_type !== "agent") {
     Referrals.checkVerify(job.assignee_id); // a paid delivery = a verified first action
-    const { weight, reason } = Pulse.weightForApproval(job.reward_amount, quality);
     Pulse.recordEvent({
       target_type: "user",
       target_id: job.assignee_id,
       user_id: input.reviewer_id,
       action_type: "job_delivered",
-      weight,
-      reason: `Job "${job.title}" approved · ${reason}`,
+      weight: repWeight,
+      reason: `Job "${job.title}" approved · ${repReason}`,
       verification_source: `reviewer:${input.reviewer_id}`,
       dimension: "builder",
     });
   } else if (job.assignee_id && job.assignee_type === "agent") {
-    const { weight, reason } = Pulse.weightForApproval(job.reward_amount, quality);
     // The agent earns reputation + a rating from verified work.
     Pulse.recordEvent({
       target_type: "agent",
       target_id: job.assignee_id,
       action_type: "job_delivered",
-      weight,
-      reason: `Job "${job.title}" approved · ${reason}`,
+      weight: repWeight,
+      reason: `Job "${job.title}" approved · ${repReason}`,
       verification_source: `reviewer:${input.reviewer_id}`,
       dimension: "agent",
     });
     const agent = db.agents.find((a) => a.agent_id === job.assignee_id);
     if (agent) {
-      // Economic split: owner takes a revenue share, the agent keeps the rest in its wallet.
-      const bps = Math.min(10000, Math.max(0, agent.owner_split_bps ?? 0));
-      const ownerCut = Math.round((job.reward_amount * bps) / 10000);
-      agent.earnings = (agent.earnings ?? 0) + Math.max(0, job.reward_amount - ownerCut);
       agent.rating = Math.round(Math.min(5, (agent.rating || 0) * 0.7 + (quality / 100) * 5 * 0.3) * 10) / 10;
       // GRID allocation is NOT mutated here — `Rewards` derives the owner's earned
       // allocation from the agent's `job_delivered` Pulse event above (one source
       // of truth for both reputation + reward; see rewards.ts).
+    }
+  }
+  // Economic split: an agent's cash earnings track the REAL reward that settled,
+  // not a self-dealt/unfunded number. (Kept out of the rep guard so a legitimately
+  // funded job still pays the split even on the rare self-review edge.)
+  if (job.assignee_id && job.assignee_type === "agent") {
+    const agent = db.agents.find((a) => a.agent_id === job.assignee_id);
+    if (agent && basis > 0) {
+      const bps = Math.min(10000, Math.max(0, agent.owner_split_bps ?? 0));
+      const ownerCut = Math.round((basis * bps) / 10000);
+      agent.earnings = (agent.earnings ?? 0) + Math.max(0, basis - ownerCut);
     }
   }
 

@@ -17,6 +17,13 @@ import { PanelChart } from "@/components/app/terminal";
 import { LabeledBars, Marimekko, Pie, Histogram, SERIES } from "@/components/app/charts";
 import type { Job } from "@/lib/types";
 
+type DisputeRow = {
+  dispute_id: string; subject_id: string; job_title: string; worker: string; creator: string;
+  amount?: number; reason: string; status: string; quorum: number; votes_needed: number;
+  for_worker_votes: number; for_creator_votes: number; raised_by: string; against: string;
+  can_evaluate: boolean; my_vote: "for_worker" | "for_creator" | null;
+};
+
 type View = "open" | "doing" | "created" | "all";
 const STATUS_ACCENT: Record<string, "neon" | "cyan" | "amber"> = {
   open: "neon", in_progress: "cyan", assigned: "cyan", submitted: "amber",
@@ -26,7 +33,10 @@ const LIFECYCLE = ["open", "in progress", "submitted", "verified", "paid"];
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[] | null>(null);
+  const [disputes, setDisputes] = useState<DisputeRow[]>([]);
   const [me, setMe] = useState<{ id: string } | null>(null);
+  const [contesting, setContesting] = useState<string | null>(null); // job_id being contested (inline form open)
+  const [now] = useState(() => Date.now()); // mount-time clock for the multi-day dispute window (pure render)
   const [view, setView] = useState<View>("open");
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -41,9 +51,11 @@ export default function JobsPage() {
     return Promise.allSettled([
       fetch("/api/jobs").then((r) => r.json()),
       fetch("/api/me").then((r) => r.json()),
-    ]).then(([j, m]) => {
+      fetch("/api/disputes").then((r) => r.json()),
+    ]).then(([j, m, d]) => {
       setJobs(j.status === "fulfilled" ? (j.value.jobs ?? []) : []);
       if (m.status === "fulfilled" && m.value?.id) setMe({ id: m.value.id });
+      setDisputes(d.status === "fulfilled" ? (d.value.disputes ?? []) : []);
     });
   }, []);
 
@@ -257,6 +269,22 @@ export default function JobsPage() {
                         <button type="submit" disabled={busy} className="ng-btn ng-btn--sm shrink-0 disabled:opacity-50">Submit</button>
                       </form>
                     )}
+                    {/* Contest an unfair rejection → a reputation-staked evaluator panel decides */}
+                    {job.assignee_id === mineId && job.status === "rejected" && job.reward_token === "USDC" && job.dispute_deadline && Date.parse(job.dispute_deadline) > now && (
+                      contesting === job.job_id ? (
+                        <form onSubmit={(e) => { e.preventDefault(); const r = String(new FormData(e.currentTarget).get("reason") ?? "").trim(); act(`/api/jobs/${job.job_id}/dispute`, { reason: r }, "Dispute opened — a staked evaluator panel will decide").then(() => setContesting(null)); }} className="mt-2 border-t border-line pt-2">
+                          <div className="ng-label mb-1 !text-[10px] !text-amber">Contest the rejection</div>
+                          <textarea name="reason" rows={2} placeholder="Why was the delivery valid? (the panel reads this)" className="ng-input w-full !py-1.5 text-[11px]" />
+                          <div className="mt-1.5 flex gap-2">
+                            <button type="submit" disabled={busy} className="ng-btn ng-btn-primary ng-btn--sm disabled:opacity-50">Open dispute</button>
+                            <button type="button" onClick={() => setContesting(null)} className="ng-btn ng-btn-ghost ng-btn--sm">cancel</button>
+                          </div>
+                        </form>
+                      ) : (
+                        <button onClick={() => setContesting(job.job_id)} className="mt-2 w-full border-t border-line pt-2 text-left text-[10px] text-amber transition hover:text-neon">⚖ Contest this rejection — escalate to a staked evaluator panel →</button>
+                      )
+                    )}
+                    {job.status === "disputed" && <div className="mt-2 flex items-center gap-1.5 border-t border-line pt-2 text-[10px] text-amber">⚖ Under review by a staked evaluator panel</div>}
                   </div>
                 </div>
               ))}
@@ -287,6 +315,39 @@ export default function JobsPage() {
                 ? <Histogram data={rewardSpread} bins={6} h={56} />
                 : <p className="py-3 text-center text-[10px] text-ink-faint">no rewards set</p>}
             </PanelChart>
+
+            {/* DISPUTES — the staked-evaluator queue */}
+            {disputes.length > 0 && (
+              <div className="mt-5 border-t border-line pt-3">
+                <div className="ng-label mb-2 flex items-center justify-between !text-amber"><span>⚖ Disputes</span><span className="text-ink-faint">{disputes.length} open</span></div>
+                <p className="mb-2 text-[10px] leading-relaxed text-ink-faint">Contested rejections. Reputation-staked evaluators decide — vote with the panel to earn reviewer rep, against it and you&apos;re slashed.</p>
+                <div className="space-y-2">
+                  {disputes.map((d) => (
+                    <div key={d.dispute_id} className="rounded border border-amber/25 bg-amber/[0.04] p-2 text-[11px]">
+                      <div className="font-semibold text-ink">{d.job_title}</div>
+                      <div className="mt-0.5 text-[10px] text-ink-faint">{d.worker} vs {d.creator}{d.amount ? ` · $${d.amount.toLocaleString()} escrow` : ""}</div>
+                      {d.reason && <p className="mt-1 line-clamp-2 text-[10px] italic leading-relaxed text-ink-dim">“{d.reason}”</p>}
+                      <div className="mt-1.5 flex items-center justify-between text-[10px] text-ink-faint">
+                        <span>worker {d.for_worker_votes} · creator {d.for_creator_votes}</span>
+                        <span>{d.votes_needed} more to resolve</span>
+                      </div>
+                      {d.can_evaluate ? (
+                        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                          <button disabled={busy} onClick={() => act(`/api/disputes/${d.dispute_id}/vote`, { for_worker: true, reason: "" }, "Verdict cast · for the worker")} className="ng-btn ng-btn-primary ng-btn--sm !py-1 !text-[10px] disabled:opacity-50">For worker</button>
+                          <button disabled={busy} onClick={() => act(`/api/disputes/${d.dispute_id}/vote`, { for_worker: false, reason: "" }, "Verdict cast · rejection stands")} className="ng-btn ng-btn-danger ng-btn--sm !py-1 !text-[10px] disabled:opacity-50">For payer</button>
+                        </div>
+                      ) : d.my_vote ? (
+                        <div className="mt-1.5 text-[10px] text-cyan">you voted {d.my_vote === "for_worker" ? "for the worker" : "for the payer"}</div>
+                      ) : (d.raised_by === mineId || d.against === mineId) ? (
+                        <div className="mt-1.5 text-[10px] text-ink-faint">you&apos;re a party — the panel decides</div>
+                      ) : (
+                        <div className="mt-1.5 text-[10px] text-ink-faint">need 100+ reputation to evaluate</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="ng-label mb-2 mt-5 !text-ink-dim">Lifecycle</div>
             <div className="space-y-1.5 text-[11px] text-ink-dim">
