@@ -30,6 +30,7 @@ export * as AgentTrading from "./agentTrading"; // Agent Mode — autonomous tra
 export * as AgentWork from "./agentWork"; // native agent framework — persona + autonomous work runtime + skill library
 export * as Referrals from "./referrals"; // referral links + verify-on-first-work + the affiliate fee share
 export * as Onboarding from "./onboarding"; // the starter path — wallet-anchored one-time Echo credit
+export * as Humanity from "./humanity"; // proof-of-humanity tiers — gates reward COUNTING, never participation (docs/POH_GATE.md)
 export * as Disputes from "./disputes"; // reputation-staked evaluator adjudication of contested job rejections
 export * as SkillsMarket from "./skillsMarket"; // the skills marketplace — publish/install learned agent skills for GRID
 export * as Passport from "./passport"; // portable, verifiable reputation passport (user or agent)

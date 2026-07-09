@@ -9,7 +9,7 @@
 
 :root {
   /* Raw palette */
-  --ng-bg: #000000;
+  --ng-bg: #0b0d0b; /* matte near-black (founder 2026-07-09) — neutral, no green cast; pure #000 read too dark, #101310 exposed the green fills */
   --ng-bg-2: #030a06;
   --ng-panel: #051009;
   --ng-panel-2: #07160d;
@@ -23,8 +23,8 @@
   /* TERMINAL ink (founder vision locked 2026-07-03): phosphor green on black.
      Pure #00ff00 is the voice; ink/dim/faint are its quieter registers. */
   --ng-ink: #41ff41;
-  --ng-ink-dim: #23b823;
-  --ng-ink-faint: #146e14;
+  --ng-ink-dim: #2fd32f;
+  --ng-ink-faint: #1e9c1e;
 
   /* Lines, glows, overlays */
   --ng-line: rgba(0, 255, 0, 0.14);
@@ -40,6 +40,7 @@
 }
 
 @theme inline {
+  --color-black: var(--ng-bg); /* bg-black surfaces follow the matte base */
   --color-bg: var(--ng-bg);
   --color-bg-2: var(--ng-bg-2);
   --color-panel: var(--ng-panel);
@@ -124,7 +125,7 @@ body {
 @layer components {
   /* Panel (side rails) — flat, thin stroke, subtle fill so the section reads. */
   .ng-panel {
-    background: #000;
+    background: var(--ng-bg);
     border: 1px solid rgba(0, 255, 0, 0.16);
     border-radius: 0;
   }
@@ -136,7 +137,7 @@ body {
      2026-07-03: the pane's [ TITLE ] frame carries the structure, not this). */
   .ng-card {
     position: relative;
-    background: rgba(0, 255, 0, 0.018);
+    background: rgba(255, 255, 255, 0.007); /* near-transparent lift — the hairline carries the card, not a fill (founder: "soften") */
     border: 1px solid rgba(0, 255, 0, 0.07);
     border-radius: 0;
     transition: border-color 0.18s ease;
@@ -358,6 +359,8 @@ body {
 
   /* Stat block — big tabular number + tiny label, no box */
   .ng-stat__v { font-family: var(--font-mono), ui-monospace, monospace; font-size: 1.35rem; font-weight: 700; color: var(--ng-neon); font-variant-numeric: tabular-nums; line-height: 1.1; }
+  /* side rails (founder 2026-07-09): the biggest text steps down one size */
+  .ng-rail .ng-stat__v { font-size: 1.15rem; }
   .ng-stat__k { font-size: 0.625rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ng-ink-faint); }
 }
 
@@ -402,14 +405,27 @@ body {
   .lg-frame-h { height: calc((100dvh - 30px) / 0.9); }
 }
 
-/* Header Pulse monitor: a bright blip sweeps left -> right along the EKG. */
+/* Wide-centre reflow (founder 2026-07-09): card grids USE the expanded width
+   (more columns) — but a full-width ROW LIST reads stretched. Mark those
+   sections .ng-2col-wide: they reflow into two columns once the page's centre
+   container passes ~1080px (rails collapsed / big monitors). */
+@container (min-width: 1080px) {
+  .ng-2col-wide {
+    column-count: 2;
+    column-gap: 2.25rem;
+  }
+  .ng-2col-wide > * { break-inside: avoid; }
+}
+
+/* Header Pulse monitor: a bright blip sweeps left -> right along the EKG.
+   Sweep speed = the user's live heart rate (--sweep-dur set by PulseMonitor). */
 @keyframes pulseSweep {
   from { stroke-dashoffset: 1; }
   to { stroke-dashoffset: 0; }
 }
 .pulse-sweep {
   stroke-dasharray: 0.14 0.86;
-  animation: pulseSweep 2.6s linear infinite;
+  animation: pulseSweep var(--sweep-dur, 2.6s) linear infinite;
 }
 @media (prefers-reduced-motion: reduce) {
   .pulse-sweep { animation: none; stroke-dasharray: none; }

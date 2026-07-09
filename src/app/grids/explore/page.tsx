@@ -10,15 +10,31 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import NeuHeader from "@/components/app/NeuHeader";
 import OrbPanel from "@/components/app/OrbPanel";
-import { Panel, Tag, Mark, DataRow, IconActivity, IconArrowRight, IconNetwork, IconLayers, IconBot, IconCoins , kpiColor } from "@/components/app/ui";
+import StartNewButton from "@/components/app/StartNewButton";
+import { Panel, Tag, Mark, DataRow, IconActivity, IconArrowRight, IconNetwork, IconBot , kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
-import { PanelChart } from "@/components/app/terminal";
+import { PanelChart, barStr } from "@/components/app/terminal";
 import { PolarArea, Heatmap, Bullet, SegBar } from "@/components/app/charts";
 import type { Grid } from "@/lib/types";
 
 type GridRow = Grid & { subgrid_count?: number; agent_count?: number; earnings?: number };
 const STAGES = ["idea", "building", "genesis", "alpha", "spot", "futures"];
 const fmtVal = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : `${Math.round(n)}`);
+
+// Card meter %: real share of the network max; nonzero values keep one visible
+// block (same floor idea as Bars in charts.tsx) so "small but alive" ≠ "zero".
+const meterPct = (v: number, max: number) => (v > 0 ? Math.max(10, Math.round((v / max) * 100)) : 0);
+
+/** Compact char-drawn meter row for card tiles — `LABEL ▮▮▯▯▯▯▯▯ 42`. */
+function StandingMeter({ label, pct, value }: { label: string; pct: number; value: string | number }) {
+  return (
+    <div className="flex items-baseline gap-2 py-0.5 text-[10px]">
+      <span className="w-14 shrink-0 uppercase tracking-wide text-ink-faint">{label}</span>
+      <span className="min-w-0 flex-1 overflow-hidden font-mono text-[11px] tracking-tighter text-neon">{barStr(pct, 10)}</span>
+      <span className="tnum shrink-0 text-ink-dim">{value}</span>
+    </div>
+  );
+}
 
 export default function GridsExplorePage() {
   const [grids, setGrids] = useState<GridRow[] | null>(null);
@@ -66,6 +82,9 @@ export default function GridsExplorePage() {
   const catTopN = [...categories].sort((a, b) => b[1] - a[1]).slice(0, 7);
   // LEFT-2 · Heatmap — the whole network as a field, cell brightness = the grid's pulse
   const maxPulse = Math.max(1, ...list.map((g) => g.pulse_score ?? 0));
+  // CARD · standing meters — each grid's real stats vs the network max
+  const maxMembers = Math.max(1, ...list.map((g) => g.member_count ?? 0));
+  const maxSubs = Math.max(1, ...list.map((g) => g.subgrid_count ?? 0));
   const HM_ROWS = 6, HM_COLS = 10;
   const activityHeat = list.slice(0, HM_ROWS * HM_COLS).map((g) => Math.min(1, (g.pulse_score ?? 0) / maxPulse));
   // RIGHT-1 · Bullet — top grids' membership against the network average
@@ -118,7 +137,10 @@ export default function GridsExplorePage() {
               <h1 className="ng-title text-2xl font-bold text-neon text-glow-soft"><Decrypt text="Grid Directory" /></h1>
               <p className="mt-1 text-sm text-ink-dim">Every community on the network. Start one, or join the signal.</p>
             </div>
-            <Mark plain className="shrink-0 text-xs">{filtered.length} {cat === "All" ? "grids" : cat}</Mark>
+            <div className="flex shrink-0 items-center gap-3">
+              <Mark plain className="text-xs">{filtered.length} {cat === "All" ? "grids" : cat}</Mark>
+              <StartNewButton only="grid" label="new grid" />
+            </div>
           </div>
 
           {/* page KPIs — 3 by default, 4/5 as the side panels collapse */}
@@ -141,7 +163,8 @@ export default function GridsExplorePage() {
           {!err && filtered.length > 0 && (
             <div className="columns-2 gap-3 lg:[column-count:var(--cols)]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
               {filtered.map((g) => (
-                <Link key={g.grid_id} href={`/grid/${g.slug}`} className="ng-card group mb-3 flex break-inside-avoid flex-col p-4 transition hover:!border-neon/40">
+                <Link key={g.grid_id} href={`/grid/${g.slug}`} className="ng-card mb-3 flex break-inside-avoid flex-col p-4 transition hover:!border-neon/40">
+                  {/* identity — glyph + name + ONE type chip */}
                   <div className="flex items-center gap-2.5">
                     <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-xl" style={{ color: g.visual_theme?.accent ?? "var(--ng-neon)", background: "radial-gradient(circle, rgba(0,255,0,0.12), rgba(0,255,0,0.03))" }}>{g.visual_theme?.glyph ?? "▦"}</span>
                     <div className="min-w-0 flex-1">
@@ -150,21 +173,21 @@ export default function GridsExplorePage() {
                     </div>
                     {g.grid_type && <Tag className="!text-[9px] shrink-0">{g.grid_type}</Tag>}
                   </div>
-                  {g.description && <p className="mt-2.5 line-clamp-3 text-[11px] leading-relaxed text-ink-dim">{g.description}</p>}
-                  {/* stat strip */}
-                  <div className="mt-3 grid grid-cols-3 gap-2 border-t border-line pt-3 text-center">
-                    <div><div className="text-[15px] font-bold text-ink tnum">{(g.pulse_score ?? 0).toLocaleString()}</div><div className="text-[9px] uppercase tracking-wide text-ink-faint">Pulse</div></div>
-                    <div><div className="text-[15px] font-bold text-ink tnum">{(g.member_count ?? 0).toLocaleString()}</div><div className="text-[9px] uppercase tracking-wide text-ink-faint">Members</div></div>
-                    <div><div className="text-[15px] font-bold text-ink tnum">{g.subgrid_count ?? 0}</div><div className="text-[9px] uppercase tracking-wide text-ink-faint">SubGrids</div></div>
+                  {g.description && <p className="mt-2 truncate text-[11px] text-ink-dim" title={g.description}>{g.description}</p>}
+                  {/* hero — activity value (campaigns · deals · agents · work) */}
+                  <div className="ng-stat__v mt-3 !text-2xl text-neon tnum">${fmtVal(g.earnings ?? 0)}</div>
+                  <div className="flex items-center justify-between text-[9px] uppercase tracking-wide text-ink-faint"><span>Activity value</span><span>lifetime</span></div>
+                  {/* standing — this grid's REAL stats as char-meters vs the network max */}
+                  <div className="mt-3 border-t border-line pt-2.5">
+                    <div className="mb-1 flex items-center justify-between text-[9px] uppercase tracking-wide text-ink-faint"><span>Standing</span><span>vs network max</span></div>
+                    <StandingMeter label="Pulse" pct={meterPct(g.pulse_score ?? 0, maxPulse)} value={(g.pulse_score ?? 0).toLocaleString()} />
+                    <StandingMeter label="Members" pct={meterPct(g.member_count ?? 0, maxMembers)} value={(g.member_count ?? 0).toLocaleString()} />
+                    <StandingMeter label="SubGrids" pct={meterPct(g.subgrid_count ?? 0, maxSubs)} value={g.subgrid_count ?? 0} />
                   </div>
-                  {/* earnings highlight — total value across campaigns · deals · agents · work */}
-                  <div className="mt-2.5 flex items-center justify-between rounded border border-neon/15 bg-neon/[0.04] px-2.5 py-2">
-                    <span className="flex items-center gap-1.5 text-[10px] text-ink-dim"><IconCoins className="h-3.5 w-3.5 text-neon" />Activity value</span>
-                    <span className="tnum text-[14px] font-bold text-neon">{fmtVal(g.earnings ?? 0)}</span>
-                  </div>
-                  <div className="mt-2 flex items-center justify-between text-[10px] text-ink-faint">
-                    <span className="flex items-center gap-3"><span className="flex items-center gap-1"><IconBot className="h-3 w-3" />{g.agent_count ?? 0} agents</span><span className="flex items-center gap-1"><IconLayers className="h-3 w-3" />{g.subgrid_count ?? 0}</span></span>
-                    <span className="text-neon opacity-0 transition group-hover:opacity-100"><IconArrowRight className="h-3 w-3" /></span>
+                  {/* footer — agents + the enter action */}
+                  <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-2.5 text-[10px]">
+                    <span className="flex items-center gap-1 text-ink-faint"><IconBot className="h-3 w-3" />{g.agent_count ?? 0} agents</span>
+                    <span className="ng-btn ng-btn--sm shrink-0">Enter Grid <IconArrowRight className="h-3 w-3" /></span>
                   </div>
                 </Link>
               ))}
@@ -186,8 +209,8 @@ export default function GridsExplorePage() {
               {topByPulse.length === 0 && <p className="text-[11px] text-ink-dim">—</p>}
               {topByPulse.map((g, i) => (
                 <Link key={g.grid_id} href={`/grid/${g.slug}`} className="ng-card flex items-center gap-2.5 p-2.5">
-                  <span className="text-sm font-bold text-neon">{i + 1}</span>
-                  <span className="min-w-0 flex-1 truncate text-sm text-ink">{g.name}</span>
+                  <span className="text-xs font-bold text-neon">{i + 1}</span>
+                  <span className="min-w-0 flex-1 truncate text-xs text-ink">{g.name}</span>
                   <Mark plain accent="cyan" className="!text-[10px]">{g.pulse_score}</Mark>
                 </Link>
               ))}

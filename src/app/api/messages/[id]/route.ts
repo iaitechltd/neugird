@@ -25,7 +25,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const body = await request.json().catch(() => null);
   const r = body?.action === "resolve"
     ? Messaging.resolveOffer(String(body.message_id), uid, body.accept === true)
-    : Messaging.send(id, uid, { kind: body?.kind, body: body?.body, offer: body?.offer });
+    : Messaging.send(id, uid, { kind: body?.kind, body: body?.body, offer: body?.offer, attachment: body?.attachment });
   if (r.error) return NextResponse.json({ error: r.error }, { status: STATUS[r.error] ?? 400 });
   // a native agent counterparty answers text messages itself (in persona, brain-driven)
   // before we return, so the refreshed thread already carries its reply

@@ -167,7 +167,7 @@ export default function AgentDetail() {
             <div className="flex items-center gap-3">
               <MatrixAvatar seed={a.agent_id} size={56} />
               <div className="min-w-0">
-                <div className="ng-title text-lg font-bold text-neon text-glow"><Decrypt text={a.name} /></div>
+                <div className="ng-title text-base font-bold text-neon text-glow"><Decrypt text={a.name} /></div>
                 <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]"><Tag>{a.origin ?? "native"}</Tag><Mark plain accent={tierAccent(a.trust_tier)} className="!text-[9px]">{a.trust_tier ?? "trusted"}</Mark></div>
               </div>
             </div>
@@ -298,7 +298,7 @@ export default function AgentDetail() {
                               <span className="text-[10px] text-neon" title="mastery (reuses)">×{s.uses}</span>
                               {listed ? (
                                 <span className="flex items-center gap-1 text-[9px] text-cyan">listed · {listed.installs}↓ <button onClick={() => delistSkill(listed.published_id)} disabled={busy} className="text-ink-faint hover:text-danger">delist</button></span>
-                              ) : (
+                              ) : s.from_published ? null : (
                                 <button onClick={() => setPubFor(pubFor === s.skill_id ? null : s.skill_id)} disabled={busy} className="text-[9px] text-ink-faint transition hover:text-neon">publish →</button>
                               )}
                             </div>
@@ -338,7 +338,7 @@ export default function AgentDetail() {
         {/* RIGHT — signal */}
         <OrbPanel label="Signal" open={rOpen} onToggle={setROpen} widthClass="lg:w-[320px] xl:w-[340px]" className="space-y-3 lg:overflow-y-auto">
           <Sec icon={<IconStar className="h-3.5 w-3.5" />} title="Standing">
-            <div className="flex items-baseline justify-between"><span className="ng-stat__v !text-2xl">{repTotal}</span><span className="flex items-center gap-1 text-[12px] text-neon"><IconStar className="h-3.5 w-3.5" />{(a.rating ?? 0).toFixed(1)}</span></div>
+            <div className="flex items-baseline justify-between"><span className="ng-stat__v !text-xl">{repTotal}</span><span className="flex items-center gap-1 text-[12px] text-neon"><IconStar className="h-3.5 w-3.5" />{(a.rating ?? 0).toFixed(1)}</span></div>
             <div className="text-[11px] text-ink-dim">reputation · rating</div>
             {view.x402_spend > 0 && <div className="mt-2 flex items-center justify-between border-t border-line pt-2 text-[11px]"><span className="text-ink-dim">x402 spend</span><Mark plain className="!text-[11px]">{view.x402_spend} USDC</Mark></div>}
           </Sec>
@@ -379,7 +379,7 @@ export default function AgentDetail() {
           <Sec icon={<IconUser className="h-3.5 w-3.5" />} title="Owner">
             <div className="flex items-center gap-2.5">
               <MatrixAvatar seed={owner?.username ?? a.owner_id} size={36} />
-              <div className="min-w-0"><div className="truncate text-sm text-ink">{owner?.username ?? a.owner_id}</div><div className="text-[10px] text-ink-dim">earns {Math.round((a.owner_split_bps ?? 0) / 100)}% of this agent&#39;s rewards</div></div>
+              <div className="min-w-0"><div className="truncate text-xs text-ink">{owner?.username ?? a.owner_id}</div><div className="text-[10px] text-ink-dim">earns {Math.round((a.owner_split_bps ?? 0) / 100)}% of this agent&#39;s rewards</div></div>
             </div>
           </Sec>
 

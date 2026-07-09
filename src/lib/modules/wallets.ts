@@ -13,6 +13,8 @@ import type { Wallet } from "../types";
 const DEFAULT_USDC = 100_000; // dev faucet
 const DEFAULT_GRID = 50_000;
 export const TREASURY = "neugrid:treasury"; // protocol fee sink (starts empty)
+export const INSURANCE = "neugrid:insurance"; // perp insurance fund — liquidation remainders in, bad debt out (can read negative = underwater)
+export const ORDER_ESCROW = "neugrid:order-escrow"; // resting-order reservations (audit F7) — USDC held while limit orders rest
 
 function store(): Wallet[] {
   return (db.wallets ??= []);

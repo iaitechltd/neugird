@@ -148,7 +148,7 @@ export default function SubgridDetail() {
         {/* LEFT */}
         <OrbPanel side="left" label="SubGrid" open={lOpen} onToggle={setLOpen} widthClass="lg:w-[300px] xl:w-[320px]" className="space-y-3 lg:overflow-y-auto">
           <div className="ng-panel p-4">
-            <div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded text-neon" style={{ background: "radial-gradient(circle, rgba(0,255,0,0.18), #021202)" }}><IconNetwork className="h-5 w-5" /></span><div className="min-w-0"><div className="truncate text-sm font-bold text-ink">{s.name}</div><Tag className="mt-0.5">Team</Tag></div></div>
+            <div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded text-neon" style={{ background: "radial-gradient(circle, rgba(0,255,0,0.18), #021202)" }}><IconNetwork className="h-5 w-5" /></span><div className="min-w-0"><div className="truncate text-xs font-bold text-ink">{s.name}</div><Tag className="mt-0.5">Team</Tag></div></div>
             {s.purpose && <p className="mt-2 text-[11px] italic text-ink-dim">&ldquo;{s.purpose}&rdquo;</p>}
             {grid && <div className="mt-2 text-[10px] text-ink-dim">Parent Grid: <Link href={`/grid/${grid.slug}`} className="text-neon transition hover:text-glow">{grid.name}</Link></div>}
 
@@ -207,7 +207,7 @@ export default function SubgridDetail() {
           <div className="ng-card p-3.5">
             <div className="ng-label mb-2 flex items-center gap-2 !text-ink-dim"><span className="text-neon"><IconShield className="h-3.5 w-3.5" /></span>Admins</div>
             {members.filter((m) => admins.has(m.id)).map((m) => (
-              <div key={m.id} className="flex items-center gap-2.5 py-1.5"><MatrixAvatar seed={m.username} size={28} /><span className="text-sm text-ink">{m.username}</span></div>
+              <div key={m.id} className="flex items-center gap-2.5 py-1.5"><MatrixAvatar seed={m.username} size={28} /><span className="text-xs text-ink">{m.username}</span></div>
             ))}
           </div>
         </OrbPanel>
@@ -323,7 +323,7 @@ export default function SubgridDetail() {
           {grid && (
             <div className="ng-card p-3.5">
               <div className="ng-label mb-2 flex items-center gap-2 !text-ink-dim"><span className="text-neon"><IconGrid className="h-3.5 w-3.5" /></span>Parent Grid</div>
-              <Link href={`/grid/${grid.slug}`} className="block transition hover:text-neon"><div className="text-sm text-ink">{grid.name}</div><div className="text-[10px] text-ink-dim">{grid.category} · {grid.member_count} members</div></Link>
+              <Link href={`/grid/${grid.slug}`} className="block transition hover:text-neon"><div className="text-xs text-ink">{grid.name}</div><div className="text-[10px] text-ink-dim">{grid.category} · {grid.member_count} members</div></Link>
             </div>
           )}
 

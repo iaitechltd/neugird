@@ -14,7 +14,7 @@ import OrbPanel from "@/components/app/OrbPanel";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import { Panel, Tag, Mark, DataRow, IconActivity, IconBriefcase, IconUser, IconSparkle , kpiColor } from "@/components/app/ui";
 import { Area, Radar, Spark, Beeswarm, Donut, RadialBars, Lollipop } from "@/components/app/charts";
-import { PanelChart } from "@/components/app/terminal";
+import { PanelChart, TMeter } from "@/components/app/terminal";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 
 type Talent = {
@@ -22,7 +22,11 @@ type Talent = {
   pulse: number; builder: number; reputation: number; verified: boolean;
   jobs_done: number; earned: number; followers: number;
   headline?: string; rate_usdc?: number; available?: boolean;
+  dims?: Record<string, number>;
 };
+
+/** The four human reputation dimensions — each card draws its real breakdown. */
+const DIM_AXES = ["builder", "backer", "reviewer", "creator"] as const;
 type Trend = { skill: string; count: number; reward: number };
 type Me = {
   id: string; listed: boolean; headline: string; rate_usdc?: number; available: boolean; skills: string[];
@@ -281,14 +285,14 @@ export default function TalentDirectory() {
             </div>
           )}
 
-          {data === null && <div className="columns-2 gap-3 lg:[column-count:var(--cols)]" style={{ "--cols": 3 + closed } as React.CSSProperties}>{[0, 1, 2, 3, 4].map((i) => <div key={i} className="ng-card mb-3 h-56 animate-pulse opacity-40" />)}</div>}
+          {data === null && <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>{[0, 1, 2, 3, 4].map((i) => <div key={i} className="ng-card h-56 animate-pulse opacity-40" />)}</div>}
           {data && filtered.length === 0 && <Panel><div className="p-8 text-center text-sm text-ink-dim">No talent matches this filter.</div></Panel>}
           {filtered.length > 0 && (
-            <div className="columns-2 gap-3 lg:[column-count:var(--cols)]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
+            <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
               {filtered.map((t) => (
-                <div key={t.id} className="ng-card mb-3 flex break-inside-avoid flex-col p-4 transition hover:!border-neon/40">
-                  {/* identity */}
-                  <div className="flex items-start gap-3">
+                <div key={t.id} className="ng-card flex flex-col p-4 transition hover:!border-neon/40">
+                  {/* identity — avatar + name + the earned badge */}
+                  <div className="flex items-center gap-3">
                     <MatrixAvatar seed={t.username} size={52} shape="square" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
@@ -296,33 +300,47 @@ export default function TalentDirectory() {
                         {t.verified && <VerifiedBadge />}
                       </div>
                       <div className="truncate text-[11px] text-ink">{t.headline ?? (t.skills[0] ? `${t.skills[0]} specialist` : "Builder")}</div>
-                      <div className="truncate text-[10px] text-ink-faint">{t.wallet || `@${t.username}`}</div>
                     </div>
                   </div>
 
-                  {/* availability + rate */}
-                  <div className="mt-2.5 flex items-center justify-between text-[11px]">
-                    <span className="flex items-center gap-1.5">
-                      <span className={`h-1.5 w-1.5 rounded-full ${t.available === false ? "bg-ink-faint" : "bg-neon"}`} />
-                      <span className={t.available === false ? "text-ink-faint" : "text-neon"}>{t.available === false ? "Unavailable" : "Open to work"}</span>
-                    </span>
-                    {t.rate_usdc ? <span className="text-cyan">${t.rate_usdc}<span className="text-ink-faint"> / job</span></span> : <span className="text-ink-faint">rate on request</span>}
+                  {/* hero — the reputation headline + this person's reputation.by_dimension meters */}
+                  <div className="mt-3 border-t border-line pt-2.5">
+                    <div className="ng-stat__v !text-2xl text-neon tnum">{t.reputation.toLocaleString()}</div>
+                    <div className="text-[9px] uppercase tracking-wide text-ink-faint">Reputation · by dimension</div>
+                    <div className="mt-1.5">
+                      {DIM_AXES.map((d) => (
+                        <TMeter
+                          key={d}
+                          label={d}
+                          pct={((t.dims?.[d] ?? 0) / Math.max(1, ...DIM_AXES.map((x) => t.dims?.[x] ?? 0))) * 100}
+                          value={Math.round(t.dims?.[d] ?? 0)}
+                          w={10}
+                          className="!py-0 !text-[10px]"
+                        />
+                      ))}
+                    </div>
                   </div>
 
-                  {t.bio && <p className="mt-2.5 line-clamp-3 text-[11px] leading-relaxed text-ink-dim">{t.bio}</p>}
-                  {t.skills.length > 0 && <div className="mt-2.5 flex flex-wrap gap-1.5">{t.skills.slice(0, 6).map((s) => <Tag key={s} className="!text-[9px]">{s}</Tag>)}{t.skills.length > 6 && <span className="text-[9px] text-ink-faint">+{t.skills.length - 6}</span>}</div>}
-
-                  {/* the track record — why you'd hire them */}
-                  <div className="mt-3 grid grid-cols-2 gap-x-3 border-t border-line pt-2.5">
-                    <div className="flex items-baseline justify-between py-1 text-[11px]"><span className="text-ink-faint">Reputation</span><span className="font-bold text-neon">{t.reputation}</span></div>
-                    <div className="flex items-baseline justify-between py-1 text-[11px]"><span className="text-ink-faint">Earned</span><span className="font-bold text-cyan">${t.earned.toLocaleString()}</span></div>
-                    <div className="flex items-baseline justify-between py-1 text-[11px]"><span className="text-ink-faint">Jobs done</span><span className="text-ink">{t.jobs_done}</span></div>
-                    <div className="flex items-baseline justify-between py-1 text-[11px]"><span className="text-ink-faint">Followers</span><span className="text-ink">{t.followers}</span></div>
+                  {/* the record — clean rows, trade-card style */}
+                  <div className="mt-3 divide-y divide-line border-t border-line text-[11px]">
+                    <div className="ng-row !py-1.5"><span className="ng-row__k">Earned</span><span className="ng-row__v text-cyan">${t.earned.toLocaleString()}</span></div>
+                    <div className="ng-row !py-1.5"><span className="ng-row__k">Jobs done</span><span className="ng-row__v font-normal text-ink-dim tnum">{t.jobs_done}</span></div>
+                    <div className="ng-row !py-1.5"><span className="ng-row__k">Rate</span>{t.rate_usdc ? <span className="ng-row__v text-cyan">${t.rate_usdc}<span className="font-normal text-ink-faint"> / job</span></span> : <span className="ng-row__v font-normal text-ink-faint">on request</span>}</div>
                   </div>
 
-                  <div className="mt-3 flex gap-2">
-                    <Link href={`/messages?to=${t.id}`} className="ng-btn ng-btn-primary ng-btn--sm flex-1 justify-center">Hire</Link>
-                    <Link href={`/talent/${t.id}`} className="ng-btn ng-btn--sm flex-1 justify-center">Track record</Link>
+                  {/* footer — availability + ≤2 skill chips + the actions */}
+                  <div className="mt-3 border-t border-line pt-2.5">
+                    <div className="flex items-center justify-between gap-2 text-[10px]">
+                      <span className="flex shrink-0 items-center gap-1.5">
+                        <span className={`h-1.5 w-1.5 rounded-full ${t.available === false ? "bg-ink-faint" : "bg-neon"}`} />
+                        <span className={t.available === false ? "text-ink-faint" : "text-neon"}>{t.available === false ? "Unavailable" : "Open to work"}</span>
+                      </span>
+                      {t.skills.length > 0 && <span className="flex min-w-0 gap-1.5">{t.skills.slice(0, 2).map((s) => <Tag key={s} className="!text-[9px]">{s}</Tag>)}{t.skills.length > 2 && <span className="text-[9px] text-ink-faint">+{t.skills.length - 2}</span>}</span>}
+                    </div>
+                    <div className="mt-2.5 flex gap-2">
+                      <Link href={`/messages?to=${t.id}`} className="ng-btn ng-btn-primary ng-btn--sm flex-1 justify-center">Hire</Link>
+                      <Link href={`/talent/${t.id}`} className="ng-btn ng-btn--sm flex-1 justify-center">Track record</Link>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -369,7 +387,7 @@ export default function TalentDirectory() {
 
                 <div className="ng-label mb-1 mt-5 !text-ink-dim">Revenue</div>
                 <div className="flex items-baseline justify-between">
-                  <span className="ng-stat__v !text-lg"><span className="text-cyan">$</span><CountUp key={me.income_total} value={me.income_total} /></span>
+                  <span className="ng-stat__v !text-base"><span className="text-cyan">$</span><CountUp key={me.income_total} value={me.income_total} /></span>
                   <span className="text-[10px] text-ink-faint">lifetime, verified payouts</span>
                 </div>
                 <Area data={me.income_series} gid="talent-income" w={280} h={84} />
@@ -378,7 +396,7 @@ export default function TalentDirectory() {
                 <div className="flex items-center justify-between">
                   <Spark data={me.engagement} gid="talent-eng" up={me.engagement_delta >= 0} w={170} h={40} />
                   <div className="text-right">
-                    <div className={`text-sm font-bold ${me.engagement_delta >= 0 ? "text-neon" : "text-red-400"}`}>{me.engagement_delta >= 0 ? "+" : ""}{me.engagement_delta}</div>
+                    <div className={`text-xs font-bold ${me.engagement_delta >= 0 ? "text-neon" : "text-red-400"}`}>{me.engagement_delta >= 0 ? "+" : ""}{me.engagement_delta}</div>
                     <div className="text-[9px] uppercase tracking-wider text-ink-faint">vs prior 4w</div>
                   </div>
                 </div>

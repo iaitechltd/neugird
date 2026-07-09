@@ -34,6 +34,7 @@ create table if not exists users (
   pulse_score      numeric     not null default 0,
   reputation       jsonb,      -- ReputationScore (soulbound, multi-dimensional)
   reward           jsonb,      -- RewardLedger (claimable, vests at TGE)
+  humanity         jsonb,      -- HumanityRecord (PoH tier — docs/POH_GATE.md)
   joined_grids     text[]      not null default '{}',
   created_at       timestamptz not null default now()
 );
@@ -572,6 +573,8 @@ create table if not exists orders (
   leverage   numeric,    -- perp entry leverage
   take_profit       numeric, -- entry-time triggers, applied when the position opens
   stop_loss         numeric,
+  escrow_quote      numeric, -- escrow-on-place (audit F7): reserved USDC while resting
+  escrow_base       numeric, -- escrow-on-place: reserved base tokens while resting
   trailing_stop_pct numeric
 );
 
@@ -734,6 +737,7 @@ create table if not exists direct_messages (
   kind            text        not null default 'text', -- text | deal | hire
   body            text        not null default '',
   offer           jsonb,
+  attachment      jsonb,      -- DMAttachment (inline data-URI file/pic, capped)
   read_by         text[]      not null default '{}',
   created_at      timestamptz not null default now()
 );

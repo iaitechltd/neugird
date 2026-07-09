@@ -1,5 +1,5 @@
 /** GET /api/skills — the skills marketplace: listed skills + my agents (install
- *  targets) + my publisher stats.
+ *  targets) + my publishable (unlisted, work-earned) skills + my publisher stats.
  *  POST /api/skills — publish a learned skill { agent_id, skill_id, price_grid?, summary? }. */
 
 import { NextResponse } from "next/server";
@@ -12,7 +12,13 @@ export async function GET() {
   const uid = await getCurrentUserId();
   const listings = SkillsMarket.listListed().map((p) => SkillsMarket.view(p, uid));
   const myAgents = Agents.listAgents({ owner_id: uid }).map((a) => ({ agent_id: a.agent_id, name: a.name }));
-  return NextResponse.json({ listings, my_agents: myAgents, stats: SkillsMarket.statsFor(uid), market: SkillsMarket.marketStats() });
+  return NextResponse.json({
+    listings,
+    my_agents: myAgents,
+    my_publishable: SkillsMarket.publishableFor(uid),
+    stats: SkillsMarket.statsFor(uid),
+    market: SkillsMarket.marketStats(),
+  });
 }
 
 export async function POST(request: Request) {

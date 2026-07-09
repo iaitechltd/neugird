@@ -580,6 +580,28 @@ export default function EchoPage() {
               <p className="mt-1.5 pl-6 text-[10px] text-ink-faint">Questions → your cofounder · &ldquo;build …&rdquo; → the Builder · /analyze → Analyst · /deploy · /fund</p>
             </div>
             <div className="flex flex-wrap items-center gap-2"><span className="text-[10px] uppercase tracking-[0.14em] text-ink-faint">Try</span>{["build a tip jar for creators", "/analyze which market is strongest", "what should I do next?", "/deploy"].map((c) => <button key={c} onClick={() => hubGo(c)} className="ng-btn ng-btn-ghost ng-btn--sm">{c}</button>)}</div>
+
+            {/* MY BUILDS — the full build history, front and center (founder: "where
+                can I see what I built before?"). Every row resumes into the Builder. */}
+            {pastBuilds.length > 0 && (
+              <div className="ng-panel p-4">
+                <SecLabel icon={<IconCode className="h-3.5 w-3.5" />} action={<Mark plain className="!text-[10px]">{pastBuilds.length} build{pastBuilds.length === 1 ? "" : "s"} · witnessed</Mark>}>MY BUILDS</SecLabel>
+                <div className="max-h-[300px] divide-y divide-line overflow-y-auto">
+                  {pastBuilds.map((b) => (
+                    <div key={b.build_id} className="flex items-center gap-3 py-2">
+                      <span className="ng-led shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[12.5px] text-ink">{b.title}</div>
+                        <div className="truncate text-[10px] text-ink-faint">v{b.version ?? 1} · {b.artifact.files?.length ?? 0} files{b.revisions?.length ? ` · ${b.revisions.length} rev` : ""} · {new Date(b.created_at).toLocaleDateString()}</div>
+                      </div>
+                      {b.deployment && <Mark plain accent="cyan" className="!text-[9px] shrink-0">live</Mark>}
+                      {b.proposal_id && <Mark className="!text-[9px] shrink-0">raising</Mark>}
+                      <button onClick={() => { resumeBuild(b); setMode("builder"); }} className="ng-btn ng-btn--sm shrink-0">Open</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div>
               <div className="ng-label mb-2 !text-ink-dim">Choose a mode</div>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2">{MODES.map((m) => (
@@ -640,22 +662,23 @@ export default function EchoPage() {
               <div className="mt-2 flex flex-wrap gap-1.5">{["a Solana yield vault", "an NFT mint with a candy machine", "an AI research agent"].map((ex) => <button key={ex} onClick={() => setBPrompt("Build " + ex)} disabled={bBuilding} className="ng-btn ng-btn-ghost ng-btn--sm">{ex}</button>)}</div>
             </Card>
 
-            {/* idle — resume a past real build (the iterate loop survives page reloads) */}
+            {/* idle — MY BUILDS: the full history (the iterate loop survives page reloads) */}
             {!bBuild && !bBuilding && pastBuilds.length > 0 && (
               <Card>
-                <SecLabel icon={<IconCode className="h-3.5 w-3.5" />} action={<Mark plain className="!text-[10px]">{pastBuilds.length} real build{pastBuilds.length === 1 ? "" : "s"}</Mark>}>CONTINUE A BUILD</SecLabel>
-                <div className="divide-y divide-line">
-                  {pastBuilds.slice(0, 6).map((b) => (
+                <SecLabel icon={<IconCode className="h-3.5 w-3.5" />} action={<Mark plain className="!text-[10px]">{pastBuilds.length} real build{pastBuilds.length === 1 ? "" : "s"}</Mark>}>MY BUILDS</SecLabel>
+                <div className="max-h-[320px] divide-y divide-line overflow-y-auto">
+                  {pastBuilds.map((b) => (
                     <div key={b.build_id} className="flex items-center gap-3 py-2.5">
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-[13px] text-ink">{b.title}</div>
-                        <div className="truncate text-[10px] text-ink-dim">v{b.version ?? 1} · {b.artifact.files!.length} files{b.revisions?.length ? ` · ${b.revisions.length} revision${b.revisions.length === 1 ? "" : "s"}` : ""} · {b.stack.slice(0, 3).join(" · ")}</div>
+                        <div className="truncate text-[10px] text-ink-dim">v{b.version ?? 1} · {b.artifact.files!.length} files{b.revisions?.length ? ` · ${b.revisions.length} revision${b.revisions.length === 1 ? "" : "s"}` : ""} · {b.stack.slice(0, 3).join(" · ")} · {new Date(b.created_at).toLocaleDateString()}</div>
                       </div>
+                      {b.deployment && <Mark plain accent="cyan" className="!text-[9px] shrink-0">live</Mark>}
                       <button onClick={() => resumeBuild(b)} className="ng-btn ng-btn--sm shrink-0">Continue</button>
                     </div>
                   ))}
                 </div>
-                <p className="mt-2 text-[10px] text-ink-faint">Re-open any witnessed build — preview it, keep revising, or take it to the Launchpad.</p>
+                <p className="mt-2 text-[10px] text-ink-faint">Every witnessed build you&apos;ve made — preview it, keep revising, or take it to the Launchpad.</p>
               </Card>
             )}
 

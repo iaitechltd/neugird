@@ -23,9 +23,11 @@ export async function GET() {
     .filter((e) => e.weight > 0)
     .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
 
-  // GRID accrual curve (cumulative, sybil-adjusted at the end state)
+  // GRID accrual curve (cumulative) — the ledger's own event set (includes the
+  // user's agents' work; excludes reward_excluded / non-rewardable actions), so
+  // the curve ends exactly at the ledger's accrued number
   let run = 0;
-  const accrual = events.map((e) => (run += Math.max(0, e.weight) * Rewards.GRID_PER_PULSE));
+  const accrual = Rewards.rewardEventsFor(uid).map((e) => (run += Math.max(0, e.weight) * Rewards.GRID_PER_PULSE));
   while (accrual.length < 2) accrual.unshift(0);
 
   // weekly activity — reward events per week, trailing 12 weeks
@@ -36,12 +38,12 @@ export async function GET() {
     if (idx >= 0 && idx < 12) weekly[idx] += 1;
   }
 
-  // the reward feed — newest first, capped
+  // the reward feed — newest first, capped; grid=0 ⇒ reputation-only event
   const feed = [...events].reverse().slice(0, 25).map((e) => ({
     action: e.action_type,
     reason: e.reason,
     pulse: e.weight,
-    grid: Math.max(0, e.weight) * Rewards.GRID_PER_PULSE,
+    grid: Rewards.allocatesTo(e, uid) ? Math.max(0, e.weight) * Rewards.GRID_PER_PULSE : 0,
     at: e.timestamp,
   }));
 

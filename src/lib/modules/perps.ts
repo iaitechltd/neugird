@@ -13,6 +13,7 @@
 
 import { db } from "../store";
 import { newId, nowISO } from "../id";
+import * as Params from "./params";
 import * as Wallets from "./wallets";
 import type { LimitOrder, Position, PositionSide } from "../types";
 
@@ -25,12 +26,44 @@ function store(): Position[] {
 function marketById(id: string) {
   return db.markets.find((m) => m.market_id === id);
 }
-/** Mark price from the spot AMM (the perp oracle). */
+/** Instantaneous mark from the spot AMM. */
 export function markPrice(market_id: string): number {
   const m = marketById(market_id);
   if (!m) return 0;
   const b = m.base_reserve ?? 0;
   return b > 0 ? (m.quote_reserve ?? 0) / b : m.price ?? 0;
+}
+
+/* --- Oracle hardening (audit F2): entries, triggers and settlements price off
+ * the EFFECTIVE mark — the raw spot CLAMPED into a band around the 5-minute
+ * time-weighted average of real trades. One pool-shoving swap barely moves the
+ * TWAP, so it can no longer force liquidations by itself; a genuine sustained
+ * move converges within the window. --- */
+const TWAP_WINDOW_MS = 5 * 60 * 1000;
+const MARK_BAND = 0.02; // spot may deviate ±2% from TWAP for pricing purposes
+
+/** Time-weighted average price over the window, from the real trade log. */
+export function markTwap(market_id: string, windowMs = TWAP_WINDOW_MS): number {
+  const spot = markPrice(market_id);
+  const now = Date.now();
+  const since = now - windowMs;
+  const win = db.trades
+    .filter((t) => t.market_id === market_id && Date.parse(t.at) >= since)
+    .map((t) => ({ at: Date.parse(t.at), price: t.price }))
+    .sort((a, b) => a.at - b.at);
+  if (!win.length) return spot;
+  let acc = 0, lastPrice = win[0].price, lastAt = since;
+  for (const t of win) { acc += lastPrice * (t.at - lastAt); lastPrice = t.price; lastAt = t.at; }
+  acc += lastPrice * (now - lastAt);
+  return acc / windowMs;
+}
+
+/** The mark perps actually price with: spot clamped into the TWAP band. */
+export function markEffective(market_id: string): number {
+  const spot = markPrice(market_id);
+  const twap = markTwap(market_id);
+  if (!(twap > 0)) return spot;
+  return Math.max(twap * (1 - MARK_BAND), Math.min(twap * (1 + MARK_BAND), spot));
 }
 
 export function pnlOf(p: Position, mark: number): number {
@@ -110,8 +143,14 @@ export function openPosition(market_id: string, user_id: string, side: PositionS
   if (side !== "long" && side !== "short") return { error: "bad_side" };
   if (!(collateral > 0)) return { error: "bad_amount" };
   const lev = Math.max(1, Math.min(MAX_LEVERAGE, Math.floor(leverage || 1)));
-  const entry = markPrice(market_id);
+  const entry = markEffective(market_id); // manipulation-resistant entry (audit F2)
   if (!(entry > 0)) return { error: "no_price" };
+  // OI CAP (audit F5): total open interest (incl. this position) stays under the
+  // governable fraction of pool TVL — leverage never dwarfs the book pricing it.
+  const oi = openInterest(market_id);
+  const poolTvl = 2 * (m.quote_reserve ?? 0);
+  const cap = poolTvl * (Params.get("perp_oi_cap_bps") / 10000);
+  if (oi.total + collateral * lev > cap) return { error: "oi_cap" };
   if (!Wallets.debitUsdc(user_id, collateral)) return { error: "insufficient_usdc" };
   const size = (collateral * lev) / entry;
   const liq = side === "long" ? entry * (1 - 1 / lev + MMR) : entry * (1 + 1 / lev - MMR);
@@ -135,8 +174,8 @@ export function closePosition(position_id: string, user_id: string): { position?
   if (!p) return { error: "not_found" };
   if (p.user_id !== user_id) return { error: "not_owner" };
   if (p.status !== "open") return { error: "not_open" };
-  accrueFunding(p, markPrice(p.market_id), fundingRate(p.market_id), Date.now()); // settle funding to now
-  const pnl = closeAt(p, markPrice(p.market_id), "manual");
+  accrueFunding(p, markEffective(p.market_id), fundingRate(p.market_id), Date.now()); // settle funding to now
+  const pnl = closeAt(p, markEffective(p.market_id), "manual");
   return { position: p, pnl };
 }
 
@@ -165,14 +204,23 @@ export function setTriggers(position_id: string, user_id: string, tp: number | n
  *  crossed — liquidation (price hit or margin gone), take-profit, or stop-loss.
  *  Called by Markets.trade after each swap moves the price. */
 export function settle(market_id: string): void {
-  const mark = markPrice(market_id);
+  const mark = markEffective(market_id); // banded mark — see oracle hardening above
   const rate = fundingRate(market_id);
   const now = Date.now();
   for (const p of store()) {
     if (p.status !== "open" || p.market_id !== market_id) continue;
     accrueFunding(p, mark, rate, now);
     const liqHit = (p.side === "long" ? mark <= p.liquidation_price : mark >= p.liquidation_price) || p.margin <= 1e-9;
-    if (liqHit) { p.status = "liquidated"; p.pnl = -p.margin; p.close_reason = "liquidation"; p.closed_at = nowISO(); continue; }
+    if (liqHit) {
+      // INSURANCE FUND (audit F4): the remaining margin at the liquidation mark
+      // (≈ collateral·MMR·lev) goes to the fund instead of vanishing; a gapped
+      // mark whose loss EXCEEDS margin draws the shortfall FROM the fund (bad
+      // debt absorbed — the trader never owes more than margin; a negative fund
+      // balance reads "underwater" and is the signal to recapitalize).
+      const remainder = p.margin + pnlOf(p, mark);
+      Wallets.get(Wallets.INSURANCE).usdc += remainder;
+      p.status = "liquidated"; p.pnl = -p.margin; p.close_reason = "liquidation"; p.closed_at = nowISO(); continue;
+    }
     const tpHit = p.take_profit != null && (p.side === "long" ? mark >= p.take_profit : mark <= p.take_profit);
     const slHit = p.stop_loss != null && (p.side === "long" ? mark <= p.stop_loss : mark >= p.stop_loss);
     // trailing stop: ratchet the anchor with the favorable extreme, close on pullback
@@ -198,6 +246,12 @@ function fillPerpEntries(market_id: string, mark: number): void {
     if (o.status !== "open" || o.kind !== "perp_entry" || o.market_id !== market_id) continue;
     const hit = o.pside === "long" ? mark <= o.price : mark >= o.price;
     if (!hit) continue;
+    // escrowed entry (audit F7): hand the reserved collateral back for openPosition
+    // to debit; on any failure the funds simply stay with the user (auto-refund).
+    if (o.escrow_quote && o.escrow_quote > 0 && Wallets.debitUsdc(Wallets.ORDER_ESCROW, o.escrow_quote)) {
+      Wallets.creditUsdc(o.user_id, o.escrow_quote);
+      o.escrow_quote = 0;
+    }
     const r = openPosition(market_id, o.user_id, o.pside ?? "long", o.collateral ?? 0, o.leverage ?? 1, {
       take_profit: o.take_profit, stop_loss: o.stop_loss, trailing_stop_pct: o.trailing_stop_pct,
     });
@@ -213,23 +267,32 @@ export function placeLimitEntry(market_id: string, user_id: string, side: Positi
   if (!m) return { error: "no_market" };
   if (m.stage !== "futures") return { error: "futures_only" };
   if (!(price > 0) || !(collateral > 0)) return { error: "bad_input" };
-  const mark = markPrice(market_id);
+  const mark = markEffective(market_id);
   if (side === "long" ? mark <= price : mark >= price) {
     const r = openPosition(market_id, user_id, side, collateral, leverage, triggers);
     if (r.error) return { error: r.error };
     return { position: r.position };
   }
+  // ESCROW-ON-PLACE (audit F7): the collateral reserves now, not at trigger time
+  if (!Wallets.debitUsdc(user_id, collateral)) return { error: "insufficient_usdc" };
+  Wallets.creditUsdc(Wallets.ORDER_ESCROW, collateral);
   const order: LimitOrder = {
     order_id: newId("ord"), market_id, user_id,
     side: side === "long" ? ("buy" as const) : ("sell" as const),
     price, qty: 0, filled: 0, status: "open" as const, created_at: nowISO(),
-    kind: "perp_entry" as const, pside: side, collateral, leverage: Math.max(1, Math.min(MAX_LEVERAGE, Math.floor(leverage || 1))),
+    kind: "perp_entry" as const, pside: side, collateral, escrow_quote: collateral, leverage: Math.max(1, Math.min(MAX_LEVERAGE, Math.floor(leverage || 1))),
     ...(triggers?.take_profit && triggers.take_profit > 0 ? { take_profit: triggers.take_profit } : {}),
     ...(triggers?.stop_loss && triggers.stop_loss > 0 ? { stop_loss: triggers.stop_loss } : {}),
     ...(triggers?.trailing_stop_pct && triggers.trailing_stop_pct > 0 ? { trailing_stop_pct: Math.min(50, triggers.trailing_stop_pct) } : {}),
   };
   (db.orders ??= []).push(order);
   return { order };
+}
+
+/** Insurance-fund state (audit F4): liquidation remainders accumulate here and
+ *  bad debt draws it down. Negative = underwater (recapitalize from treasury). */
+export function insurance(): { balance: number } {
+  return { balance: Wallets.get(Wallets.INSURANCE).usdc };
 }
 
 /** @deprecated alias — use settle(). Kept so existing call sites stay valid. */
@@ -243,6 +306,6 @@ export function openPositionsFor(market_id: string, user_id: string): Position[]
 
 /** Open positions enriched with the live mark + unrealized PnL, for the UI. */
 export function positionView(market_id: string, user_id: string) {
-  const mark = markPrice(market_id);
+  const mark = markEffective(market_id);
   return openPositionsFor(market_id, user_id).map((p) => ({ ...p, mark, upnl: pnlOf(p, mark) }));
 }

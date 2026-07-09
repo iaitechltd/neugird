@@ -56,7 +56,7 @@ export default function UserMenu() {
                 </Link>
               ))}
               <div className="my-1 border-t border-neon/[0.07]" />
-              <div className="px-3 py-1.5 text-[10px] leading-relaxed text-ink-faint">{"// "}connect wallet &amp; sign out from the wallet button in the top bar</div>
+              <div className="px-3 py-1.5 text-[10px] leading-relaxed text-ink-faint">{"// "}connect &amp; manage your wallet in Settings</div>
             </div>
           </div>
         </>

@@ -20,6 +20,7 @@
 
 import { db } from "../store";
 import { newId, nowISO } from "../id";
+import * as Humanity from "./humanity";
 import * as Params from "./params";
 import * as Wallets from "./wallets";
 
@@ -41,6 +42,9 @@ export function claimStarterGrant(user_id: string): { granted?: number; error?: 
   if (!wallet) return { error: "connect_wallet_first" };
   if (grantOf(user_id)) return { error: "already_claimed" };
   if (walletUsed(wallet)) return { error: "wallet_already_used" };
+  // PoH gate (docs/POH_GATE.md): governance can require an established wallet /
+  // verified human before the compute subsidy pays out. Default = open.
+  if (!Humanity.starterGateOk(user_id)) return { error: "verification_required" };
   const amount = Params.get("starter_credit_grid");
   if (!(amount > 0)) return { error: "grant_disabled" }; // governance turned it off
   Wallets.grantStarterCredit(user_id, amount);
@@ -61,6 +65,7 @@ export interface StarterState {
   wallet_connected: boolean;
   claimed: boolean;
   eligible: boolean; // can claim right now
+  needs_verification: boolean; // blocked ONLY by the PoH gate (→ /rewards to verify)
   credit: number; // unspent starter credit
   amount: number; // current grant size (governable)
   builds: number; // owner's Echo builds — step 3 completes the path
@@ -75,8 +80,11 @@ export function starterState(user_id: string): StarterState {
   const credit = Wallets.get(user_id).starter_credit ?? 0;
   const builds = db.builds.filter((b) => b.owner_id === user_id).length;
   const amount = Params.get("starter_credit_grid");
-  const eligible = wallet_connected && !claimed && amount > 0 && !walletUsed(wallet as string);
+  const gate_ok = Humanity.starterGateOk(user_id);
+  const otherwise_eligible = wallet_connected && !claimed && amount > 0 && !walletUsed(wallet as string);
+  const needs_verification = otherwise_eligible && !gate_ok;
+  const eligible = otherwise_eligible && gate_ok;
   // live until the first build ships; after that the economy takes over
-  const show = builds === 0 && (eligible || credit > 0 || !wallet_connected);
-  return { wallet_connected, claimed, eligible, credit, amount, builds, show };
+  const show = builds === 0 && (eligible || needs_verification || credit > 0 || !wallet_connected);
+  return { wallet_connected, claimed, eligible, needs_verification, credit, amount, builds, show };
 }

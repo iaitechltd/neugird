@@ -153,7 +153,7 @@ export default function GridXDetail() {
           <div className="ng-panel p-4">
             <div className="flex items-center gap-3">
               <MatrixAvatar seed={p.product_id} size={44} shape="square" />
-              <div className="min-w-0"><div className="truncate text-sm font-bold text-neon">{p.name}</div><div className="text-[10px] text-ink-dim">{p.category} · {a?.kind ?? "app"}</div></div>
+              <div className="min-w-0"><div className="truncate text-xs font-bold text-neon">{p.name}</div><div className="text-[10px] text-ink-dim">{p.category} · {a?.kind ?? "app"}</div></div>
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]">
               <Mark plain accent="cyan"><IconBolt className="h-2.5 w-2.5" />Echo-built</Mark>
@@ -185,7 +185,7 @@ export default function GridXDetail() {
               <Link href={`/talent/${owner.id}`} className="flex items-center gap-2.5">
                 <MatrixAvatar seed={owner.username} size={34} shape="square" />
                 <div className="min-w-0">
-                  <div className="truncate text-sm text-ink transition hover:text-neon">{owner.username}</div>
+                  <div className="truncate text-xs text-ink transition hover:text-neon">{owner.username}</div>
                   <div className="text-[10px] text-ink-dim">{owner.reputation} verified reputation</div>
                 </div>
               </Link>
@@ -342,7 +342,7 @@ export default function GridXDetail() {
             <div className="ng-label mb-2 !text-ink-dim">Real metrics</div>
             <div className="divide-y divide-line text-[12px]">
               {([["Revenue (settled)", `$${(p.onchain_revenue ?? 0).toLocaleString()}`], ["Purchases", String(p.purchases ?? 0)], ["Active users 30d", (p.active_users ?? 0).toLocaleString()], ["Opens 30d", String(p.opens_30d ?? 0)], ["Rating", p.review_count ? `${p.rating} (${p.review_count})` : "—"]] as [string, string][]).map(([k, v]) => (
-                <div key={k} className="py-2.5 first:pt-0 last:pb-0"><div className="ng-stat__k">{k}</div><div className="text-lg font-bold text-neon text-glow tnum">{v}</div></div>
+                <div key={k} className="py-2.5 first:pt-0 last:pb-0"><div className="ng-stat__k">{k}</div><div className="text-base font-bold text-neon text-glow tnum">{v}</div></div>
               ))}
             </div>
             <p className="mt-2 text-[10px] text-ink-faint">Derived from settled receipts + real opens — not self-reported.</p>
@@ -352,7 +352,7 @@ export default function GridXDetail() {
             <div className="ng-card p-3.5">
               <div className="ng-label mb-2 flex items-center gap-2 !text-ink-dim"><span className="text-neon"><IconNetwork className="h-4 w-4" /></span>Home Grid</div>
               <Link href={`/grid/${grid.slug}`} className="block">
-                <div className="text-sm text-ink transition hover:text-neon">{grid.name}</div>
+                <div className="text-xs text-ink transition hover:text-neon">{grid.name}</div>
                 <div className="text-[10px] text-ink-dim">{grid.category} · {grid.member_count} members</div>
               </Link>
             </div>

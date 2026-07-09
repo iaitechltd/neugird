@@ -4,7 +4,8 @@
  * Skills Marketplace — the agent economy's second earning surface.
  * Browse learned skills other builders published; install one onto your agent for
  * GRID. Trust is provenance: mastery earned, install count, author reputation.
- * 3-panel signature layout.
+ * Publish + price your own agents' work-earned skills right here.
+ * 3-panel signature layout · rail charts: PolarArea · Histogram | Lollipop · Waterfall.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -14,26 +15,49 @@ import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, Tag, Mark, DataRow, IconLayers, IconBolt, IconBot, IconActivity, kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import { PanelChart } from "@/components/app/terminal";
-import { LabeledBars } from "@/components/app/charts";
+import { PolarArea, Histogram, Lollipop, Waterfall, Ring } from "@/components/app/charts";
 
 type Listing = {
   published_id: string; skill_id: string; title: string; domain: string; summary?: string;
-  source_uses: number; price_grid: number; installs: number;
+  source_uses: number; price_grid: number; installs: number; created_at: string; recipe_chars: number;
   author_id: string; author_name: string; author_reputation: number; author_agent_name: string; mine: boolean;
 };
+type Publishable = { agent_id: string; agent_name: string; skill_id: string; title: string; domain: string; uses: number };
 type Data = {
   listings: Listing[];
   my_agents: { agent_id: string; name: string }[];
+  my_publishable: Publishable[];
   stats: { published: number; installs: number; earned_grid: number };
-  market: { listings: number; installs: number; authors: number; volume_grid: number };
+  market: { listings: number; installs: number; authors: number; volume_grid: number; author_take_grid: number; fees_grid: number };
 };
+type SortKey = "newest" | "installs" | "price" | "mastery";
+
+/** Inline reprice + delist for the viewer's own listing (key-remounted on price change). */
+function OwnControls({ p, busy, onPrice, onDelist }: { p: Listing; busy: boolean; onPrice: (p: Listing, v: number) => void; onDelist: (p: Listing) => void }) {
+  const [v, setV] = useState(String(p.price_grid));
+  const parsed = Number(v);
+  const valid = Number.isFinite(parsed) && parsed >= 0;
+  return (
+    <div className="flex items-center gap-1.5">
+      <input value={v} onChange={(e) => setV(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" aria-label="Price in GRID" className="ng-input w-16 !py-1 text-center text-[11px]" />
+      <span className="text-[9px] text-ink-faint">GRID</span>
+      <button disabled={busy || !valid || parsed === p.price_grid} onClick={() => onPrice(p, parsed)} className="ng-btn ng-btn--sm disabled:opacity-40">set price</button>
+      <button disabled={busy} onClick={() => onDelist(p)} className="ng-btn ng-btn-danger ng-btn--sm ml-auto disabled:opacity-40">delist</button>
+    </div>
+  );
+}
 
 export default function SkillsPage() {
   const [data, setData] = useState<Data | null>(null);
   const [target, setTarget] = useState<string>("");
   const [q, setQ] = useState("");
+  const [sort, setSort] = useState<SortKey>("newest");
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // publish form
+  const [pubSel, setPubSel] = useState("");
+  const [pubPrice, setPubPrice] = useState("");
+  const [pubSummary, setPubSummary] = useState("");
   const [lOpen, setLOpen] = useState(true);
   const [rOpen, setROpen] = useState(true);
   const closed = (lOpen ? 0 : 1) + (rOpen ? 0 : 1);
@@ -64,12 +88,53 @@ export default function SkillsPage() {
     } finally { setBusy(false); }
   }
 
+  async function publishSkill() {
+    if (busy || !pubSel) return;
+    const [agent_id, skill_id] = pubSel.split("::");
+    setBusy(true);
+    try {
+      const r = await fetch("/api/skills", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ agent_id, skill_id, price_grid: Math.max(0, Number(pubPrice) || 0), summary: pubSummary.trim() || undefined }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const e = d.error as string;
+        notify(e === "already_listed" ? "Already listed" : e === "not_original" ? "Bought skills can't be re-sold" : "Publish failed");
+        return;
+      }
+      notify("Published — your skill is on the market");
+      setPubSel(""); setPubPrice(""); setPubSummary("");
+      reload();
+    } finally { setBusy(false); }
+  }
+
+  async function setPrice(p: Listing, v: number) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/skills/${p.published_id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ price_grid: v }) });
+      notify(r.ok ? (v > 0 ? `Repriced · ${v} GRID` : "Repriced · free") : "Reprice failed");
+      if (r.ok) reload();
+    } finally { setBusy(false); }
+  }
+
+  async function delist(p: Listing) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/skills/${p.published_id}`, { method: "DELETE" });
+      notify(r.ok ? "Delisted — installed copies keep working" : "Delist failed");
+      if (r.ok) reload();
+    } finally { setBusy(false); }
+  }
+
   const listings = useMemo(() => data?.listings ?? [], [data]);
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
-    if (!s) return listings;
-    return listings.filter((p) => p.title.toLowerCase().includes(s) || p.domain.toLowerCase().includes(s) || p.author_name.toLowerCase().includes(s));
-  }, [listings, q]);
+    const base = s ? listings.filter((p) => p.title.toLowerCase().includes(s) || p.domain.toLowerCase().includes(s) || p.author_name.toLowerCase().includes(s)) : [...listings];
+    if (sort === "installs") base.sort((a, b) => b.installs - a.installs);
+    else if (sort === "price") base.sort((a, b) => a.price_grid - b.price_grid);
+    else if (sort === "mastery") base.sort((a, b) => b.source_uses - a.source_uses);
+    return base; // "newest" keeps store order (newest first)
+  }, [listings, q, sort]);
 
   const kpis = [
     { Icon: IconLayers, title: "Skills listed", v: data?.market.listings ?? 0, sub: "published know-how" },
@@ -78,7 +143,44 @@ export default function SkillsPage() {
     { Icon: IconActivity, title: "Volume", v: data?.market.volume_grid ?? 0, sub: "GRID through the market" },
     { Icon: IconBolt, title: "You earned", v: data?.stats.earned_grid ?? 0, sub: "GRID from your skills" },
   ];
-  const topInstalled = useMemo(() => [...listings].sort((a, b) => b.installs - a.installs).filter((p) => p.installs > 0).slice(0, 6).map((p) => ({ label: p.title, value: p.installs })), [listings]);
+
+  // card visual scale — the market's most-proven listing (real payload values only)
+  const maxUses = useMemo(() => Math.max(1, ...listings.map((l) => l.source_uses)), [listings]);
+
+  // ---- rail-chart data (all REAL; each guarded non-empty) ----
+  // LEFT 1 · PolarArea — what the market knows (listings per domain)
+  const domainMix = useMemo(() => {
+    const by = new Map<string, number>();
+    for (const p of listings) by.set(p.domain, (by.get(p.domain) ?? 0) + 1);
+    const top = [...by.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+    return { labels: top.map(([d]) => (d.length > 8 ? d.slice(0, 7) + "…" : d)), data: top.map(([, n]) => n) };
+  }, [listings]);
+  // LEFT 2 · Histogram — price spread across every listing (0 = free)
+  const priceSpread = useMemo(() => listings.map((p) => p.price_grid), [listings]);
+  const priceRead = useMemo(() => {
+    if (!priceSpread.length) return "—";
+    const min = Math.min(...priceSpread), max = Math.max(...priceSpread);
+    if (max === 0) return "all free";
+    return `${min === 0 ? "free" : min}–${max} GRID`;
+  }, [priceSpread]);
+  // RIGHT 1 · Lollipop — most installed vs the market average
+  const topInstalled = useMemo(() =>
+    [...listings].filter((p) => p.installs > 0).sort((a, b) => b.installs - a.installs).slice(0, 6)
+      .map((p) => ({ label: p.title.length > 18 ? p.title.slice(0, 17) + "…" : p.title, value: p.installs })), [listings]);
+  const avgInstalls = useMemo(() => {
+    const m = data?.market;
+    return m && m.listings > 0 ? m.installs / m.listings : 0;
+  }, [data]);
+  // RIGHT 2 · Waterfall — where install GRID goes (gross → authors → treasury fee)
+  const gridFlow = useMemo(() => {
+    const m = data?.market;
+    if (!m || m.volume_grid <= 0) return null;
+    return [
+      { value: m.volume_grid, kind: "total" as const },
+      { value: -m.author_take_grid },
+      { value: m.fees_grid, kind: "total" as const },
+    ];
+  }, [data]);
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
@@ -88,6 +190,16 @@ export default function SkillsPage() {
         <OrbPanel side="left" label="Market" open={lOpen} onToggle={setLOpen} widthClass="lg:w-[300px] xl:w-[320px]">
           <Panel scroll title="SKILLS" icon={<IconLayers className="h-4 w-4" />} bodyClass="p-3.5">
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search skills, domains, authors…" className="ng-input w-full !py-2 text-xs" />
+            <div className="mt-2 flex items-center gap-2">
+              <span className="ng-label !mb-0 !text-ink-dim">Sort</span>
+              <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="ng-input flex-1 !py-1.5 text-[11px]">
+                <option value="newest">Newest</option>
+                <option value="installs">Most installed</option>
+                <option value="price">Price · low first</option>
+                <option value="mastery">Mastery</option>
+              </select>
+            </div>
+
             <div className="ng-label mb-2 mt-4 !text-ink-dim">Install onto</div>
             {data && data.my_agents.length > 0 ? (
               <select value={target} onChange={(e) => setTarget(e.target.value)} className="ng-input w-full !py-2 text-xs">
@@ -95,13 +207,42 @@ export default function SkillsPage() {
               </select>
             ) : <p className="text-[11px] text-ink-dim"><Link href="/agents" className="text-neon">Create an agent</Link> to install skills onto.</p>}
 
-            <div className="ng-label mb-2 mt-5 !text-ink-dim">Your publisher stats</div>
+            {/* PUBLISH — sell a skill your agent earned by real work */}
+            <div className="ng-label mb-2 mt-5 !text-ink-dim">Publish a skill</div>
+            {data && data.my_publishable.length > 0 ? (
+              <div className="space-y-2">
+                <select value={pubSel} onChange={(e) => setPubSel(e.target.value)} className="ng-input w-full !py-2 text-xs">
+                  <option value="">Pick a learned skill…</option>
+                  {data.my_publishable.map((s) => (
+                    <option key={s.skill_id} value={`${s.agent_id}::${s.skill_id}`}>{s.agent_name} · {s.title} (×{s.uses})</option>
+                  ))}
+                </select>
+                <div className="flex items-center gap-2">
+                  <input value={pubPrice} onChange={(e) => setPubPrice(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" placeholder="0" aria-label="Price in GRID" className="ng-input w-20 !py-1.5 text-center text-[11px]" />
+                  <span className="text-[10px] text-ink-faint">GRID per install · 0 = free</span>
+                </div>
+                <input value={pubSummary} onChange={(e) => setPubSummary(e.target.value)} placeholder="One-line pitch (optional)" maxLength={300} className="ng-input w-full !py-1.5 text-[11px]" />
+                <button disabled={busy || !pubSel} onClick={publishSkill} className="ng-btn ng-btn-primary ng-btn--sm ng-btn--block justify-center disabled:opacity-40"><IconBolt className="h-3 w-3" /> Publish to market</button>
+              </div>
+            ) : (
+              <p className="text-[11px] leading-relaxed text-ink-dim">{data && data.my_agents.length === 0 ? <><Link href="/agents" className="text-neon">Create an agent</Link> — it learns publishable skills by delivering real work.</> : "Nothing to publish yet — your agents learn skills by delivering Jobs; every unlisted, work-earned skill shows up here."}</p>
+            )}
+
+            <PanelChart title="Domain mix" read={`${domainMix.data.length} domains`}>
+              {domainMix.data.length > 0 ? (
+                <div className="flex justify-center py-1"><PolarArea data={domainMix.data} labels={domainMix.labels} size={132} /></div>
+              ) : <p className="py-3 text-center text-[10px] text-ink-faint">no listings yet</p>}
+            </PanelChart>
+            <PanelChart title="Price spread" read={priceRead}>
+              {priceSpread.length > 1 ? <Histogram data={priceSpread} bins={6} h={52} /> : <p className="py-3 text-center text-[10px] text-ink-faint">not enough listings</p>}
+            </PanelChart>
+
+            <div className="ng-label mb-2 mt-4 !text-ink-dim">Your publisher stats</div>
             <div className="divide-y divide-line">
               <DataRow k="Skills published" v={data?.stats.published ?? 0} />
               <DataRow k="Total installs" v={data?.stats.installs ?? 0} accent="cyan" />
               <DataRow k="GRID earned" v={data?.stats.earned_grid ?? 0} accent="neon" />
             </div>
-            <p className="mt-4 text-[10px] leading-relaxed text-ink-faint">Publish a skill from any of your agents on its <Link href="/agents" className="text-neon">detail page</Link> → earn GRID each time another builder installs it.</p>
           </Panel>
         </OrbPanel>
 
@@ -123,29 +264,39 @@ export default function SkillsPage() {
           </div>
 
           {data && filtered.length === 0 && (
-            <Panel><div className="p-8 text-center text-sm text-ink-dim">{listings.length === 0 ? "No skills published yet — be the first. Publish one from an agent's detail page." : "No skills match your search."}</div></Panel>
+            <Panel><div className="p-8 text-center text-sm text-ink-dim">{listings.length === 0 ? "No skills published yet — be the first. Publish one from the left rail." : "No skills match your search."}</div></Panel>
           )}
           {filtered.length > 0 && (
             <div className="columns-1 gap-3 sm:columns-2 lg:[column-count:var(--cols)]" style={{ "--cols": 2 + closed } as React.CSSProperties}>
               {filtered.map((p) => (
                 <div key={p.published_id} className="ng-card mb-3 flex break-inside-avoid flex-col p-4">
+                  {/* identity — title + ONE price chip */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-ink">{p.title}</div>
+                      <div className="truncate text-sm font-semibold text-ink" title={p.title}>{p.title}</div>
                       <div className="mt-0.5 flex items-center gap-1.5"><Tag className="!text-[9px]">{p.domain}</Tag>{p.mine && <Mark plain accent="cyan" className="!text-[9px]">yours</Mark>}</div>
                     </div>
                     <Mark plain accent={p.price_grid > 0 ? "neon" : "cyan"} className="!text-[11px] shrink-0">{p.price_grid > 0 ? `${p.price_grid} GRID` : "Free"}</Mark>
                   </div>
-                  {p.summary && <p className="mt-2 text-[11px] leading-relaxed text-ink-dim line-clamp-2">{p.summary}</p>}
-                  <div className="mt-3 divide-y divide-line border-t border-line pt-2 text-[11px]">
-                    <div className="ng-row !py-1"><span className="ng-row__k">By</span><Link href={`/talent/${p.author_id}`} className="ng-row__v font-normal text-neon hover:underline">{p.author_name}</Link></div>
-                    <div className="ng-row !py-1"><span className="ng-row__k">Author rep</span><span className="ng-row__v font-normal text-ink-dim">{p.author_reputation.toLocaleString()}</span></div>
-                    <div className="ng-row !py-1"><span className="ng-row__k">Mastery (proven)</span><Mark plain className="!text-[11px]">×{p.source_uses}</Mark></div>
-                    <div className="ng-row !py-1"><span className="ng-row__k">Installs</span><Mark plain accent="cyan" className="!text-[11px]">{p.installs}</Mark></div>
+                  {/* hero — mastery ring + installs headline */}
+                  <div className="mt-3 flex items-center gap-4">
+                    <Ring percent={(p.source_uses / maxUses) * 100} value={`×${p.source_uses}`} size={62} stroke={5} />
+                    <div className="min-w-0">
+                      <div className="ng-stat__v !text-2xl text-neon tnum">{p.installs}<span className="ml-1 text-[11px] font-normal text-ink-dim">installs</span></div>
+                      <div className="mt-0.5 text-[10px] text-ink-dim">mastery ×{p.source_uses} · market top ×{maxUses}</div>
+                    </div>
                   </div>
-                  <div className="mt-3">
+                  {p.summary && <p className="mt-2 truncate text-[11px] text-ink-dim" title={p.summary}>{p.summary}</p>}
+                  {/* the record */}
+                  <div className="mt-3 divide-y divide-line border-t border-line text-[11px]">
+                    <div className="ng-row !py-1.5"><span className="ng-row__k">By</span><Link href={`/talent/${p.author_id}`} className="ng-row__v truncate font-normal text-neon hover:underline">{p.author_name}</Link></div>
+                    <div className="ng-row !py-1.5"><span className="ng-row__k">Author rep</span><span className="ng-row__v font-normal text-ink-dim tnum">{p.author_reputation.toLocaleString()}</span></div>
+                    <div className="ng-row !py-1.5"><span className="ng-row__k">Recipe</span><span className="ng-row__v font-normal text-ink-faint">{p.recipe_chars.toLocaleString()} chars · on install</span></div>
+                  </div>
+                  {/* footer — ONE action */}
+                  <div className="mt-3 border-t border-line pt-2.5">
                     {p.mine ? (
-                      <span className="text-[10px] text-ink-faint">Your listing — manage it on the agent&apos;s page</span>
+                      <OwnControls key={`${p.published_id}:${p.price_grid}`} p={p} busy={busy} onPrice={setPrice} onDelist={delist} />
                     ) : (
                       <button disabled={busy || !target} onClick={() => install(p)} className="ng-btn ng-btn-primary ng-btn--sm ng-btn--block justify-center disabled:opacity-40"><IconBolt className="h-3 w-3" /> Install{p.price_grid > 0 ? ` · ${p.price_grid} GRID` : " (free)"}</button>
                     )}
@@ -159,16 +310,27 @@ export default function SkillsPage() {
         {/* RIGHT */}
         <OrbPanel side="right" label="Signal" open={rOpen} onToggle={setROpen}>
           <Panel scroll title="SIGNAL" icon={<IconActivity className="h-4 w-4" />} bodyClass="p-3.5">
-            <PanelChart title="Most installed" read={`${topInstalled.length}`}>
-              {topInstalled.length > 0 ? <LabeledBars data={topInstalled} /> : <p className="py-3 text-center text-[10px] text-ink-faint">no installs yet</p>}
+            <PanelChart title="Most installed" read={`avg ${avgInstalls.toFixed(1)}/listing`}>
+              {topInstalled.length > 0 ? (
+                <div className="py-1"><Lollipop data={topInstalled} target={avgInstalls} /></div>
+              ) : <p className="py-3 text-center text-[10px] text-ink-faint">no installs yet</p>}
             </PanelChart>
+            <PanelChart title="GRID flow" read={data?.market.volume_grid ? `${data.market.volume_grid} GRID` : "—"}>
+              {gridFlow ? (
+                <>
+                  <div className="py-1"><Waterfall steps={gridFlow} h={80} /></div>
+                  <div className="mt-1 flex justify-around text-[9px] text-ink-faint"><span className="text-neon">volume</span><span style={{ color: "#ff4d5e" }}>→ authors</span><span className="text-neon">treasury fee</span></div>
+                </>
+              ) : <p className="py-3 text-center text-[10px] text-ink-faint">no paid installs yet</p>}
+            </PanelChart>
+
             <div className="ng-label mb-2 mt-5 !text-ink-dim">How it works</div>
             <div className="space-y-1.5 text-[11px] text-ink-dim">
               <div className="flex items-start gap-2"><span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-neon/15 text-[9px] text-neon">1</span>An agent learns a skill by delivering real Jobs (mastery grows with use).</div>
-              <div className="flex items-start gap-2"><span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-neon/15 text-[9px] text-neon">2</span>Its owner publishes the skill here, setting a GRID price.</div>
-              <div className="flex items-start gap-2"><span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-neon/15 text-[9px] text-neon">3</span>Another builder installs it onto their agent — GRID flows to the author.</div>
+              <div className="flex items-start gap-2"><span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-neon/15 text-[9px] text-neon">2</span>Its owner publishes the skill here — pick it in the left rail, set a GRID price.</div>
+              <div className="flex items-start gap-2"><span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-neon/15 text-[9px] text-neon">3</span>Another builder installs it onto their agent — GRID flows to the author, minus the protocol fee.</div>
             </div>
-            <p className="mt-4 text-[10px] leading-relaxed text-ink-faint">Trust is provenance: a skill&apos;s mastery, install count, and its author&apos;s reputation are all real and on the record — proven by work, not a badge.</p>
+            <p className="mt-4 text-[10px] leading-relaxed text-ink-faint">Trust is provenance: a skill&apos;s mastery, install count, and its author&apos;s reputation are all real and on the record — proven by work, not a badge. Bought skills can&apos;t be re-sold, and the recipe only unlocks on install.</p>
           </Panel>
         </OrbPanel>
       </div>

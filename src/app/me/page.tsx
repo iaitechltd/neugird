@@ -6,14 +6,14 @@ import NeuHeader from "@/components/app/NeuHeader";
 import {
   Panel, Mark, Tag, Bracket, ProgressBar,
   IconChevronDown, IconCheck, IconBot, IconGrid, IconBolt, IconShield,
-  IconRocket, IconCode, IconCoins, IconUser, IconStar,
+  IconRocket, IconCoins, IconUser, IconStar,
   kpiColor,
 } from "@/components/app/ui";
 import { Decrypt, CountUp } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import OrbPanel from "@/components/app/OrbPanel";
-import { Area, Bars, Radar, LabeledBars, StepArea, Stream, RadialProgress } from "@/components/app/charts";
-import { PanelChart } from "@/components/app/terminal";
+import { Area, Bars, Radar, LabeledBars, Ring, StepArea, Stream, RadialProgress } from "@/components/app/charts";
+import { PanelChart, barStr } from "@/components/app/terminal";
 import type { Agent, Build, Grid, Product } from "@/lib/types";
 
 const Verified = () => <IconCheck className="h-3.5 w-3.5 shrink-0 text-neon" />;
@@ -148,15 +148,23 @@ export default function MePage() {
             <Section icon={<IconBot className="h-3.5 w-3.5" />} action={<Link href="/agents" className="text-[11px] text-ink-dim transition hover:text-neon">Manage</Link>}>Your Agents</Section>
             {agents.length ? (
               <div className="space-y-2">
-                {agents.map((a) => (
-                  <div key={a.agent_id} className="ng-card p-3">
-                    <div className="flex items-center gap-2.5">
-                      <MatrixAvatar seed={a.agent_id} size={32} />
-                      <div className="min-w-0 flex-1"><div className="truncate text-sm text-ink">{a.name}</div><div className="flex items-center gap-1.5 text-[10px] text-ink-dim"><Tag>{a.origin ?? "native"}</Tag><Mark plain accent={tierAccent(a.trust_tier)} className="!text-[9px]">{a.trust_tier ?? "trusted"}</Mark></div></div>
-                      <Mark plain className="!text-[11px]">{(a.earnings ?? 0).toLocaleString()}</Mark>
+                {agents.map((a) => {
+                  const maxEarn = Math.max(1, ...agents.map((x) => x.earnings ?? 0));
+                  return (
+                    <div key={a.agent_id} className="ng-card p-3">
+                      <div className="flex items-center gap-2.5">
+                        <MatrixAvatar seed={a.agent_id} size={32} />
+                        <div className="min-w-0 flex-1"><div className="truncate text-xs text-ink">{a.name}</div><div className="flex items-center gap-1.5 text-[10px] text-ink-dim"><Mark plain accent={tierAccent(a.trust_tier)} className="!text-[9px]">{a.trust_tier ?? "trusted"}</Mark><span className="text-[9px] text-ink-faint">{a.origin ?? "native"}</span></div></div>
+                        <Mark plain className="!text-[11px]">{(a.earnings ?? 0).toLocaleString()}</Mark>
+                      </div>
+                      <div className="mt-1.5 flex items-center gap-2 font-mono text-[9px]">
+                        <span className="text-ink-faint">earn</span>
+                        <span className="text-neon">{barStr((a.earnings ?? 0) / maxEarn, 14)}</span>
+                        <span className="ml-auto text-ink-faint">★ {(a.rating ?? 0).toFixed(1)}</span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : <p className="text-[11px] text-ink-dim">No agents yet.</p>}
 
@@ -164,7 +172,7 @@ export default function MePage() {
             {myGrids.length ? (
               <div className="divide-y divide-line">
                 {myGrids.map((g) => (
-                  <Link key={g.grid_id} href={`/grid/${g.slug}`} className="flex items-center justify-between py-2.5 text-sm text-ink transition hover:text-neon">
+                  <Link key={g.grid_id} href={`/grid/${g.slug}`} className="flex items-center justify-between py-2.5 text-xs text-ink transition hover:text-neon">
                     <span className="flex items-center gap-2 truncate"><IconGrid className="h-3.5 w-3.5 text-neon/70" />{g.name}</span>
                     <span className="shrink-0 text-[11px] text-ink-dim">{g.member_count}</span>
                   </Link>
@@ -236,21 +244,35 @@ export default function MePage() {
           {builds.length ? (
             <div className="grid grid-cols-1 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 2 + closed } as React.CSSProperties}>
               {builds.map((b) => (
-                <div key={b.build_id} className="ng-card p-3.5">
+                <div key={b.build_id} className="ng-card flex flex-col p-4">
+                  {/* identity — like the trade card's symbol + status row */}
                   <div className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-1.5 truncate text-[13px] text-ink"><IconCode className="h-3.5 w-3.5 shrink-0 text-neon" />{b.title}</span>
-                    <Mark plain accent={b.status === "built" ? "amber" : "neon"} className="!text-[9px]">{b.status}</Mark>
+                    <span className="truncate text-[14px] font-semibold text-ink">{b.title}</span>
+                    <Mark plain accent={b.status === "built" ? "amber" : "neon"} className="!text-[9px] shrink-0">{b.status}</Mark>
                   </div>
-                  <p className="mt-1 line-clamp-2 text-[11px] text-ink-dim">{b.summary}</p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">{b.stack.map((s) => <Tag key={s}>{s}</Tag>)}</div>
-                  <div className="mt-2 divide-y divide-line text-[11px]">
-                    <div className="ng-row !py-1"><span className="ng-row__k">Proof</span><span className="ng-row__v"><Mark plain className="!text-[11px]">{b.artifact.proof_of_build}</Mark></span></div>
-                    <div className="ng-row !py-1"><span className="ng-row__k">Witnessed</span><span className="ng-row__v font-normal text-ink-dim">{b.steps.length} steps · {b.artifact.kind}</span></div>
+                  {/* hero — version ring + witnessed-output headline */}
+                  <div className="mt-3 flex items-center gap-4">
+                    <Ring size={62} stroke={5} percent={Math.round(((b.artifact.files?.length ?? 0) / Math.max(1, ...builds.map((x) => x.artifact.files?.length ?? 0))) * 100)} value={`v${b.version ?? 1}`} />
+                    <div className="min-w-0">
+                      <div className="ng-stat__v !text-2xl text-neon">{b.artifact.files?.length ?? 0}<span className="ml-1 text-[11px] font-normal text-ink-dim">files</span></div>
+                      <div className="mt-0.5 text-[10px] text-ink-dim">witnessed output · {b.artifact.kind}</div>
+                      <div className="mt-0.5 flex items-center gap-1 text-[10px] text-neon/80" title={b.artifact.proof_of_build}><IconShield className="h-3 w-3" />proof sealed</div>
+                    </div>
                   </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-3 text-[10px]">
-                    {b.product_id && <Link href={`/gridx/${b.product_id}`} className="flex items-center gap-1 text-neon transition hover:text-glow"><IconRocket className="h-3 w-3" />On GridX</Link>}
-                    {b.proposal_id && <Link href="/genesis/board" className="flex items-center gap-1 text-neon transition hover:text-glow"><IconCoins className="h-3 w-3" />On Fund</Link>}
-                    {!b.product_id && !b.proposal_id && <span className="text-ink-faint">Not yet launched</span>}
+                  {/* the record — clean rows, trade-card style */}
+                  <div className="mt-3 divide-y divide-line text-[11px]">
+                    <div className="ng-row !py-1.5"><span className="ng-row__k">Witnessed steps</span><span className="ng-row__v font-normal text-ink-dim">{b.steps.length}</span></div>
+                    <div className="ng-row !py-1.5"><span className="ng-row__k">Revisions</span><span className="ng-row__v font-normal text-ink-dim">{b.revisions?.length ?? 0}</span></div>
+                    <div className="ng-row !py-1.5"><span className="ng-row__k">Stack</span><span className="ng-row__v flex gap-1.5 font-normal">{b.stack.slice(0, 2).map((t) => <Tag key={t} className="!text-[9px]">{t}</Tag>)}</span></div>
+                  </div>
+                  {/* footer — where it lives + the action */}
+                  <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-2.5 text-[10px]">
+                    <span className="flex items-center gap-3">
+                      {b.product_id && <Link href={`/gridx/${b.product_id}`} className="flex items-center gap-1 text-neon transition hover:text-glow"><IconRocket className="h-3 w-3" />GridX</Link>}
+                      {b.proposal_id && <Link href="/genesis/board" className="flex items-center gap-1 text-neon transition hover:text-glow"><IconCoins className="h-3 w-3" />Fund</Link>}
+                      {!b.product_id && !b.proposal_id && <span className="text-ink-faint">not launched</span>}
+                    </span>
+                    <Link href="/echo" className="ng-btn ng-btn--sm shrink-0">Open in Echo</Link>
                   </div>
                 </div>
               ))}
@@ -268,15 +290,19 @@ export default function MePage() {
           {myProducts.length > 0 && <>
             <Section icon={<IconRocket className="h-3.5 w-3.5" />} action={<Link href="/gridx" className="text-[11px] text-ink-dim transition hover:text-neon">GridX</Link>}>Your Products</Section>
             <div className="grid grid-cols-1 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 2 + closed } as React.CSSProperties}>
-              {myProducts.map((p) => (
-                <Link key={p.product_id} href={`/gridx/${p.product_id}`} className="ng-card p-3.5">
-                  <div className="flex items-center justify-between gap-2"><span className="truncate text-[13px] font-bold text-neon">{p.name}</span><Tag>{p.category}</Tag></div>
-                  <div className="mt-2 divide-y divide-line text-[11px]">
-                    <div className="ng-row !py-1"><span className="ng-row__k">Revenue 30D</span><Mark plain className="!text-[11px]">${(p.onchain_revenue ?? 0).toLocaleString()}</Mark></div>
-                    <div className="ng-row !py-1"><span className="ng-row__k">Active users</span><Mark plain className="!text-[11px]">{(p.active_users ?? 0).toLocaleString()}</Mark></div>
-                  </div>
-                </Link>
-              ))}
+              {myProducts.map((p) => {
+                const maxRev = Math.max(1, ...myProducts.map((x) => x.onchain_revenue ?? 0));
+                const maxUsers = Math.max(1, ...myProducts.map((x) => x.active_users ?? 0));
+                return (
+                  <Link key={p.product_id} href={`/gridx/${p.product_id}`} className="ng-card p-3.5">
+                    <div className="flex items-center justify-between gap-2"><span className="truncate text-[13px] font-bold text-neon">{p.name}</span><Tag>{p.category}</Tag></div>
+                    <div className="mt-2 space-y-1 font-mono text-[10px]">
+                      <div className="flex items-center gap-2"><span className="w-16 shrink-0 text-ink-faint">revenue</span><span className="text-neon">{barStr((p.onchain_revenue ?? 0) / maxRev, 12)}</span><span className="ml-auto text-ink-dim">${(p.onchain_revenue ?? 0).toLocaleString()}</span></div>
+                      <div className="flex items-center gap-2"><span className="w-16 shrink-0 text-ink-faint">users</span><span className="text-cyan">{barStr((p.active_users ?? 0) / maxUsers, 12)}</span><span className="ml-auto text-ink-dim">{(p.active_users ?? 0).toLocaleString()}</span></div>
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
           </>}
         </main>
@@ -297,7 +323,7 @@ export default function MePage() {
 
             <Section icon={<IconBolt className="h-3.5 w-3.5" />}>Reputation</Section>
             <div className="ng-card p-3.5">
-              <div className="flex items-baseline justify-between"><span className="ng-stat__v !text-2xl">{rep}</span><span className="text-[11px] text-ink-dim">total Pulse</span></div>
+              <div className="flex items-baseline justify-between"><span className="ng-stat__v !text-xl">{rep}</span><span className="text-[11px] text-ink-dim">total Pulse</span></div>
               {Object.keys(repDims).length ? (
                 <div className="mt-1 flex flex-col items-center">
                   {/* the shape of the builder — dimensions as a radar, not a text list */}
@@ -332,7 +358,7 @@ export default function MePage() {
 
             <Section icon={<IconCoins className="h-3.5 w-3.5" />} action={<Link href="/rewards" className="text-[10px] text-cyan transition hover:text-glow">Dashboard →</Link>}>GRID Allocation</Section>
             <div className="ng-card p-3.5">
-              <div className="flex items-baseline justify-between"><span className="ng-stat__v !text-2xl text-neon">{(me?.reward?.sybil_adjusted ?? 0).toLocaleString()}</span><span className="text-[11px] text-ink-dim">earned · vests at TGE</span></div>
+              <div className="flex items-baseline justify-between"><span className="ng-stat__v !text-xl text-neon">{(me?.reward?.sybil_adjusted ?? 0).toLocaleString()}</span><span className="text-[11px] text-ink-dim">earned · vests at TGE</span></div>
               <p className="mt-1 text-[10px] leading-relaxed text-ink-faint">GRID is <span className="text-ink-dim">earned, not sold</span> — verified contribution accrues a sybil-filtered allocation that converts to GRID at the platform TGE.</p>
               {me?.reward?.breakdown?.length ? (
                 <div className="mt-3 space-y-2">
@@ -378,7 +404,7 @@ export default function MePage() {
                 <button onClick={() => setGridSide("sell")} className={`rounded py-1.5 text-[12px] font-semibold transition ${gridSide === "sell" ? "bg-danger text-bg" : "border border-line text-ink-dim hover:text-danger"}`}>Sell</button>
               </div>
               <div className="mt-2 flex items-center justify-between text-[10px] text-ink-faint"><span>{gridSide === "buy" ? "USDC in" : "GRID in"}</span><span>bal {gridSide === "buy" ? `$${Math.round(gridM?.balances?.usdc ?? 0).toLocaleString()}` : `${Math.round(gridM?.balances?.grid ?? 0).toLocaleString()} GRID`}</span></div>
-              <input value={gridAmt} onChange={(e) => setGridAmt(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="0" className="ng-input mt-1 !py-1.5 text-sm" />
+              <input value={gridAmt} onChange={(e) => setGridAmt(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="0" className="ng-input mt-1 !py-1.5 text-xs" />
               <div className="mt-2 flex items-center justify-between text-[11px]"><span className="text-ink-dim">≈ receive</span><span className="text-neon">{gridQuote().toLocaleString(undefined, { maximumFractionDigits: gridSide === "buy" ? 0 : 2 })} {gridSide === "buy" ? "GRID" : "USDC"}</span></div>
               <button onClick={swapGrid} disabled={!(Number(gridAmt) > 0)} className={`ng-btn ng-btn--block ng-btn--sm mt-2 disabled:opacity-40 ${gridSide === "buy" ? "ng-btn-primary" : "ng-btn-danger"}`}>{gridSide === "buy" ? "Buy GRID" : "Sell GRID"}</button>
               <p className="mt-1.5 text-[9.5px] leading-relaxed text-ink-faint">Protocol-owned liquidity (treasury-seeded) · peer-to-peer · 1% fee. GRID is earned first — this is the liquidity layer, not a primary sale.</p>
@@ -404,7 +430,7 @@ export default function MePage() {
                 {agents.filter((a) => (a.earnings ?? 0) > 0).sort((a, b) => (b.earnings ?? 0) - (a.earnings ?? 0)).map((a) => (
                   <div key={a.agent_id} className="ng-card flex items-center gap-3 p-3">
                     <MatrixAvatar seed={a.agent_id} size={30} />
-                    <div className="min-w-0 flex-1"><div className="truncate text-sm text-ink">{a.name}</div><div className="flex items-center gap-1 text-[10px] text-neon"><IconStar className="h-3 w-3" />{(a.rating ?? 0).toFixed(1)}</div></div>
+                    <div className="min-w-0 flex-1"><div className="truncate text-xs text-ink">{a.name}</div><div className="flex items-center gap-1 text-[10px] text-neon"><IconStar className="h-3 w-3" />{(a.rating ?? 0).toFixed(1)}</div></div>
                     <Mark plain accent="cyan" className="text-[11px]">{(a.earnings ?? 0).toLocaleString()}</Mark>
                   </div>
                 ))}

@@ -15,6 +15,9 @@ import { Cursor } from "@/components/app/typefx";
 import WalletConnect from "@/components/app/WalletConnect";
 import { IconArrowRight, IconChevronDown, IconExternal } from "@/components/app/ui";
 
+const DECODE_GLYPHS = "アイウエオカキクケコサシスセソタチツテトナニヌネノ01<>/=+*#$%&@";
+const randGlyph = () => DECODE_GLYPHS[Math.floor(Math.random() * DECODE_GLYPHS.length)];
+
 const prefersReduced = () =>
   typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -22,11 +25,12 @@ const prefersReduced = () =>
    rendered invisibly to reserve its exact box (no layout shift), with the typed
    substring + cursor overlaid on top. */
 function TypeLine({
-  text, start, speed = 46, startDelay = 0, showCursor = true, className = "",
+  text, start, speed = 46, startDelay = 0, showCursor = true, decode = false, className = "",
 }: {
-  text: string; start: boolean; speed?: number; startDelay?: number; showCursor?: boolean; className?: string;
+  text: string; start: boolean; speed?: number; startDelay?: number; showCursor?: boolean; decode?: boolean; className?: string;
 }) {
   const [n, setN] = useState(0);
+  const [scramble, setScramble] = useState("");
   useEffect(() => {
     if (!start) return;
     if (prefersReduced()) { setN(text.length); return; }
@@ -34,10 +38,13 @@ function TypeLine({
     let t = 0 as unknown as number;
     const begin = window.setTimeout(function tick() {
       i += 1; setN(i);
+      // matrix DECODE (headlines only): the next chars churn as glyphs until typed
+      const ahead = decode ? Math.min(3, text.length - i) : 0;
+      setScramble(ahead > 0 ? Array.from({ length: ahead }, randGlyph).join("") : "");
       if (i < text.length) t = window.setTimeout(tick, speed);
     }, startDelay);
     return () => { window.clearTimeout(begin); window.clearTimeout(t); };
-  }, [start, text, speed, startDelay]);
+  }, [start, text, speed, startDelay, decode]);
 
   const typing = start && n > 0 && n < text.length;
   return (
@@ -45,6 +52,7 @@ function TypeLine({
       <span aria-hidden className="invisible">{text || " "}</span>
       <span className="absolute inset-0">
         {text.slice(0, n)}
+        {typing && scramble && <span aria-hidden className="text-neon/50">{scramble}</span>}
         {showCursor && typing && <Cursor />}
       </span>
     </span>
@@ -62,13 +70,20 @@ const TITLE_LINES: TitleLine[] = [
 ];
 
 function Scene({
-  img, id, kicker, titleLines, subtitle, cta, cue,
+  img, video, id, kicker, titleLines, subtitle, cta, cue,
 }: {
-  img: string; id: string; kicker?: string; titleLines: TitleLine[]; subtitle: string;
+  img: string; video?: string; id: string; kicker?: string; titleLines: TitleLine[]; subtitle: string;
   cta?: React.ReactNode; cue?: boolean;
 }) {
   const ref = useRef<HTMLElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [started, setStarted] = useState(false);
+  // respect reduced motion: hold the poster frame instead of playing
+  useEffect(() => {
+    if (video && videoRef.current && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      videoRef.current.pause();
+    }
+  }, [video]);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -88,20 +103,36 @@ function Scene({
 
   return (
     <section ref={ref} id={id} className="relative flex h-screen min-h-[620px] w-full items-center overflow-hidden">
-      {/* background render */}
-      <div
-        className="absolute inset-0 scale-[1.04] bg-cover bg-no-repeat [background-position:76%_center] lg:[background-position:right_center]"
-        style={{ backgroundImage: `url('${img}')` }}
-      />
-      {/* legibility: dark on the left → clear on the right, plus a soft vignette */}
-      <div className="absolute inset-0" style={{ background: "linear-gradient(90deg, rgba(0,0,0,.97) 0%, rgba(0,0,0,.88) 30%, rgba(0,0,0,.52) 58%, rgba(0,0,0,.12) 100%)" }} />
-      <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/40" />
+      {/* background render — video when provided (poster = the still, instant paint) */}
+      {video ? (
+        <video
+          ref={videoRef}
+          className="absolute inset-0 h-full w-full scale-[1.04] object-cover [object-position:76%_center] lg:[object-position:right_center]"
+          src={video}
+          poster={img}
+          autoPlay
+          muted
+          loop
+          playsInline
+        />
+      ) : (
+        <div
+          className="absolute inset-0 scale-[1.04] bg-cover bg-no-repeat [background-position:76%_center] lg:[background-position:right_center]"
+          style={{ backgroundImage: `url('${img}')` }}
+        />
+      )}
+      {/* legibility: dark on the left → clear on the right, plus a soft vignette.
+          Video scenes are already graded — only a light touch, no double-darkening. */}
+      <div className="absolute inset-0" style={{ background: video
+        ? "linear-gradient(90deg, rgba(0,0,0,.45) 0%, rgba(0,0,0,.25) 35%, rgba(0,0,0,.05) 65%, rgba(0,0,0,0) 100%)"
+        : "linear-gradient(90deg, rgba(0,0,0,.97) 0%, rgba(0,0,0,.88) 30%, rgba(0,0,0,.52) 58%, rgba(0,0,0,.12) 100%)" }} />
+      <div className={`absolute inset-0 bg-gradient-to-t ${video ? "from-black/35 via-transparent to-black/20" : "from-black/75 via-transparent to-black/40"}`} />
 
       {/* content */}
       <div className="relative z-10 mx-auto w-full max-w-7xl px-6 sm:px-10">
-        <div className="max-w-4xl">
+        <div className="max-w-none">
           {kicker && <div className={`ng-label mb-5 text-neon/70 transition-opacity duration-700 ${started ? "opacity-100" : "opacity-0"}`}>{kicker}</div>}
-          <h1 className="ng-title text-[26px] font-bold leading-[1.1] tracking-tight sm:text-4xl lg:text-[42px]">
+          <h1 className="ng-title text-[26px] font-bold leading-[1.12] tracking-tight sm:text-4xl lg:text-[46px]">
             {titleLines.map((l, i) => (
               <TypeLine
                 key={i}
@@ -109,11 +140,12 @@ function Scene({
                 start={started}
                 speed={TS}
                 startDelay={delays[i]}
-                className={l.accent ? "text-neon text-glow" : "text-ink"}
+                decode
+                className={l.accent ? "text-neon lp-glow" : "text-ink lp-glow-dim"}
               />
             ))}
           </h1>
-          <p className="mt-6 max-w-2xl text-[13.5px] leading-relaxed text-ink-dim sm:text-[15px]">
+          <p className="mt-6 max-w-3xl text-[13.5px] leading-relaxed text-ink-dim sm:text-[15px]">
             <TypeLine text={subtitle} start={started} speed={SS} startDelay={subDelay} />
           </p>
           {cta && (
@@ -157,6 +189,7 @@ export default function Landing() {
       {/* ── SCENE 1 — the full path ── */}
       <Scene
         img="/landing/scene-1.jpg"
+        video="/landing/scene-1.mp4"
         id="scene-one"
         titleLines={TITLE_LINES}
         subtitle="From idea to community, talent, campaigns, funding, agents, and tokenized launch, NeuGrid gives anyone the full path to build, grow, and scale their own digital economy."
@@ -230,4 +263,6 @@ const CSS = `
   @keyframes lpBob{0%,100%{transform:translateY(0)}50%{transform:translateY(5px)}}
   .lp-bob{animation:lpBob 1.8s ease-in-out infinite}
 }
+.lp-glow{text-shadow:0 0 16px rgba(0,255,65,.55),0 0 46px rgba(0,255,65,.22)}
+.lp-glow-dim{text-shadow:0 0 14px rgba(190,255,200,.28),0 0 36px rgba(0,255,65,.12)}
 `;

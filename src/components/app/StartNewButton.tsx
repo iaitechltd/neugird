@@ -212,7 +212,10 @@ function FormModal({ form, onClose, onSubmit }: { form: FormConfig; onClose: () 
 
 /* ============================ button + menu ============================ */
 
-export default function StartNewButton() {
+/** Default: the full "start new" menu. With `only`, a single direct-action
+ *  button for THAT page's create (e.g. `only="grid" label="new grid"` on the
+ *  grid directory) — the header no longer carries a global + new button. */
+export default function StartNewButton({ only, label }: { only?: string; label?: string } = {}) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [form, setForm] = useState<FormConfig | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -315,6 +318,26 @@ export default function StartNewButton() {
 
     // post / message / funding-wizard — no backend yet
     setForm(null); flash(`${form.title} isn't wired up yet`);
+  }
+
+  if (only) {
+    const target = CREATE_FORMS[only];
+    if (!target) return null;
+    return (
+      <>
+        <button onClick={() => setForm(target)} className="ng-btn ng-btn-primary ng-btn--sm shrink-0">
+          <IconPlus className="h-3.5 w-3.5" /> {label ?? target.title.toLowerCase()}
+        </button>
+        {form && createPortal(<FormModal form={form} onClose={() => setForm(null)} onSubmit={submit} />, document.body)}
+        {toast &&
+          createPortal(
+            <div className="fixed bottom-24 left-1/2 z-[80] -translate-x-1/2 border border-neon/40 bg-black px-4 py-2 font-mono text-[13px] text-neon">
+              <span className="text-ink-faint">$ </span>{toast}
+            </div>,
+            document.body,
+          )}
+      </>
+    );
   }
 
   return (

@@ -14,6 +14,8 @@
 import { db } from "../store";
 import { nowISO } from "../id";
 import { GridToken } from "../chain";
+import * as Humanity from "./humanity";
+import * as Params from "./params";
 import * as Wallets from "./wallets";
 import * as Referrals from "./referrals";
 import type { PulseEvent, Vesting } from "../types";
@@ -67,6 +69,19 @@ function eventsFor(user_id: string): PulseEvent[] {
   return (db.pulseEvents ?? []).filter((e) => beneficiaryOf(e) === user_id);
 }
 
+/** Does this event pay GRID allocation to this user? The display predicate for
+ *  feeds/curves — keeps them consistent with the ledger (reward_excluded and
+ *  non-rewardable actions earn reputation, not GRID). */
+export function allocatesTo(e: PulseEvent, user_id: string): boolean {
+  return beneficiaryOf(e) === user_id;
+}
+
+/** The user's allocation-earning events (ledger-attributed: includes their
+ *  agents' work), oldest → newest — the accrual curve's source of truth. */
+export function rewardEventsFor(user_id: string): PulseEvent[] {
+  return eventsFor(user_id).sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+}
+
 const unitsOf = (e: PulseEvent) => Math.max(0, e.weight) * GRID_PER_PULSE;
 
 /** Raw accrued allocation (pre sybil-filter). */
@@ -102,11 +117,21 @@ export function sybilAdjustedFor(user_id: string): number {
   return accruedFor(user_id) * sybilFactor(user_id);
 }
 
-/** Total GRID allocation earned across all contributors (for the economy rollup). */
+/** The PoH counting gate (docs/POH_GATE.md): rewards accrue for everyone, but
+ *  when `rewards_gate_tier` > 0 only verified accounts COUNT (read-time
+ *  predicate — verify any time before the TGE and the whole history counts). */
+export function countingGate(user_id: string): { required: number; ok: boolean } {
+  const required = Params.get("rewards_gate_tier");
+  return { required, ok: Humanity.tierFor(user_id) >= required };
+}
+
+/** Total GRID allocation earned across all contributors (for the economy rollup).
+ *  Counts only accounts that clear the PoH gate (everyone while it's off). */
 export function totalIssued(): { allocation: number; recipients: number } {
   let allocation = 0;
   let recipients = 0;
   for (const u of db.users) {
+    if (!countingGate(u.id).ok) continue;
     const a = sybilAdjustedFor(u.id);
     if (a > 0) { allocation += a; recipients += 1; }
   }
@@ -136,6 +161,9 @@ export function runTGE(): { executed: boolean; at: string; converted: number; re
   let converted = 0;
   let recipients = 0;
   for (const u of db.users) {
+    // PoH gate: the snapshot only converts verified accounts when gated —
+    // verification is retroactive right up to this freeze point.
+    if (!countingGate(u.id).ok) continue;
     // pulse-earned (sybil-filtered) + the affiliate fee-share stream
     const total = Math.round(sybilAdjustedFor(u.id)) + Referrals.affiliateGridFor(u.id);
     if (total <= 0) continue;
@@ -193,11 +221,16 @@ export function ledgerFor(user_id: string) {
   const claimed = db.users.find((u) => u.id === user_id)?.reward?.claimed ?? 0;
   const affiliate_grid = Referrals.affiliateGridFor(user_id);
   const sybil_adjusted = Math.round(accrued * factor);
+  const total_allocation = sybil_adjusted + affiliate_grid;
+  const gate = countingGate(user_id);
   return {
     accrued: Math.round(accrued),
     sybil_adjusted, // the pulse-earned allocation (sybil-filtered)
     affiliate_grid, // the affiliate fee-share stream (real fees — no dampening)
-    total_allocation: sybil_adjusted + affiliate_grid, // what converts at TGE
+    total_allocation, // what converts at TGE (if the PoH gate clears)
+    counted: gate.ok ? total_allocation : 0, // clears the PoH gate today
+    pending_verification: gate.ok ? 0 : total_allocation, // earned, counts once verified
+    humanity: { tier: Humanity.tierFor(user_id), required: gate.required, ok: gate.ok },
     sybil_factor: Math.round(factor * 100) / 100,
     claimed,
     rate: GRID_PER_PULSE,

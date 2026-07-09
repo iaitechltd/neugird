@@ -22,9 +22,10 @@ RUN npm run build
 # chain/sasSolana.ts (SAS credential mints) when NEUGRID_CHAIN_MODE=solana; the
 # @dfinity set powers chain/icpHosting.ts (the /d/ asset-canister mirror, A3).
 RUN mkdir -p /pgmod && cd /pgmod && npm init -y >/dev/null 2>&1 \
-    && npm install pg@8.22.0 @anthropic-ai/sdk@0.109.1 \
+    && npm install pg@8.22.0 @anthropic-ai/sdk@0.109.1 qrcode@1.5.3 \
        sas-lib @solana/kit @solana-program/token-2022 @solana-program/compute-budget \
        @coinbase/x402@2.1.0 @coral-xyz/anchor@0.31.1 @solana/spl-token@0.4.14 \
+       @identity.com/solana-gateway-ts \
        @dfinity/agent@3.4.3 @dfinity/assets@3.4.3 @dfinity/identity@3.4.3 \
        --legacy-peer-deps --omit=dev --no-audit --no-fund
 

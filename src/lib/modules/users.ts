@@ -13,7 +13,7 @@ export function getUser(id: string): UserProfile | undefined {
 
 const str = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined);
 
-export interface ListingInput { headline?: unknown; rate_usdc?: unknown; available?: unknown; skills?: unknown }
+export interface ListingInput { headline?: unknown; rate_usdc?: unknown; available?: unknown; skills?: unknown; bio?: unknown }
 
 /** Self-serve Talent listing: headline · rate · availability (+ replaces skills when given). */
 export function updateListing(user_id: string, input: ListingInput): { user?: UserProfile; error?: string } {
@@ -24,6 +24,7 @@ export function updateListing(user_id: string, input: ListingInput): { user?: Us
       .filter((s): s is string => typeof s === "string" && !!s.trim())
       .map((s) => s.trim().toLowerCase().slice(0, 24)))].slice(0, 12);
   }
+  if (typeof input.bio === "string") user.bio = input.bio.trim().slice(0, 280) || undefined;
   const rate = Number(input.rate_usdc);
   user.listing = {
     headline: str(input.headline, 80) ?? user.listing?.headline,

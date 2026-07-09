@@ -80,7 +80,7 @@ function ProposalCard({ p, me, meta, onChange }: { p: GovView; me: Me | null; me
         <StatusPill status={p.status} />
       </div>
       <h3 className="ng-title mt-2 text-[15px] font-bold leading-snug text-ink">{p.title}</h3>
-      {p.summary && <p className="mt-1.5 text-[12px] leading-relaxed text-ink-dim">{p.summary}</p>}
+      {p.summary && <p className="mt-1.5 line-clamp-2 text-[12px] leading-relaxed text-ink-dim">{p.summary}</p>}
 
       {/* What it ENACTS on pass (binding action) */}
       {actionText(p.action, meta) && (

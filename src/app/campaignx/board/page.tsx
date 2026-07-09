@@ -15,7 +15,7 @@ import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, Tag, Mark, DataRow, IconSparkle, IconActivity, IconUser , kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import { PanelChart } from "@/components/app/terminal";
-import { Bars, Ring, Pie, Heatmap } from "@/components/app/charts";
+import { Bars, Ring, Pie, Heatmap, Bullet } from "@/components/app/charts";
 import type { Job } from "@/lib/types";
 
 type J = Job & { project_name: string; project_slug: string; applicant_count: number; applied: boolean; assignee_name: string | null };
@@ -77,6 +77,8 @@ export default function CampaignXBoard() {
 
   // ── side-rail chart data (derived, SSR-safe) ─────────────────────────
   const totalCount = list.length;
+  // card visual scale — the live board-average reward (real payload values only)
+  const avgReward = useMemo(() => (list.length ? list.reduce((s, j) => s + (j.reward_amount || 0), 0) / list.length : 0), [list]);
   const rewardBars = list.map((j) => j.reward_amount ?? 0);                        // LEFT · Bars — reward per campaign
   const activeCount = useMemo(() => list.filter((j) => j.status === "open").length, [list]); // LEFT · Ring — active/open share
   const activePct = totalCount ? Math.round((activeCount / totalCount) * 100) : 0;
@@ -273,28 +275,34 @@ export default function CampaignXBoard() {
                 const proofLink = j.proof?.payload ?? "";
                 return (
                   <div key={j.job_id} className="ng-card mb-3 break-inside-avoid p-4">
+                    {/* identity — title + ONE status chip */}
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="text-sm font-semibold text-ink">{j.title}</div>
-                        <div className="mt-0.5 text-[10px] text-ink-faint">{j.project_name} · {isProject ? "you" : j.created_by}</div>
+                        <div className="truncate text-sm font-semibold text-ink" title={j.title}>{j.title}</div>
+                        <div className="mt-0.5 truncate text-[10px] text-ink-faint" title={isProject ? undefined : j.created_by}>{j.project_name}{isProject ? " · you" : ""}</div>
                       </div>
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        <Tag className="!text-[9px]">{WHO_LABEL[(j.executor_kind ?? "any") as Who]}</Tag>
-                        <Mark plain accent={STATUS_ACC[j.status] ?? "neon"} className="!text-[9px]">{j.status === "open" ? "hiring" : j.status.replace("_", " ")}</Mark>
-                      </div>
+                      <Mark plain accent={STATUS_ACC[j.status] ?? "neon"} className="!text-[9px] shrink-0">{j.status === "open" ? "hiring" : j.status.replace("_", " ")}</Mark>
                     </div>
-                    {j.description && <p className="mt-2 text-[11px] leading-relaxed text-ink-dim">{j.description}</p>}
-                    {(j.required_skills ?? []).length > 0 && (
-                      <div className="mt-2.5 flex flex-wrap gap-1.5">
-                        {(j.required_skills ?? []).slice(0, 6).map((s) => <span key={s} className="ng-tag">{s}</span>)}
+                    {/* hero — reward headline + this posting vs the live board average (amber tick) */}
+                    <div className="mt-3 ng-stat__v !text-2xl text-neon tnum">{j.reward_amount}<span className="ml-1 text-[11px] font-normal text-ink-dim">{j.reward_token ?? "USDC"}</span></div>
+                    <div className="flex items-center justify-between text-[9px] uppercase tracking-wide text-ink-faint"><span>Reward</span><span className="tnum">board avg {Math.round(avgReward)}</span></div>
+                    <div className="mt-1.5"><Bullet data={[{ value: j.reward_amount ?? 0, target: avgReward }]} rowH={10} gap={2} /></div>
+                    {j.description && <p className="mt-2 truncate text-[11px] text-ink-dim" title={j.description}>{j.description}</p>}
+                    {/* the record */}
+                    <div className="mt-2.5 divide-y divide-line border-t border-line text-[11px]">
+                      <div className="ng-row !py-1.5"><span className="ng-row__k">Seeking</span><span className="ng-row__v font-normal text-ink-dim">{WHO_LABEL[(j.executor_kind ?? "any") as Who]}</span></div>
+                      <div className="ng-row !py-1.5"><span className="ng-row__k">Applicants</span><Mark plain accent="cyan" className="!text-[11px]">{j.applicant_count}</Mark></div>
+                      {j.assignee_name && <div className="ng-row !py-1.5"><span className="ng-row__k">Worker</span><span className="ng-row__v truncate font-normal text-ink-dim">{j.assignee_name}</span></div>}
+                    </div>
+                    {/* footer — skill chips + ONE state/action */}
+                    <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-line pt-2.5">
+                      <div className="flex min-w-0 flex-wrap gap-1.5">
+                        {(j.required_skills ?? []).slice(0, 3).map((s) => <span key={s} className="ng-tag">{s}</span>)}
                       </div>
-                    )}
-                    <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-2.5">
-                      <div><div className="text-[10px] text-ink-faint">Reward</div><Mark plain accent="cyan" className="!text-[11px]">{j.reward_amount} {j.reward_token ?? "USDC"}</Mark></div>
-                      <div className="flex items-center gap-2">
-                        {j.status === "open" && (
+                      <div className="shrink-0">
+                        {j.status === "open" ? (
                           isProject ? (
-                            <button disabled={busy} onClick={() => toggleApps(j.job_id)} className="ng-btn ng-btn-ghost ng-btn--sm">Applicants ({j.applicant_count})</button>
+                            <button disabled={busy} onClick={() => toggleApps(j.job_id)} className="ng-btn ng-btn-ghost ng-btn--sm">Review applicants</button>
                           ) : j.executor_kind === "agent" ? (
                             <span className="text-[11px] text-ink-faint">agents apply via SDK</span>
                           ) : j.applied ? (
@@ -302,6 +310,14 @@ export default function CampaignXBoard() {
                           ) : (
                             <button disabled={busy} onClick={() => setApplyFor(applyFor === j.job_id ? null : j.job_id)} className="ng-btn ng-btn-primary ng-btn--sm">{applyFor === j.job_id ? "Close" : "Apply"}</button>
                           )
+                        ) : j.status === "paid" ? (
+                          <span className="text-[10px] text-neon">reward released</span>
+                        ) : j.status === "rejected" ? (
+                          <span className="text-[10px] text-ink-faint">refunded</span>
+                        ) : escrowLocked ? (
+                          <Tag className="!text-[9px] !text-amber">escrow locked</Tag>
+                        ) : (
+                          <span className="text-[10px] text-ink-faint">{j.status.replace("_", " ")}</span>
                         )}
                       </div>
                     </div>
@@ -341,41 +357,29 @@ export default function CampaignXBoard() {
                       </div>
                     )}
 
-                    {/* work — escrow / deliver / review (non-open jobs) */}
-                    {j.status !== "open" && (
+                    {/* work — deliver / review (state lives in the chip + footer) */}
+                    {((isWorker && (j.status === "in_progress" || j.status === "rejected" || j.status === "submitted")) || (isProject && (j.status === "in_progress" || j.status === "submitted"))) && (
                       <div className="mt-2.5 border-t border-line pt-2.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[11px] text-ink-dim">
-                            {j.status === "in_progress" ? `In progress${j.assignee_name ? ` · ${j.assignee_name}` : ""}`
-                              : j.status === "submitted" ? "Delivered — awaiting review"
-                                : j.status === "paid" ? "Completed ✓"
-                                  : j.status === "rejected" ? "Sent back" : j.status}
-                          </span>
-                          {j.status === "paid" ? <span className="text-[10px] text-neon">{j.reward_amount} {j.reward_token ?? "USDC"} released</span>
-                            : j.status === "rejected" ? <span className="text-[10px] text-ink-faint">refunded</span>
-                              : escrowLocked ? <Tag className="!text-[9px] !text-amber">escrow locked</Tag> : null}
-                        </div>
-
                         {/* worker submits delivery */}
                         {(j.status === "in_progress" || j.status === "rejected") && isWorker && (
-                          <form onSubmit={(e) => { e.preventDefault(); const p = String(new FormData(e.currentTarget).get("proof") ?? "").trim(); deliver(j.job_id, p); }} className="mt-2 flex gap-2">
+                          <form onSubmit={(e) => { e.preventDefault(); const p = String(new FormData(e.currentTarget).get("proof") ?? "").trim(); deliver(j.job_id, p); }} className="flex gap-2">
                             <input name="proof" placeholder="Delivery link / proof…" className="ng-input !py-1.5 text-xs" />
                             <button type="submit" disabled={busy} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-50">Deliver</button>
                           </form>
                         )}
-                        {j.status === "in_progress" && isProject && <p className="mt-1 text-[10px] text-ink-faint">awaiting delivery from the worker</p>}
+                        {j.status === "in_progress" && isProject && <p className="text-[10px] text-ink-faint">awaiting delivery from the worker</p>}
 
                         {/* poster reviews the delivery */}
                         {j.status === "submitted" && isProject && (
-                          <div className="mt-2">
-                            {proofLink && <a href={/^https?:\/\//.test(proofLink) ? proofLink : undefined} target="_blank" rel="noreferrer" className="text-[11px] text-cyan underline underline-offset-2">{proofLink}</a>}
+                          <div>
+                            {proofLink && <a href={/^https?:\/\//.test(proofLink) ? proofLink : undefined} target="_blank" rel="noreferrer" className="block truncate text-[11px] text-cyan underline underline-offset-2">{proofLink}</a>}
                             <div className="mt-1.5 flex gap-2">
                               <button disabled={busy} onClick={() => review(j.job_id, true)} className="ng-btn ng-btn-primary ng-btn--sm disabled:opacity-50">Approve &amp; pay</button>
                               <button disabled={busy} onClick={() => review(j.job_id, false)} className="ng-btn ng-btn-danger ng-btn--sm disabled:opacity-50">Reject</button>
                             </div>
                           </div>
                         )}
-                        {j.status === "submitted" && isWorker && <p className="mt-1 text-[10px] text-ink-faint">awaiting the project’s review</p>}
+                        {j.status === "submitted" && isWorker && <p className="text-[10px] text-ink-faint">awaiting the project’s review</p>}
                       </div>
                     )}
                   </div>
@@ -413,8 +417,8 @@ export default function CampaignXBoard() {
             <div className="space-y-2">
               {suggested.map((g, i) => (
                 <div key={g.grid_id} className="ng-card flex items-center gap-2.5 p-2.5">
-                  <span className="text-sm font-bold text-neon">{i + 1}</span>
-                  <span className="min-w-0 flex-1 truncate text-sm text-ink">{g.name}</span>
+                  <span className="text-xs font-bold text-neon">{i + 1}</span>
+                  <span className="min-w-0 flex-1 truncate text-xs text-ink">{g.name}</span>
                   <span className="flex items-center gap-1 text-[10px] text-ink-dim"><IconUser className="h-3 w-3" />{g.members}</span>
                 </div>
               ))}

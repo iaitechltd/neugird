@@ -5,7 +5,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import NeuGridMark from "@/components/NeuGridMark";
 import PulseMonitor from "./PulseMonitor";
-import StartNewButton from "./StartNewButton";
 import UserMenu from "./UserMenu";
 import WalletConnect from "./WalletConnect";
 import { IconActivity, IconBell, IconChart, IconCheck, IconConnect, IconMessage, IconSearch, IconShield, IconUser } from "./ui";
@@ -18,7 +17,7 @@ export function HeaderIcon({ children, onClick, label, badge, active }: { childr
       onClick={onClick}
       aria-label={label}
       title={label}
-      className={`relative grid h-9 w-9 place-items-center transition ${active ? "text-neon" : "text-ink-dim hover:text-neon"}`}
+      className={`relative grid h-8 w-8 place-items-center transition ${active ? "text-neon" : "text-ink-dim hover:text-neon"}`}
     >
       {children}
       {badge ? <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-neon px-1 text-[10px] font-bold text-bg">{badge}</span> : null}
@@ -132,6 +131,19 @@ function SearchOverlay({ onClose }: { onClose: () => void }) {
 type Note = { kind: "message" | "review" | "applicants" | "governance" | "fill" | "position" | "market" | "social"; text: string; sub?: string; href: string };
 const NOTE_ICON: Record<Note["kind"], (p: { className?: string }) => React.JSX.Element> = { message: IconMessage, review: IconCheck, applicants: IconUser, governance: IconShield, fill: IconChart, position: IconActivity, market: IconChart, social: IconUser };
 
+/* Seen-state for the bell: the notes are DERIVED pending states (they stay
+ * listed until acted on), but the BADGE should only count what you haven't
+ * looked at yet — opening the dropdown marks everything currently shown as
+ * seen (persisted per device; a genuinely new note re-lights the badge). */
+const SEEN_LS_KEY = "ng_bell_seen";
+const noteKey = (n: Note) => `${n.kind}|${n.text}|${n.href}`;
+function loadSeen(): Set<string> {
+  try { return new Set(JSON.parse(window.localStorage.getItem(SEEN_LS_KEY) ?? "[]") as string[]); } catch { return new Set(); }
+}
+function saveSeen(seen: Set<string>) {
+  try { window.localStorage.setItem(SEEN_LS_KEY, JSON.stringify([...seen].slice(-200))); } catch { /* ignore */ }
+}
+
 function BellDropdown({ notes, onClose }: { notes: Note[]; onClose: () => void }) {
   const router = useRouter();
   return (
@@ -198,23 +210,44 @@ export default function NeuHeader(props: {
   // Live Pulse from the current identity (/api/me); refreshes on demand so an
   // action like creating a Grid makes the number tick up immediately.
   const [livePulse, setLivePulse] = useState(pulse);
-  const [operator, setOperator] = useState<string>("");
+  // null = identity unknown (first paint) · "" = guest · else the username.
+  // The wallet button only renders for a KNOWN guest — a signed-in user manages
+  // their wallet from the user menu / Settings (founder: no duplicate button).
+  const [operator, setOperator] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [bellOpen, setBellOpen] = useState(false);
   const [notes, setNotes] = useState<Note[]>([]);
-  const [badge, setBadge] = useState(0);
+  const [seen, setSeen] = useState<Set<string>>(new Set());
+  const badge = notes.filter((n) => !seen.has(noteKey(n))).length;
+
+  function openBell() {
+    setBellOpen((v) => {
+      if (!v) {
+        // opening = you saw everything currently listed
+        setSeen((prev) => {
+          const next = new Set(prev);
+          for (const n of notes) next.add(noteKey(n));
+          saveSeen(next);
+          return next;
+        });
+      }
+      return !v;
+    });
+  }
 
   useEffect(() => {
     let alive = true;
+    // seen-set hydrates from localStorage post-mount (SSR-safe, lint-safe)
+    Promise.resolve().then(() => { if (alive) setSeen(loadSeen()); });
     const load = () =>
       fetch("/api/me")
         .then((r) => r.json())
-        .then((d) => { if (alive && typeof d?.pulse === "number") setLivePulse(d.pulse); if (alive && d?.username) setOperator(String(d.username)); })
+        .then((d) => { if (alive && typeof d?.pulse === "number") setLivePulse(d.pulse); if (alive) setOperator(d?.username ? String(d.username) : ""); })
         .catch(() => {});
     const loadNotes = () =>
       fetch("/api/notifications")
         .then((r) => r.json())
-        .then((d) => { if (alive) { setNotes(d.notes ?? []); setBadge(d.badge ?? 0); } })
+        .then((d) => { if (alive) setNotes(d.notes ?? []); })
         .catch(() => {});
     load();
     loadNotes();
@@ -227,10 +260,10 @@ export default function NeuHeader(props: {
 
   return (
     <header className="sticky top-0 z-40 shrink-0 border-b border-neon/20 bg-black">
-      <div className="flex h-16 w-full items-center justify-between gap-3 px-4 sm:px-6">
-        <div className="flex items-center gap-2.5">
-          <Link href="/" aria-label="NeuGrid — landing"><NeuGridMark size={30} /></Link>
-          <span className="min-w-[16ch] text-[13px]">
+      <div className="flex h-12 w-full items-center justify-between gap-2 px-3 sm:px-4">
+        <div className="flex items-center gap-2">
+          <Link href="/" aria-label="NeuGrid — landing"><NeuGridMark size={24} /></Link>
+          <span className="min-w-[16ch] text-[12px]">
             <span className="text-ink-dim">{operator || "guest"}@neugrid</span>
             <span className="text-ink-faint">:~$ </span>
             <span className="font-bold text-neon"><Typewriter key={name} text={name.toLowerCase()} cursor /></span>
@@ -241,8 +274,7 @@ export default function NeuHeader(props: {
           <PulseMonitor value={livePulse} />
         </div>
 
-        <div className="flex items-center gap-1.5">
-          <StartNewButton />
+        <div className="flex items-center gap-1">
           {onToggleCollapse && (
             <HeaderIcon active={collapsed} onClick={onToggleCollapse} label="Collapse panels">
               <IconConnect className="h-4 w-4" />
@@ -250,10 +282,10 @@ export default function NeuHeader(props: {
           )}
           <HeaderIcon onClick={() => setSearchOpen(true)} label="Search (⌘K)"><IconSearch className="h-4 w-4" /></HeaderIcon>
           <div className="relative">
-            <HeaderIcon active={bellOpen} onClick={() => setBellOpen((v) => !v)} label="Notifications" badge={badge}><IconBell className="h-4 w-4" /></HeaderIcon>
+            <HeaderIcon active={bellOpen} onClick={openBell} label="Notifications" badge={badge}><IconBell className="h-4 w-4" /></HeaderIcon>
             {bellOpen && <BellDropdown notes={notes} onClose={() => setBellOpen(false)} />}
           </div>
-          <WalletConnect align="right" />
+          {operator === "" && <WalletConnect align="right" />}
           <UserMenu />
         </div>
       </div>

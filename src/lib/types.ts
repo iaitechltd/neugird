@@ -84,6 +84,9 @@ export interface UserProfile {
   reputation?: ReputationScore;
   /** Claimable, vesting-at-TGE reward ledger (separate from reputation). */
   reward?: RewardLedger;
+  /** Proof-of-humanity tier record (docs/POH_GATE.md) — gates reward COUNTING,
+   *  never participation. */
+  humanity?: HumanityRecord;
   joined_grids: ID[];
   created_at: ISODate;
 }
@@ -259,6 +262,15 @@ export interface Agreement {
   onchain?: { tx: string; hash: string; cluster: string };
   created_at: ISODate;
 }
+/** A small file attached to a DM — stored inline as a data URI (same posture as
+ *  build artifacts living in the store), size-capped + mime-allowlisted at send. */
+export interface DMAttachment {
+  name: string;
+  mime: string;
+  size: number; // decoded bytes
+  data_uri: string;
+}
+
 export interface DirectMessage {
   message_id: ID;
   conversation_id: ID;
@@ -266,6 +278,7 @@ export interface DirectMessage {
   kind: DMKind;
   body: string;
   offer?: DMOffer; // present for deal / hire
+  attachment?: DMAttachment; // present for file/pic messages
   read_by?: ID[];
   created_at: ISODate;
 }
@@ -656,6 +669,18 @@ export interface RewardLedger {
   vesting?: Vesting;
 }
 
+/** Proof-of-humanity record (docs/POH_GATE.md). Tier 0 = wallet (SIWS),
+ *  1 = established wallet (native on-chain signals), 2 = verified human (a
+ *  provider attestation — civic / worldid / … — provider-agnostic by design). */
+export interface HumanityRecord {
+  tier: 0 | 1 | 2;
+  /** Native on-chain signals for the primary SIWS wallet. */
+  signals?: { wallet_age_days?: number; tx_count?: number; checked_at: ISODate };
+  /** Tier-2 external attestation; presence ⇒ tier 2. */
+  attestation?: { provider: string; ref?: string; at: ISODate };
+  updated_at: ISODate;
+}
+
 /* ----------------------------- Fund ---------------------------- */
 // Milestone-escrowed funding. Money locks in an on-chain treasury and releases
 // tranche by tranche on verified, backer-approved delivery.
@@ -896,6 +921,10 @@ export interface LimitOrder {
   take_profit?: number;
   stop_loss?: number;
   trailing_stop_pct?: number;
+  /** Escrow-on-place (audit F7): funds reserved when the order rests — USDC for
+   *  buys/perp entries, base tokens for sells — released as it fills/cancels. */
+  escrow_quote?: number;
+  escrow_base?: number;
 }
 
 /* ----------------------- Agent Mode (mandates) --------------------- */

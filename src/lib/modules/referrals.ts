@@ -16,6 +16,7 @@
 
 import { db } from "../store";
 import { nowISO } from "../id";
+import * as Humanity from "./humanity";
 import * as Pulse from "./pulse";
 import * as Params from "./params";
 
@@ -52,6 +53,11 @@ export function bind(user_id: string, refCode: string): boolean {
 export function checkVerify(user_id: string): void {
   const user = db.users.find((u) => u.id === user_id);
   if (!user?.referred_by || user.referral_verified_at) return;
+  // PoH gate (docs/POH_GATE.md): when reward counting is gated, a referral only
+  // verifies once the REFEREE clears the tier — a sockpuppet's first action
+  // can't pay its referrer. Re-checked on every economic action, so it verifies
+  // later once they do. Default = open.
+  if (!Humanity.rewardsGateOk(user_id)) return;
   const referrer = db.users.find((u) => u.id === user.referred_by);
   if (!referrer) return;
   user.referral_verified_at = nowISO();

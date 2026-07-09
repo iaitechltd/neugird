@@ -56,6 +56,7 @@ export function publish(input: { agent_id: string; skill_id: string; owner_id: s
   if (agent.owner_id !== input.owner_id) return { error: "not_owner" };
   const skill = libOf(agent).find((s) => s.skill_id === input.skill_id);
   if (!skill) return { error: "no_skill" };
+  if (skill.from_published) return { error: "not_original" }; // a bought skill can't be re-sold — only work-earned skills are publishable
   if (listingForSkill(input.skill_id)) return { error: "already_listed" };
   const price = Math.max(0, Math.round(input.price_grid ?? 0));
   const published: PublishedSkill = {
@@ -84,6 +85,28 @@ export function delist(published_id: string, owner_id: string): { ok?: boolean; 
   p.status = "delisted";
   p.updated_at = nowISO();
   return { ok: true };
+}
+
+/** Author reprices a listing (0 = free). */
+export function updatePrice(published_id: string, owner_id: string, price_grid: number): { published?: PublishedSkill; error?: string } {
+  const p = get(published_id);
+  if (!p) return { error: "not_found" };
+  if (p.author_id !== owner_id) return { error: "not_owner" };
+  if (!Number.isFinite(price_grid) || price_grid < 0) return { error: "bad_price" };
+  p.price_grid = Math.round(price_grid);
+  p.updated_at = nowISO();
+  return { published: p };
+}
+
+/** Skills the owner could publish right now: every library skill across their
+ *  agents that was earned by the agent's own work (not bought here) and isn't
+ *  already listed. */
+export function publishableFor(owner_id: string): { agent_id: string; agent_name: string; skill_id: string; title: string; domain: string; uses: number }[] {
+  return db.agents
+    .filter((a) => a.owner_id === owner_id)
+    .flatMap((a) => libOf(a)
+      .filter((s) => !s.from_published && !listingForSkill(s.skill_id))
+      .map((s) => ({ agent_id: a.agent_id, agent_name: a.name, skill_id: s.skill_id, title: s.title, domain: s.domain, uses: s.uses })));
 }
 
 /** Does this agent already carry the skill from this listing? */
@@ -156,11 +179,24 @@ export function statsFor(owner_id: string): { published: number; installs: numbe
   return { published: mine.length, installs: mine.reduce((a, p) => a + p.installs, 0), earned_grid: Math.round(earningsFor(owner_id)) };
 }
 
-/** A listing enriched for the UI (author identity + provenance). */
+/** A listing enriched for the UI (author identity + provenance). Explicit field
+ *  list — the RECIPE is the paid good and must NEVER ship to non-buyers (it's
+ *  copied server-side on install); buyers see its size, not its content. */
 export function view(p: PublishedSkill, viewer_id?: string) {
   const author = db.users.find((u) => u.id === p.author_id);
   return {
-    ...p,
+    published_id: p.published_id,
+    skill_id: p.skill_id,
+    title: p.title,
+    domain: p.domain,
+    summary: p.summary,
+    source_uses: p.source_uses,
+    price_grid: p.price_grid,
+    installs: p.installs,
+    status: p.status,
+    created_at: p.created_at,
+    recipe_chars: p.recipe.length,
+    author_id: p.author_id,
     author_name: author?.username ?? p.author_id,
     author_reputation: author?.reputation?.total ?? 0,
     author_agent_name: agentOf(p.author_agent_id)?.name ?? p.author_agent_id,
@@ -168,9 +204,19 @@ export function view(p: PublishedSkill, viewer_id?: string) {
   };
 }
 
-/** Global marketplace rollup (for KPIs). */
-export function marketStats(): { listings: number; installs: number; authors: number; volume_grid: number } {
+/** Global marketplace rollup (for KPIs + the GRID-flow chart). Volume is GROSS
+ *  (what installers paid); it splits into author take + treasury fees. */
+export function marketStats(): { listings: number; installs: number; authors: number; volume_grid: number; author_take_grid: number; fees_grid: number } {
   const listed = listListed();
-  const volume = (db.settlements ?? []).filter((s) => s.resource.startsWith("skill_install:") && s.status === "settled").reduce((a, s) => a + s.amount, 0);
-  return { listings: listed.length, installs: listed.reduce((a, p) => a + p.installs, 0), authors: new Set(listed.map((p) => p.author_id)).size, volume_grid: Math.round(volume) };
+  const settled = (db.settlements ?? []).filter((s) => s.status === "settled");
+  const take = settled.filter((s) => s.resource.startsWith("skill_install:")).reduce((a, s) => a + s.amount, 0);
+  const fees = settled.filter((s) => s.resource.startsWith("skill_fee:")).reduce((a, s) => a + s.amount, 0);
+  return {
+    listings: listed.length,
+    installs: listed.reduce((a, p) => a + p.installs, 0),
+    authors: new Set(listed.map((p) => p.author_id)).size,
+    volume_grid: Math.round(take + fees),
+    author_take_grid: Math.round(take),
+    fees_grid: Math.round(fees),
+  };
 }

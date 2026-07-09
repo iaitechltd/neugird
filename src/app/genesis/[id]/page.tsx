@@ -162,7 +162,7 @@ export default function ProposalDetail() {
           <div className="ng-panel p-4">
             <div className="flex items-center gap-3">
               <MatrixAvatar seed={p.proposal_id} size={44} shape="square" />
-              <div className="min-w-0"><div className="truncate text-sm font-bold text-neon">{p.title}</div><div className="text-[10px] text-ink-dim">{p.category} · by {view.is_author ? "you" : view.founder?.username ?? p.author_id}</div></div>
+              <div className="min-w-0"><div className="truncate text-xs font-bold text-neon">{p.title}</div><div className="text-[10px] text-ink-dim">{p.category} · by {view.is_author ? "you" : view.founder?.username ?? p.author_id}</div></div>
             </div>
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
               <Mark plain accent={p.status === "funded" ? "neon" : "cyan"} className="!text-[10px]">{p.status}</Mark>
@@ -177,7 +177,7 @@ export default function ProposalDetail() {
               <Link href={`/talent/${view.founder.id}`} className="flex items-center gap-2.5 transition hover:opacity-90">
                 <MatrixAvatar seed={view.founder.username} size={36} shape="circle" />
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-bold text-neon">{view.founder.username}{view.is_author && <span className="ml-1 text-[10px] text-ink-faint">(you)</span>}</div>
+                  <div className="truncate text-xs font-bold text-neon">{view.founder.username}{view.is_author && <span className="ml-1 text-[10px] text-ink-faint">(you)</span>}</div>
                   <div className="text-[10px] text-ink-dim">rep <span className="text-neon tnum">{view.founder.reputation}</span> · {view.founder.credentials} credentials</div>
                 </div>
               </Link>

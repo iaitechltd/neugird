@@ -32,8 +32,12 @@ export function reputationOf(user_id: string): number {
   // headline Pulse (legacy seed score) and the new multi-dim ledger both count
   return Math.max(u.pulse_score ?? 0, u.reputation?.total ?? 0);
 }
+/** Raising is EARNED (the mechanism's spine): you need the reputation floor AND
+ *  at least one real build — backers fund working software from proven people,
+ *  not pitch decks. The board CTA only appears once both hold. */
 export function canPropose(user_id: string): boolean {
-  return reputationOf(user_id) >= PROPOSE_REPUTATION_MIN;
+  const hasBuild = db.builds.some((b) => b.owner_id === user_id);
+  return hasBuild && reputationOf(user_id) >= PROPOSE_REPUTATION_MIN;
 }
 
 /** When this raise's funding window ends (legacy proposals derive from created_at). */

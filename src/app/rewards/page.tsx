@@ -18,10 +18,19 @@ import { PanelChart } from "@/components/app/terminal";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 
 type ScheduleRow = { action: string; pulse: number | null; formula?: string; dimension: string };
+type HumanityState = {
+  tier: number; tier_name: string;
+  signals: { wallet_age_days?: number; tx_count?: number; checked_at: string } | null;
+  attestation: { provider: string; ref?: string; at: string } | null;
+  thresholds: { wallet_age_days: number; tx_count: number };
+  gates: { starter: { required: number; ok: boolean }; rewards: { required: number; ok: boolean } };
+};
 type Payload = {
   me: { id: string };
   ledger: {
     accrued: number; sybil_adjusted: number; affiliate_grid: number; total_allocation: number; sybil_factor: number; claimed: number; rate: number;
+    counted: number; pending_verification: number;
+    humanity: { tier: number; required: number; ok: boolean };
     breakdown: { dimension: string; units: number; events: number }[];
     tge: { executed: boolean } | { executed: boolean; at: string };
     vesting: { total: number; released: number; claimable: number; vested_pct: number; unlock_pct: number; cliff_days: number; duration_days: number } | null;
@@ -39,6 +48,9 @@ type Payload = {
 
 export default function RewardsPage() {
   const [data, setData] = useState<Payload | null>(null);
+  const [hum, setHum] = useState<HumanityState | null>(null);
+  const [humBusy, setHumBusy] = useState(false);
+  const [civicMsg, setCivicMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [lOpen, setLOpen] = useState(true);
   const [rOpen, setROpen] = useState(true);
@@ -47,9 +59,36 @@ export default function RewardsPage() {
   useEffect(() => {
     const load = () => fetch("/api/rewards").then((r) => r.json()).then(setData).catch(() => {});
     load();
+    fetch("/api/humanity").then((r) => r.json()).then(setHum).catch(() => {});
     window.addEventListener("neugrid:refresh-me", load);
     return () => window.removeEventListener("neugrid:refresh-me", load);
   }, []);
+
+  async function refreshHumanity() {
+    if (humBusy) return;
+    setHumBusy(true);
+    try {
+      const r = await fetch("/api/humanity/refresh", { method: "POST" });
+      const d = await r.json().catch(() => null);
+      if (d?.state) setHum(d.state);
+    } finally { setHumBusy(false); }
+  }
+
+  async function checkCivic() {
+    if (humBusy) return;
+    setHumBusy(true);
+    setCivicMsg(null);
+    try {
+      const r = await fetch("/api/humanity/civic", { method: "POST" });
+      const d = await r.json().catch(() => null);
+      if (d?.state) setHum(d.state);
+      if (r.ok) setCivicMsg("Verified — you're tier 2. Everything you've earned counts.");
+      else setCivicMsg(d?.error === "no_valid_pass" ? "No pass on your wallet yet — get one first (link above), then re-check."
+        : d?.error === "connect_wallet_first" ? "Connect your wallet first (top right)."
+        : d?.error === "invalid_wallet" ? "Your session wallet isn't a real Solana address — connect a wallet first."
+        : "Civic check unavailable right now — try again shortly.");
+    } finally { setHumBusy(false); }
+  }
 
   const refLink = data?.referrals.code && typeof window !== "undefined"
     ? `${window.location.origin}/?ref=${encodeURIComponent(data.referrals.code)}`
@@ -178,7 +217,7 @@ export default function RewardsPage() {
           <div className="ng-card p-4">
             <div className="ng-label mb-2 flex items-center gap-2 !text-ink-dim"><IconActivity className="h-3.5 w-3.5 text-neon" />Reward feed</div>
             {(data?.feed ?? []).length === 0 && <p className="py-4 text-center text-[11px] text-ink-dim">No reward events yet — the schedule on the left is the map.</p>}
-            <div className="divide-y divide-line">
+            <div className="ng-2col-wide divide-y divide-line">
               {(data?.feed ?? []).map((f, i) => (
                 <div key={i} className="flex items-center justify-between gap-3 py-2">
                   <div className="min-w-0">
@@ -187,7 +226,7 @@ export default function RewardsPage() {
                   </div>
                   <div className="shrink-0 text-right">
                     <div className="text-[12px] font-bold text-neon">+{f.pulse} Pulse</div>
-                    <div className="text-[10px] text-cyan">+{f.grid} GRID</div>
+                    {f.grid > 0 ? <div className="text-[10px] text-cyan">+{f.grid} GRID</div> : <div className="text-[10px] text-ink-faint">rep only</div>}
                   </div>
                 </div>
               ))}
@@ -243,6 +282,41 @@ export default function RewardsPage() {
                   ))}
                 </div>
               </>
+            )}
+
+            {/* PoH verification — gates reward COUNTING, never participation (docs/POH_GATE.md) */}
+            <div className="ng-label mb-2 mt-5 flex items-center gap-2 !text-ink-dim"><IconUser className="h-3.5 w-3.5 text-neon" />Verification</div>
+            {hum && (
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-ink">Humanity tier</span>
+                  <Mark plain accent={hum.tier >= 2 ? "neon" : hum.tier === 1 ? "cyan" : undefined} className="!text-[10px]">T{hum.tier} · {hum.tier_name}</Mark>
+                </div>
+                <div className="mt-2 divide-y divide-line">
+                  <DataRow k={`Wallet age (need ${hum.thresholds.wallet_age_days}d)`} v={hum.signals ? `${hum.signals.wallet_age_days ?? 0}d` : "—"} />
+                  <DataRow k={`Transactions (need ${hum.thresholds.tx_count})`} v={hum.signals ? `${hum.signals.tx_count ?? 0}` : "—"} />
+                  {hum.attestation && <DataRow k="Attested by" v={hum.attestation.provider} accent="neon" />}
+                </div>
+                <button onClick={refreshHumanity} disabled={humBusy} className="ng-btn ng-btn--sm ng-btn--block mt-2 justify-center disabled:opacity-40">{humBusy ? "Reading chain…" : "Refresh wallet signals"}</button>
+                {!hum.attestation && (
+                  <div className="mt-3 border-t border-line pt-2.5">
+                    <div className="text-[10.5px] text-ink">Become a <Mark plain accent="neon" className="!text-[10px]">verified human</Mark> (tier 2)</div>
+                    <p className="mt-1 text-[10px] leading-relaxed text-ink-dim">One quick video selfie with Civic — no ID documents. One human = one counted reward ledger.</p>
+                    <div className="mt-2 flex gap-2">
+                      <a href="https://getpass.civic.com/?pass=unique&chain=solana" target="_blank" rel="noopener noreferrer" className="ng-btn ng-btn-cyan ng-btn--sm flex-1 justify-center">Get pass ↗</a>
+                      <button onClick={checkCivic} disabled={humBusy} className="ng-btn ng-btn-primary ng-btn--sm flex-1 justify-center disabled:opacity-40">{humBusy ? "Checking…" : "Check my pass"}</button>
+                    </div>
+                    {civicMsg && <p className="mt-1.5 text-[10px] leading-relaxed text-ink-dim">{civicMsg}</p>}
+                  </div>
+                )}
+                {hum.gates.rewards.required > 0 && !hum.gates.rewards.ok ? (
+                  <p className="mt-2 text-[10px] leading-relaxed text-amber">Season rewards require tier {hum.gates.rewards.required}. Your {(l?.pending_verification ?? 0).toLocaleString()} GRID allocation is earned and safe — it counts the moment you verify (any time before the TGE).</p>
+                ) : hum.gates.rewards.required > 0 ? (
+                  <p className="mt-2 text-[10px] text-ink-faint">Verified — your allocation counts at the TGE.</p>
+                ) : (
+                  <p className="mt-2 text-[10px] text-ink-faint">Gates are open this season — verification is optional until governance turns it on.</p>
+                )}
+              </div>
             )}
 
             <div className="ng-label mb-2 mt-5 flex items-center gap-2 !text-ink-dim"><IconSparkle className="h-3.5 w-3.5 text-neon" />TGE &amp; vesting</div>

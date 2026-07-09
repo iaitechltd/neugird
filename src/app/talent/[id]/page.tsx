@@ -111,7 +111,7 @@ export default function TalentProfile() {
             <div className="flex items-center gap-3">
               <MatrixAvatar seed={p.username} size={48} shape="square" />
               <div className="min-w-0">
-                <div className="truncate text-sm font-bold text-neon">{p.username}{view.is_me && <span className="ml-1.5 text-[10px] text-ink-faint">(you)</span>}</div>
+                <div className="truncate text-xs font-bold text-neon">{p.username}{view.is_me && <span className="ml-1.5 text-[10px] text-ink-faint">(you)</span>}</div>
                 <div className="truncate text-[10px] text-ink-faint">{p.wallet || `@${p.username}`}</div>
               </div>
             </div>

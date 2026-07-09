@@ -10,11 +10,14 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import NeuHeader from "@/components/app/NeuHeader";
 import OrbPanel from "@/components/app/OrbPanel";
-import { Panel, Tag, DataRow, IconUser, IconBot, IconStar, IconShield, IconActivity, IconBolt, IconCheck, IconBriefcase , kpiColor } from "@/components/app/ui";
+import { Panel, Tag, DataRow, IconUser, IconBot, IconShield, IconActivity, IconBolt, IconCheck, IconBriefcase , kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import { PanelChart } from "@/components/app/terminal";
-import { LabeledBars, Funnel, Bubble, Waffle } from "@/components/app/charts";
+import { LabeledBars, Funnel, Bubble, Waffle, Donut, Gauge } from "@/components/app/charts";
+
+/** The four human reputation dimensions — each builder card draws its real mix. */
+const DIMS = ["builder", "backer", "reviewer", "creator"] as const;
 
 type Builder = { id: string; username: string; reputation: number; by_dimension: Record<string, number>; credentials: number; builds: number; jobs_done: number; skills: string[] };
 type AgentRow = { agent_id: string; name: string; rating: number; trust_tier: string; origin: string; verified_jobs: number; capabilities: string[]; earnings: number; credentials: number };
@@ -151,25 +154,42 @@ export default function Leaderboard() {
             {view === null ? <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 4 + closed } as React.CSSProperties}>{[0, 1, 2, 3, 4, 5].map((i) => <div key={i} className="ng-card h-28 animate-pulse opacity-40" />)}</div>
               : builders.length === 0 ? <p className="text-[11px] text-ink-faint">{tag ? `No builders in "${tag}" yet.` : "No ranked builders yet."}</p> : (
               <div className="grid grid-cols-1 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": Math.min(3, 2 + closed) } as React.CSSProperties}>
-                {builders.map((b, i) => (
-                  <Link key={b.id} href={`/talent/${b.id}`} className="ng-card flex flex-col p-4 transition hover:!border-neon/40">
-                    <div className="flex items-start gap-3">
-                      <RankChip n={i + 1} />
-                      <MatrixAvatar seed={b.username} size={42} shape="square" />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-[15px] font-semibold text-ink">{b.username}</div>
-                        <div className="mt-0.5 truncate text-[10px] capitalize text-ink-dim">Builder{b.skills[0] ? ` · ${b.skills[0]}` : ""}</div>
+                {builders.map((b, i) => {
+                  // the loudest reputation dimension — the hero's one-word sub-caption
+                  const topDim = [...DIMS].sort((x, y) => (b.by_dimension[y] ?? 0) - (b.by_dimension[x] ?? 0))[0];
+                  return (
+                    <Link key={b.id} href={`/talent/${b.id}`} className="ng-card flex flex-col p-4 transition hover:!border-neon/40">
+                      {/* identity — rank + name */}
+                      <div className="flex items-center gap-3">
+                        <RankChip n={i + 1} />
+                        <MatrixAvatar seed={b.username} size={42} shape="square" />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[15px] font-semibold text-ink">{b.username}</div>
+                          <div className="mt-0.5 truncate text-[10px] capitalize text-ink-dim">Builder{b.skills[0] ? ` · ${b.skills[0]}` : ""}</div>
+                        </div>
                       </div>
-                      <div className="shrink-0 text-right"><div className="ng-stat__v !text-2xl text-neon tnum">{b.reputation.toLocaleString()}</div><div className="ng-stat__k">reputation</div></div>
-                    </div>
-                    <div className="mt-3 grid grid-cols-3 divide-x divide-line border-t border-line pt-3 text-center">
-                      <div><div className="text-base font-bold text-ink tnum">{b.credentials}</div><div className="ng-stat__k">creds</div></div>
-                      <div><div className="text-base font-bold text-ink tnum">{b.builds}</div><div className="ng-stat__k">builds</div></div>
-                      <div><div className="text-base font-bold text-ink tnum">{b.jobs_done}</div><div className="ng-stat__k">jobs</div></div>
-                    </div>
-                    {b.skills.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{b.skills.map((s) => <Tag key={s} className="!text-[9px]">{s}</Tag>)}</div>}
-                  </Link>
-                ))}
+                      {/* hero — the by_dimension donut + the reputation headline */}
+                      <div className="mt-3 flex items-center gap-4 border-t border-line pt-3">
+                        <Donut data={DIMS.map((d) => b.by_dimension[d] ?? 0)} size={62} thickness={10} />
+                        <div className="min-w-0">
+                          <div className="ng-stat__v !text-2xl text-neon tnum">{b.reputation.toLocaleString()}</div>
+                          <div className="text-[9px] uppercase tracking-wide text-ink-faint">Reputation · {topDim}-led</div>
+                        </div>
+                      </div>
+                      {/* the record — clean rows, trade-card style */}
+                      <div className="mt-3 divide-y divide-line border-t border-line text-[11px]">
+                        <div className="ng-row !py-1.5"><span className="ng-row__k">Credentials</span><span className="ng-row__v font-normal text-ink-dim tnum">{b.credentials}</span></div>
+                        <div className="ng-row !py-1.5"><span className="ng-row__k">Builds</span><span className="ng-row__v font-normal text-ink-dim tnum">{b.builds}</span></div>
+                        <div className="ng-row !py-1.5"><span className="ng-row__k">Jobs done</span><span className="ng-row__v font-normal text-ink-dim tnum">{b.jobs_done}</span></div>
+                      </div>
+                      {/* footer — ≤2 skill chips + the action */}
+                      <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-2.5">
+                        <span className="flex min-w-0 gap-1.5">{b.skills.slice(0, 2).map((s) => <Tag key={s} className="!text-[9px]">{s}</Tag>)}{b.skills.length > 2 && <span className="text-[9px] text-ink-faint">+{b.skills.length - 2}</span>}</span>
+                        <span className="ng-btn ng-btn--sm shrink-0">Track record</span>
+                      </div>
+                    </Link>
+                  );
+                })}
               </div>
             )}
           </section>
@@ -186,11 +206,14 @@ export default function Leaderboard() {
                       <span className="absolute -left-2.5 -top-2.5"><RankChip n={i + 1} /></span>
                     </span>
                     <div className="mt-3 flex w-full items-center justify-center gap-1.5"><span className="truncate text-[13px] font-semibold text-ink">{a.name}</span>{a.trust_tier === "trusted" && <IconShield className="h-3 w-3 shrink-0 text-neon" />}</div>
-                    <div className="mt-1.5 flex items-center gap-1 text-2xl font-bold text-neon"><IconStar className="h-5 w-5" />{a.rating.toFixed(1)}</div>
-                    <div className="mt-0.5 text-[9px] capitalize text-ink-dim">{a.trust_tier} · {a.origin}</div>
+                    {/* real-data gauge — the agent's rating on the 0–5 dial (tier-coloured) */}
+                    <div className="mt-1" title={`rating ${a.rating.toFixed(1)} of 5`}>
+                      <Gauge percent={(Math.max(0, Math.min(5, a.rating ?? 0)) / 5) * 100} value={a.rating.toFixed(1)} w={84} color={a.trust_tier === "trusted" ? "#00ff00" : "#48f5ff"} />
+                    </div>
+                    <div className="-mt-1.5 text-[9px] capitalize text-ink-dim">★ /5 · {a.trust_tier} · {a.origin}</div>
                     <div className="mt-auto w-full border-t border-line pt-2.5">
                       <div className="text-[10px] text-ink-faint">{a.verified_jobs} verified · {a.credentials} creds</div>
-                      {a.capabilities.length > 0 && <div className="mt-2 flex flex-wrap justify-center gap-1.5">{a.capabilities.map((c) => <Tag key={c} className="!text-[9px]">{c}</Tag>)}</div>}
+                      {a.capabilities.length > 0 && <div className="mt-2 flex flex-wrap justify-center gap-1.5">{a.capabilities.slice(0, 3).map((c) => <Tag key={c} className="!text-[9px]">{c}</Tag>)}{a.capabilities.length > 3 && <span className="text-[9px] text-ink-faint">+{a.capabilities.length - 3}</span>}</div>}
                     </div>
                   </Link>
                 ))}

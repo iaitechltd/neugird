@@ -72,7 +72,7 @@ function OrderBook({ book, onClose }: { book: Book; onClose: () => void }) {
   );
   return (
     <div className="w-[152px] shrink-0 self-stretch border-l border-line pl-1.5">
-      <div className="mb-0.5 flex items-center justify-between px-1"><span className="text-[8.5px] uppercase tracking-wide text-ink-faint">Order book</span><button onClick={onClose} className="text-ink-faint transition hover:text-neon" aria-label="Close order book"><IconClose className="h-3 w-3" /></button></div>
+      <div className="mb-0.5 flex items-center justify-between px-1"><span className="text-[8.5px] uppercase tracking-wide text-ink-faint" title="Depth derived from the AMM curve — resting limit orders execute against the pool, not each other">Order book · AMM depth</span><button onClick={onClose} className="text-ink-faint transition hover:text-neon" aria-label="Close order book"><IconClose className="h-3 w-3" /></button></div>
       {book.asks.map((l, i) => <Row key={`a${i}`} l={l} up={false} />)}
       <div className="my-0.5 px-1.5 text-center text-[12px] font-bold text-neon tnum">${book.price.toFixed(4)}</div>
       {book.bids.map((l, i) => <Row key={`b${i}`} l={l} up />)}
@@ -750,7 +750,7 @@ export default function MarketTerminal() {
                     <div className="text-[10px] text-ink-faint">Leverage</div>
                     <div className="mt-1 grid grid-cols-3 gap-1">{LEV.map((l) => <button key={l} onClick={() => setLev(l)} className={`rounded border py-1 text-[11px] transition ${lev === l ? "border-neon/50 bg-neon/10 text-neon" : "border-line text-ink-dim hover:text-neon"}`}>{l}×</button>)}</div>
                     <div className="mt-2 flex items-center justify-between text-[10px] text-ink-faint"><span>Margin (USDC)</span><span>Bal {money(d.wallet.usdc)}</span></div>
-                    <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="0" className="ng-input mt-1 !py-2 text-sm" />
+                    <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="0" className="ng-input mt-1 !py-2 text-xs" />
                     <div className="mt-1.5 grid grid-cols-4 gap-1">{[25, 50, 75, 100].map((q) => <button key={q} onClick={() => setAmount(String(+((d.wallet.usdc) * (q / 100)).toFixed(2)))} className="rounded border border-line py-1 text-[10px] text-ink-dim transition hover:border-neon/40 hover:text-neon">{q}%</button>)}</div>
                     <div className="mt-2 flex items-center justify-between text-[10px] text-ink-faint"><span>Limit entry $ (optional)</span><span>blank = open at mark</span></div>
                     <input value={limitPrice} onChange={(e) => setLimitPrice(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder={`mark $${(m.price ?? 0).toFixed(4)}`} className="ng-input mt-1 !py-1.5 text-[12px]" />
@@ -782,7 +782,7 @@ export default function MarketTerminal() {
                       <><div className="mt-2 flex items-center justify-between text-[10px] text-ink-faint"><span>Price (USDC)</span></div><input value={limitPrice} onChange={(e) => setLimitPrice(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder={(m.price ?? 0).toFixed(5)} className="ng-input mt-1 !py-1.5 text-xs" /></>
                     )}
                     <div className="mt-2 flex items-center justify-between text-[10px] text-ink-faint"><span>Amount ({stage === "spot" && ot === "limit" ? m.base_symbol : side === "buy" ? m.quote_symbol : m.base_symbol})</span><span>{side === "buy" ? `Bal ${money(d.wallet.usdc)}` : `Bal ${(d.holding ?? 0).toFixed(0)}`}</span></div>
-                    <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="0" className="ng-input mt-1 !py-2 text-sm" />
+                    <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="0" className="ng-input mt-1 !py-2 text-xs" />
                     <div className="mt-1.5 grid grid-cols-4 gap-1">{(side === "buy" && !(stage === "spot" && ot === "limit") ? [10, 100, 1000] : [25, 50, 75, 100]).map((q) => <button key={q} onClick={() => setAmount(String(side === "buy" && !(stage === "spot" && ot === "limit") ? q : +((d.holding ?? 0) * (q / 100)).toFixed(2)))} className="rounded border border-line py-1 text-[10px] text-ink-dim transition hover:border-neon/40 hover:text-neon">{side === "buy" && !(stage === "spot" && ot === "limit") ? q : `${q}%`}</button>)}</div>
                     {stage === "spot" && ot === "limit" && <div className="mt-2 flex items-center justify-between text-[10px] text-ink-faint"><span>Total</span><span className="text-ink">{money((Number(limitPrice) || 0) * (Number(amount) || 0))} USDC</span></div>}
                     <div className="mt-2 flex items-center justify-between text-[10px] text-ink-faint"><span>Trading fee</span><span>1.00%</span></div>

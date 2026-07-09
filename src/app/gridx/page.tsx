@@ -19,7 +19,7 @@ import { CountUp, Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import OrbPanel from "@/components/app/OrbPanel";
 import { PanelChart } from "@/components/app/terminal";
-import { RadialBars, ConcentricRings, Bubble, Bars } from "@/components/app/charts";
+import { RadialBars, ConcentricRings, Bubble, Bars, Ring } from "@/components/app/charts";
 import type { Build, Product } from "@/lib/types";
 
 type P = Product & {
@@ -29,52 +29,56 @@ type P = Product & {
 };
 type SortKey = "trending" | "revenue" | "new";
 
+/** The page's own trending metric — real usage only (settled purchases + opens). */
+const trendScore = (p: P) => (p.purchases ?? 0) * 3 + (p.opens_30d ?? 0);
+
 const Star = () => (
   <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4 6.1 20.5l1.2-6.5L2.5 9.4l6.6-.9z" /></svg>
 );
 
-/* A product tile that earns the click: price · rating · REAL numbers · Open. */
-function ProductCard({ product: p, onOpen }: { product: P; onOpen: (p: P) => void }) {
+/* A product tile in trade-card form: identity · traction hero · the record · action. */
+function ProductCard({ product: p, onOpen, trendMax }: { product: P; onOpen: (p: P) => void; trendMax: number }) {
   const live = p.artifact_ref?.preview_url;
   const hasTraction = (p.onchain_revenue ?? 0) > 0 || (p.active_users ?? 0) > 0 || (p.opens_30d ?? 0) > 0 || (p.purchases ?? 0) > 0;
+  // REAL proportion: this product's traction as a share of the catalogue leader's
+  const trendPct = Math.round((trendScore(p) / trendMax) * 100);
   return (
     <div className="ng-card mb-3 flex break-inside-avoid flex-col p-3.5 transition hover:!border-neon/40">
+      {/* identity — avatar + name + price */}
       <div className="flex items-center gap-3">
         <MatrixAvatar seed={p.product_id} size={42} shape="square" />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-2">
-            <Link href={`/gridx/${p.product_id}`} className="flex min-w-0 items-center gap-1 truncate text-sm font-bold text-neon hover:underline">{p.name}<IconCheck className="h-3.5 w-3.5 shrink-0" /></Link>
-            <span className="shrink-0 text-[11px] font-bold">{(p.price_usdc ?? 0) > 0 ? <span className="text-cyan">${p.price_usdc}</span> : <span className="text-neon">FREE</span>}</span>
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            <Tag>{p.category}</Tag>
-            <Mark plain accent="cyan" className="!text-[9px]"><IconBolt className="h-2.5 w-2.5" />Echo-built</Mark>
-            {p.market && <Mark plain accent="amber" className="!text-[9px]">{p.market.stage.toUpperCase()}</Mark>}
-          </div>
+          <Link href={`/gridx/${p.product_id}`} className="flex min-w-0 items-center gap-1 text-sm font-bold text-neon hover:underline"><span className="truncate">{p.name}</span><IconCheck className="h-3.5 w-3.5 shrink-0" /></Link>
+          <div className="truncate text-[10px] text-ink-faint">{p.category}</div>
+        </div>
+        <span className="shrink-0 text-[11px] font-bold">{(p.price_usdc ?? 0) > 0 ? <span className="text-cyan">${p.price_usdc}</span> : <span className="text-neon">FREE</span>}</span>
+      </div>
+      {p.description && <p className="mt-2 truncate text-[11px] text-ink-dim" title={p.description}>{p.description}</p>}
+      {/* hero — traction ring (share of the #1 product) + revenue headline */}
+      <div className="mt-3 flex items-center gap-4">
+        <Ring percent={trendPct} value={`${trendPct}%`} size={54} stroke={5} />
+        <div className="min-w-0">
+          <div className="ng-stat__v !text-2xl text-neon tnum">${(p.onchain_revenue ?? 0).toLocaleString()}</div>
+          <div className="mt-0.5 text-[9px] uppercase tracking-wide text-ink-faint">{hasTraction ? "revenue" : "newly listed"}</div>
         </div>
       </div>
-      <div className="mt-2 flex items-center gap-1.5 text-[10px]">
-        {p.review_count ? (
-          <><span className="flex items-center gap-0.5 text-amber-300">{[...Array(Math.round(p.rating ?? 0))].map((_, i) => <Star key={i} />)}</span><span className="text-ink-dim">{p.rating} ({p.review_count})</span></>
-        ) : <span className="text-ink-faint">no reviews yet</span>}
-        {p.purchased_by_me && <Mark plain accent="neon" className="ml-auto !text-[9px]">owned</Mark>}
-        {p.owned_by_me && <Mark plain className="ml-auto !text-[9px]">yours</Mark>}
+      {/* the record */}
+      <div className="mt-3 divide-y divide-line text-[11px]">
+        <div className="ng-row !py-1"><span className="ng-row__k">Rating</span><span className="ng-row__v flex items-center gap-1 font-normal text-ink-dim">{p.review_count ? <><span className="flex items-center gap-0.5 text-amber-300">{[...Array(Math.round(p.rating ?? 0))].map((_, i) => <Star key={i} />)}</span>{p.rating} ({p.review_count})</> : "—"}</span></div>
+        <div className="ng-row !py-1"><span className="ng-row__k">Sales</span><span className="ng-row__v font-normal text-ink-dim tnum">{p.purchases ?? 0}</span></div>
+        <div className="ng-row !py-1"><span className="ng-row__k">Users 30D</span><span className="ng-row__v font-normal text-ink-dim tnum">{(p.active_users ?? 0).toLocaleString()}</span></div>
       </div>
-      {p.description && <p className="mt-2 line-clamp-2 text-[11px] leading-relaxed text-ink-dim">{p.description}</p>}
-      {hasTraction ? (
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line pt-2 text-[10px]">
-          {(p.onchain_revenue ?? 0) > 0 && <span className="flex items-center gap-1 font-bold text-cyan"><IconCoins className="h-3 w-3" />${(p.onchain_revenue ?? 0).toLocaleString()}</span>}
-          {(p.active_users ?? 0) > 0 && <span className="text-ink-dim"><span className="text-ink">{(p.active_users ?? 0).toLocaleString()}</span> users/30d</span>}
-          {(p.opens_30d ?? 0) > 0 && <span className="text-ink-faint"><span className="text-ink-dim">{p.opens_30d}</span> opens</span>}
-        </div>
-      ) : (
-        <div className="mt-3 flex items-center gap-1.5 border-t border-line pt-2 text-[10px] text-ink-faint">
-          <IconBolt className="h-3 w-3 text-neon/60" />Newly listed — be the first to try it
-        </div>
-      )}
-      <div className="mt-3 flex gap-2">
-        {live && <button onClick={() => onOpen(p)} className="ng-btn ng-btn-primary ng-btn--sm flex-1 justify-center"><IconBolt className="h-3 w-3" /> Open</button>}
-        <Link href={`/gridx/${p.product_id}`} className="ng-btn ng-btn--sm flex-1 justify-center">Details</Link>
+      {/* footer — status chips + the action */}
+      <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-2.5 text-[10px]">
+        <span className="flex min-w-0 items-center gap-2">
+          {p.market && <Mark plain accent="amber" className="!text-[9px]">{p.market.stage.toUpperCase()}</Mark>}
+          {p.purchased_by_me && <Mark plain accent="neon" className="!text-[9px]">owned</Mark>}
+          {p.owned_by_me && <Mark plain className="!text-[9px]">yours</Mark>}
+          {live && <Link href={`/gridx/${p.product_id}`} className="flex items-center gap-1 text-neon transition hover:text-glow">Details<IconArrowRight className="h-3 w-3" /></Link>}
+        </span>
+        {live
+          ? <button onClick={() => onOpen(p)} className="ng-btn ng-btn-primary ng-btn--sm shrink-0"><IconBolt className="h-3 w-3" /> Open</button>
+          : <Link href={`/gridx/${p.product_id}`} className="ng-btn ng-btn--sm shrink-0">Details</Link>}
       </div>
     </div>
   );
@@ -131,13 +135,14 @@ export default function GridXPage() {
 
   const shown = useMemo(() => {
     const base = category === "All" ? products : products.filter((p) => p.category === category);
-    const score = (p: P) => (p.purchases ?? 0) * 3 + (p.opens_30d ?? 0);
     return [...base].sort((a, b) =>
       sort === "revenue" ? (b.onchain_revenue ?? 0) - (a.onchain_revenue ?? 0)
       : sort === "new" ? Date.parse(b.listed_at) - Date.parse(a.listed_at)
-      : score(b) - score(a),
+      : trendScore(b) - trendScore(a),
     );
   }, [products, category, sort]);
+  // Card rings compare each product to the catalogue's trend leader (whole store, not the filter).
+  const trendMax = Math.max(1, ...products.map(trendScore));
   const topProducts = [...products].sort((a, b) => (b.onchain_revenue ?? 0) - (a.onchain_revenue ?? 0)).slice(0, 5);
 
   /* catalogue metrics — single-value arcs that read well at ANY product count
@@ -200,7 +205,7 @@ export default function GridXPage() {
               <div className="space-y-2">
                 {mine.map((p) => (
                   <Link key={p.product_id} href={`/gridx/${p.product_id}`} className="ng-card block p-3">
-                    <div className="flex items-center justify-between gap-2"><span className="truncate text-sm text-ink">{p.name}</span><span className="text-[10px] font-bold">{(p.price_usdc ?? 0) > 0 ? <span className="text-cyan">${p.price_usdc}</span> : <span className="text-neon">FREE</span>}</span></div>
+                    <div className="flex items-center justify-between gap-2"><span className="truncate text-xs text-ink">{p.name}</span><span className="text-[10px] font-bold">{(p.price_usdc ?? 0) > 0 ? <span className="text-cyan">${p.price_usdc}</span> : <span className="text-neon">FREE</span>}</span></div>
                     <div className="mt-1 flex justify-between text-[10px] text-ink-dim"><span>Sales <span className="text-ink">{p.purchases ?? 0}</span></span><span>Rev <Mark plain className="!text-[10px]">${(p.onchain_revenue ?? 0).toLocaleString()}</Mark></span></div>
                   </Link>
                 ))}
@@ -212,7 +217,7 @@ export default function GridXPage() {
               <div className="space-y-2">
                 {unlisted.slice(0, 5).map((b) => (
                   <div key={b.build_id} className="ng-card p-3">
-                    <div className="truncate text-sm text-ink">{b.title}</div>
+                    <div className="truncate text-xs text-ink">{b.title}</div>
                     <div className="truncate text-[10px] text-ink-dim">{b.stack.join(" · ")}</div>
                     <Link href="/echo" className="ng-btn ng-btn--sm ng-btn--block mt-2">List on GridX →</Link>
                   </div>
@@ -255,7 +260,7 @@ export default function GridXPage() {
 
           {shown.length ? (
             <div className="columns-2 gap-3 lg:[column-count:var(--cols)]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
-              {shown.map((p) => <ProductCard key={p.product_id} product={p} onOpen={openApp} />)}
+              {shown.map((p) => <ProductCard key={p.product_id} product={p} onOpen={openApp} trendMax={trendMax} />)}
             </div>
           ) : (
             <Bracket className="ng-card p-8 text-center">
@@ -288,7 +293,7 @@ export default function GridXPage() {
                 {topProducts.map((p, i) => (
                   <Link key={p.product_id} href={`/gridx/${p.product_id}`} className="ng-card flex items-center gap-3 p-3">
                     <span className="text-[11px] font-bold text-neon/50">#{i + 1}</span>
-                    <div className="min-w-0 flex-1"><div className="truncate text-sm text-ink">{p.name}</div><div className="text-[10px] text-ink-dim">{p.category} · {p.purchases ?? 0} sales</div></div>
+                    <div className="min-w-0 flex-1"><div className="truncate text-xs text-ink">{p.name}</div><div className="text-[10px] text-ink-dim">{p.category} · {p.purchases ?? 0} sales</div></div>
                     <Mark plain accent="cyan" className="text-[11px]">${(p.onchain_revenue ?? 0).toLocaleString()}</Mark>
                   </Link>
                 ))}

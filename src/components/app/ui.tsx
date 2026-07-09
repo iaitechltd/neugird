@@ -213,6 +213,9 @@ export function IconEye({ className }: IconProps) {
 export function IconBolt({ className }: IconProps) {
   return <svg {...base(className)}><path d="M13 2 4 14h7l-1 8 9-12h-7z" /></svg>;
 }
+export function IconPaperclip({ className }: IconProps) {
+  return <svg {...base(className)}><path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l9.2-9.19a4 4 0 0 1 5.65 5.66l-9.19 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>;
+}
 export function IconNetwork({ className }: IconProps) {
   return <svg {...base(className)}><circle cx="12" cy="5" r="2.4" /><circle cx="5" cy="19" r="2.4" /><circle cx="19" cy="19" r="2.4" /><path d="M12 7.4 6.5 16.8M12 7.4l5.5 9.4M7.4 19h9.2" /></svg>;
 }

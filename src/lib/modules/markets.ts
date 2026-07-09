@@ -316,7 +316,7 @@ function executeSwap(m: Market, user_id: string, side: "buy" | "sell", amount: n
   m.quote_reserve = k / newBase;
   holding.base -= amount;
   Wallets.creditUsdc(user_id, net);
-  if (!gridFee) Wallets.creditUsdc(Wallets.TREASURY, feeUsdc);
+  if (!gridFee) Wallets.creditUsdc(Wallets.TREASURY, feeUsdc - Staking.distributeFees(m.grid_id, (feeUsdc * Staking.STAKER_FEE_SHARE_BPS) / 10000));
   m.volume = (m.volume ?? 0) + quoteOut;
   m.price = m.quote_reserve / m.base_reserve;
   m.holders = recountHolders(m.market_id);
@@ -325,11 +325,32 @@ function executeSwap(m: Market, user_id: string, side: "buy" | "sell", amount: n
   return { filled: net, fee: gridFee ? 0 : feeUsdc, fee_in: gridFee ? "grid" : "usdc", fee_grid: gridFee?.grid, fee_saved: gridFee?.saved };
 }
 
+/** Projected |price impact| of a market swap (constant product: price moves with
+ *  the SQUARE of the reserve ratio). Used by the circuit breaker BEFORE executing. */
+export function priceImpactOf(m: Market, side: "buy" | "sell", amount: number): number {
+  const base = m.base_reserve ?? 0, quote = m.quote_reserve ?? 0;
+  if (!(base > 0) || !(quote > 0) || !(amount > 0)) return 0;
+  if (side === "buy") {
+    // full notional = the upper bound (GRID-fee payers put the whole amount on
+    // the curve; USDC payers slightly less) — the breaker errs on the safe side
+    const ratio = (quote + amount) / quote;
+    return ratio * ratio - 1;
+  }
+  const ratio = base / (base + amount);
+  return 1 - ratio * ratio;
+}
+
 export function trade(market_id: string, user_id: string, side: "buy" | "sell", amount: number): SwapResult & { market?: Market } {
   const m = getMarket(market_id);
   if (!m) return { error: "no_market" };
   if (m.status !== "active") return { error: "inactive" };
   if (!(amount > 0)) return { error: "bad_amount" };
+  // CIRCUIT BREAKER (audit F2): one market order may not move the pool price more
+  // than the governable cap — blunts oracle manipulation + fat fingers alike.
+  const capBps = Params.get("max_trade_impact_bps");
+  if (capBps > 0 && Math.abs(priceImpactOf(m, side, amount)) * 10000 > capBps) {
+    return { error: "price_impact" };
+  }
   const r = executeSwap(m, user_id, side, amount);
   if (r.error) return { error: r.error };
   fillCrossedOrders(market_id); // resting limit orders the new price now crosses
@@ -555,12 +576,60 @@ function fillCrossedOrders(market_id: string): void {
     const remaining = o.qty - o.filled;
     const take = Math.min(remaining, qtyWithinLimit(m, o.side, o.price));
     if (!(take > FILL_DUST)) continue;
-    const r = o.side === "buy" ? executeSwap(m, o.user_id, "buy", quoteInForBase(m, o.user_id, take)) : executeSwap(m, o.user_id, "sell", take);
-    if (r.error) continue; // e.g. insufficient funds — leave it resting
-    o.filled += o.side === "buy" ? (r.filled ?? take) : take;
-    if (o.qty - o.filled <= FILL_DUST) { o.status = "filled"; o.filled = o.qty; }
+    if (o.side === "buy") {
+      const needed = quoteInForBase(m, o.user_id, take);
+      if (o.escrow_quote != null) {
+        // escrowed order (audit F7): funds come from the reservation, never the wallet
+        const release = Math.min(needed, o.escrow_quote);
+        if (!(release > 0) || !Wallets.debitUsdc(Wallets.ORDER_ESCROW, release)) continue;
+        Wallets.creditUsdc(o.user_id, release);
+        const r = executeSwap(m, o.user_id, "buy", release);
+        if (r.error) { Wallets.debitUsdc(o.user_id, release); Wallets.creditUsdc(Wallets.ORDER_ESCROW, release); continue; }
+        o.escrow_quote -= release;
+        o.filled += r.filled ?? take;
+      } else {
+        const r = executeSwap(m, o.user_id, "buy", needed); // legacy pre-escrow order
+        if (r.error) continue;
+        o.filled += r.filled ?? take;
+      }
+    } else {
+      if (o.escrow_base != null) {
+        const release = Math.min(take, o.escrow_base);
+        if (!(release > FILL_DUST)) continue;
+        let holding = db.holdings.find((h) => h.market_id === m.market_id && h.user_id === o.user_id);
+        if (!holding) { holding = { market_id: m.market_id, user_id: o.user_id, base: 0 }; db.holdings.push(holding); }
+        holding.base += release; // hand the escrowed tokens back for the swap to consume
+        const r = executeSwap(m, o.user_id, "sell", release);
+        if (r.error) { holding.base -= release; continue; }
+        o.escrow_base -= release;
+        o.filled += release;
+      } else {
+        const r = executeSwap(m, o.user_id, "sell", take); // legacy pre-escrow order
+        if (r.error) continue;
+        o.filled += take;
+      }
+    }
+    if (o.qty - o.filled <= FILL_DUST) {
+      o.status = "filled";
+      o.filled = o.qty;
+      refundOrderEscrow(o); // any worst-case reservation left over goes home
+    }
     o.filled_at = nowISO(); // last (partial) execution moment
   }
+}
+
+/** Return whatever escrow an order still holds — on cancel or completion. */
+function refundOrderEscrow(o: LimitOrder): void {
+  if (o.escrow_quote && o.escrow_quote > 1e-9 && Wallets.debitUsdc(Wallets.ORDER_ESCROW, o.escrow_quote)) {
+    Wallets.creditUsdc(o.user_id, o.escrow_quote);
+  }
+  o.escrow_quote = 0;
+  if (o.escrow_base && o.escrow_base > 1e-9) {
+    let holding = db.holdings.find((h) => h.market_id === o.market_id && h.user_id === o.user_id);
+    if (!holding) { holding = { market_id: o.market_id, user_id: o.user_id, base: 0 }; db.holdings.push(holding); }
+    holding.base += o.escrow_base;
+  }
+  o.escrow_base = 0;
 }
 
 export function placeLimit(market_id: string, user_id: string, side: "buy" | "sell", price: number, qty: number): { order?: LimitOrder; filled?: number; error?: string } {
@@ -581,7 +650,25 @@ export function placeLimit(market_id: string, user_id: string, side: "buy" | "se
     }
     if (qty - filledNow <= 1e-6) return { filled: filledNow };
   }
-  const order: LimitOrder = { order_id: newId("ord"), market_id, user_id, side, price, qty, filled: filledNow, status: "open", created_at: nowISO(), ...(filledNow > 0 ? { filled_at: nowISO() } : {}) };
+  // ESCROW-ON-PLACE (audit F7): the resting remainder reserves its funds now —
+  // buys lock the worst-case USDC (limit price + fee, the upper bound since the
+  // average fill price sits at-or-under the limit), sells lock the base tokens.
+  // Leftover escrow refunds on completion/cancel.
+  const rest = qty - filledNow;
+  let escrow_quote: number | undefined;
+  let escrow_base: number | undefined;
+  if (side === "buy") {
+    const reserve = rest * price * (1 + Params.get("tradex_fee_bps") / 10000);
+    if (!Wallets.debitUsdc(user_id, reserve)) return { error: "insufficient_usdc" };
+    Wallets.creditUsdc(Wallets.ORDER_ESCROW, reserve);
+    escrow_quote = reserve;
+  } else {
+    const holding = db.holdings.find((h) => h.market_id === market_id && h.user_id === user_id);
+    if (!holding || holding.base < rest) return { error: "insufficient_balance" };
+    holding.base -= rest;
+    escrow_base = rest;
+  }
+  const order: LimitOrder = { order_id: newId("ord"), market_id, user_id, side, price, qty, filled: filledNow, status: "open", created_at: nowISO(), escrow_quote, escrow_base, ...(filledNow > 0 ? { filled_at: nowISO() } : {}) };
   (db.orders ??= []).push(order);
   return { order, ...(filledNow > 0 ? { filled: filledNow } : {}) };
 }
@@ -592,6 +679,7 @@ export function cancelOrder(order_id: string, user_id: string): { order?: LimitO
   if (o.user_id !== user_id) return { error: "not_owner" };
   if (o.status !== "open") return { error: "not_open" };
   o.status = "cancelled";
+  refundOrderEscrow(o); // reservation goes straight home (audit F7)
   return { order: o };
 }
 

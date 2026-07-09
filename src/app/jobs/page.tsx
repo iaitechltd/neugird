@@ -11,10 +11,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import NeuHeader from "@/components/app/NeuHeader";
 import OrbPanel from "@/components/app/OrbPanel";
-import { Panel, Tag, Mark, DataRow, IconBriefcase, IconActivity, IconBolt, IconCheck , kpiColor } from "@/components/app/ui";
+import { Panel, Tag, Mark, DataRow, IconBriefcase, IconActivity, IconCheck , kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import { PanelChart } from "@/components/app/terminal";
-import { LabeledBars, Marimekko, Pie, Histogram, SERIES } from "@/components/app/charts";
+import { Bullet, LabeledBars, Marimekko, Pie, Histogram, SERIES } from "@/components/app/charts";
 import type { Job } from "@/lib/types";
 
 type DisputeRow = {
@@ -119,6 +119,8 @@ export default function JobsPage() {
 
   // Histogram — how rewards are distributed across every job on the board
   const rewardSpread = list.map((j) => j.reward_amount ?? 0).filter((v) => v > 0);
+  // Card bullet — every job's reward measured against the whole board's average
+  const boardAvg = rewardSpread.length ? Math.round(rewardSpread.reduce((a, b) => a + b, 0) / rewardSpread.length) : 0;
 
   async function act(url: string, body?: object, msg?: string) {
     if (busy) return;
@@ -232,18 +234,33 @@ export default function JobsPage() {
             <div className="columns-1 gap-3 sm:columns-2 lg:[column-count:var(--cols)]" style={{ "--cols": 2 + closed } as React.CSSProperties}>
               {filtered.map((job) => (
                 <div key={job.job_id} className="ng-card mb-3 flex break-inside-avoid flex-col p-4">
+                  {/* identity — title + ONE status chip (one truncated description line max) */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-ink">{job.title}</div>
-                      <div className="mt-0.5 text-[10px] text-ink-faint">{job.context.replace(/_/g, " ")} · by {job.created_by === mineId ? "you" : job.created_by}</div>
+                      <div className="truncate text-sm font-semibold text-ink">{job.title}</div>
+                      {job.description && <div className="mt-0.5 truncate text-[10px] text-ink-faint">{job.description}</div>}
                     </div>
                     <Mark plain accent={STATUS_ACCENT[job.status] ?? "amber"} className="!text-[10px] shrink-0">{job.status.replace(/_/g, " ")}</Mark>
                   </div>
-                  <p className="mt-2 text-[11px] leading-relaxed text-ink-dim line-clamp-3">{job.description}</p>
-                  {job.required_skills.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{job.required_skills.map((s) => <Tag key={s} className="!text-[9px]">{s}</Tag>)}</div>}
+                  {/* hero — the reward headline + THIS job's reward vs the board average (amber tick) */}
+                  <div className="mt-3">
+                    <div className="ng-stat__v !text-2xl text-neon tnum">{(job.reward_amount ?? 0).toLocaleString()}<span className="ml-1 text-[11px] font-normal text-ink-dim">{job.reward_token}</span></div>
+                    <div className="flex items-center justify-between text-[9px] uppercase tracking-wide text-ink-faint">
+                      <span>Reward</span>
+                      {boardAvg > 0 && <span className="tnum">board avg {boardAvg.toLocaleString()}</span>}
+                    </div>
+                    {boardAvg > 0 && <div className="mt-1.5"><Bullet data={[{ value: job.reward_amount ?? 0, target: boardAvg }]} rowH={9} gap={1} color="#7cf57c" /></div>}
+                  </div>
+                  {/* the record — clean rows, trade-card style */}
+                  <div className="mt-3 divide-y divide-line text-[11px]">
+                    <div className="ng-row !py-1.5"><span className="ng-row__k">Posted by</span><span className="ng-row__v truncate font-normal text-ink-dim">{job.created_by === mineId ? "you" : job.created_by}</span></div>
+                    <div className="ng-row !py-1.5"><span className="ng-row__k">Executor</span><span className="ng-row__v font-normal capitalize text-ink-dim">{(job.executor_kind ?? "either").replace(/_/g, " ")}</span></div>
+                    {job.required_skills.length > 0 && <div className="ng-row !py-1.5"><span className="ng-row__k">Skills</span><span className="ng-row__v flex gap-1.5 font-normal">{job.required_skills.slice(0, 2).map((s) => <Tag key={s} className="!text-[9px]">{s}</Tag>)}{job.required_skills.length > 2 && <span className="text-[9px] text-ink-faint">+{job.required_skills.length - 2}</span>}</span></div>}
+                  </div>
+                  {/* footer — context chip + the lifecycle action */}
                   <div className="pt-3">
                     <div className="flex items-center justify-between gap-2 border-t border-line pt-2.5">
-                      <Mark plain accent="cyan" className="!text-[11px]"><IconBolt className="mr-0.5 inline h-3 w-3" />{job.reward_amount} {job.reward_token}</Mark>
+                      <Mark plain className="!text-[9px] shrink-0">{job.context.replace(/_/g, " ")}</Mark>
                       <div className="flex items-center gap-2">
                         {job.status === "open" && job.created_by !== mineId && (
                           <button disabled={busy} onClick={() => act(`/api/jobs/${job.job_id}/claim`, undefined, "Claimed")} className="ng-btn ng-btn-primary ng-btn--sm disabled:opacity-50">Claim</button>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import NeuHeader from "@/components/app/NeuHeader";
+import StartNewButton from "@/components/app/StartNewButton";
 import {
   Panel, Mark, Tag, Bracket,
   IconChevronDown, IconCheck, IconBot, IconGrid, IconStar, IconBolt,
@@ -12,7 +13,7 @@ import {
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import OrbPanel from "@/components/app/OrbPanel";
-import { PanelChart } from "@/components/app/terminal";
+import { PanelChart, TMeter } from "@/components/app/terminal";
 import { Beeswarm, PolarArea, Honeycomb, StackBars } from "@/components/app/charts";
 import type { Agent, Job } from "@/lib/types";
 
@@ -27,12 +28,17 @@ function Section({ icon, children, action }: { icon: React.ReactNode; children: 
 
 const tierAccent = (t?: string): "neon" | "amber" | "danger" => (t === "trusted" ? "neon" : t === "suspended" ? "danger" : "amber");
 
-function AgentStat({ ag }: { ag: Agent }) {
+/** Card vitals as char-drawn meters (real values only): reputation + earnings
+ *  are proportions of the live market max; rating is vs the 5-star scale. */
+function AgentStat({ ag, repMax, earnMax }: { ag: Agent; repMax: number; earnMax: number }) {
+  const rep = Math.round(ag.reputation?.total ?? 0);
+  const rating = ag.rating ?? 0;
+  const earn = ag.earnings ?? 0;
   return (
-    <div className="mt-2 divide-y divide-line text-[11px]">
-      <div className="ng-row !py-1"><span className="ng-row__k">Reputation</span><Mark plain className="!text-[11px]">{Math.round(ag.reputation?.total ?? 0)}</Mark></div>
-      <div className="ng-row !py-1"><span className="ng-row__k">Rating</span><span className="ng-row__v flex items-center gap-1 text-neon"><IconStar className="h-3 w-3" />{(ag.rating ?? 0).toFixed(1)}</span></div>
-      <div className="ng-row !py-1"><span className="ng-row__k">Earnings</span><Mark plain className="!text-[11px]">{(ag.earnings ?? 0).toLocaleString()} Pulse</Mark></div>
+    <div className="mt-2 border-t border-line pt-1.5">
+      <TMeter label="Rep" pct={(rep / Math.max(1, repMax)) * 100} value={rep.toLocaleString()} w={10} />
+      <TMeter label="Rating" pct={(rating / 5) * 100} value={`${rating.toFixed(1)}★`} w={10} />
+      <TMeter label="Earned" pct={(earn / Math.max(1, earnMax)) * 100} value={`${earn.toLocaleString()} Pulse`} w={10} />
     </div>
   );
 }
@@ -122,6 +128,7 @@ export default function AgentsPage() {
   const roseData = capTop.map(([, n]) => n);
   const roseLabels = capTop.map(([c]) => c.slice(0, 4).toUpperCase());
   const earnMax = Math.max(1, ...allAgents.map((a) => a.earnings ?? 0));
+  const repMax = Math.max(1, ...allAgents.map((a) => a.reputation?.total ?? 0)); // card-meter scale
   const hive = allAgents.map((a) => ({ v: (a.earnings ?? 0) / earnMax, color: tierColor(a.trust_tier) }));
   const stackData = ["probation", "trusted", "suspended"].map((t) => ({ values: [
     allAgents.filter((a) => (a.trust_tier ?? "trusted") === t && (a.origin ?? "native") === "native").length,
@@ -156,9 +163,9 @@ export default function AgentsPage() {
             <div className="divide-y divide-line">
               {leaderboard.length ? leaderboard.map((a, i) => (
                 <div key={a.agent_id} className="flex items-center gap-3 py-2.5">
-                  <span className="w-4 text-sm font-bold text-neon/50">#{i + 1}</span>
+                  <span className="w-4 text-xs font-bold text-neon/50">#{i + 1}</span>
                   <MatrixAvatar seed={a.agent_id} size={30} />
-                  <div className="min-w-0 flex-1"><div className="truncate text-sm text-ink">{a.name}</div><div className="flex items-center gap-1.5 text-[10px] text-ink-dim"><Tag>{a.origin ?? "native"}</Tag><Mark plain accent={tierAccent(a.trust_tier)} className="!text-[9px]">{a.trust_tier ?? "trusted"}</Mark></div></div>
+                  <div className="min-w-0 flex-1"><div className="truncate text-xs text-ink">{a.name}</div><div className="flex items-center gap-1.5 text-[10px] text-ink-dim"><Tag>{a.origin ?? "native"}</Tag><Mark plain accent={tierAccent(a.trust_tier)} className="!text-[9px]">{a.trust_tier ?? "trusted"}</Mark></div></div>
                   <Mark plain accent="cyan" className="text-[11px]">{Math.round(a.reputation?.total ?? 0)}</Mark>
                 </div>
               )) : <p className="text-[11px] text-ink-dim">No agents yet.</p>}
@@ -181,7 +188,10 @@ export default function AgentsPage() {
                 <div className="flex items-center gap-2 text-[12px] text-neon"><IconBot className="h-4 w-4" /><Decrypt text="The Agent Economy" /></div>
                 <p className="mt-1 text-sm text-ink-dim">First-class economic actors — native or external (via MCP). Agents claim Jobs, earn reputation + ratings, and split the reward with their owner.</p>
               </div>
-              <Link href="/skills" className="ng-btn ng-btn--sm shrink-0"><IconLayers className="h-3.5 w-3.5" />Skills Market →</Link>
+              <div className="flex shrink-0 items-center gap-2">
+                <Link href="/skills" className="ng-btn ng-btn--sm"><IconLayers className="h-3.5 w-3.5" />Skills Market →</Link>
+                <StartNewButton only="agent" label="new agent" />
+              </div>
             </div>
           </Bracket>
 
@@ -210,22 +220,33 @@ export default function AgentsPage() {
           {myAgents.length ? (
             <div className="grid grid-cols-1 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 2 + closed } as React.CSSProperties}>
               {myAgents.map((ag) => (
-                <div key={ag.agent_id} className="ng-card p-3.5">
-                  <div className="flex items-center gap-2.5">
-                    <MatrixAvatar seed={ag.agent_id} size={36} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 text-sm font-bold text-neon">{ag.name} <IconBot className="h-3.5 w-3.5" /></div>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-ink-dim"><Tag>{ag.origin ?? "native"}</Tag><Mark plain accent={tierAccent(ag.trust_tier)} className="!text-[9px]">{ag.trust_tier ?? "trusted"}</Mark><span className="flex items-center gap-1"><span className={ag.status === "active" ? "ng-led" : "ng-led ng-led--idle"} />{ag.status}</span></div>
+                <div key={ag.agent_id} className="ng-card flex flex-col p-3.5">
+                  {/* identity — name + ONE trust chip */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <MatrixAvatar seed={ag.agent_id} size={36} />
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-bold text-neon">{ag.name}</div>
+                        <div className="flex items-center gap-1.5 text-[10px] text-ink-faint"><span className={ag.status === "active" ? "ng-led" : "ng-led ng-led--idle"} />{ag.origin ?? "native"} · {ag.status}</div>
+                      </div>
                     </div>
+                    <Mark plain accent={tierAccent(ag.trust_tier)} className="!text-[9px] shrink-0">{ag.trust_tier ?? "trusted"}</Mark>
                   </div>
-                  {ag.capabilities.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{ag.capabilities.slice(0, 4).map((c) => <Tag key={c}>{c}</Tag>)}</div>}
-                  <AgentStat ag={ag} />
+                  {/* hero — reputation headline + the vitals meters */}
+                  <div className="mt-3 ng-stat__v !text-2xl text-neon tnum">{Math.round(ag.reputation?.total ?? 0).toLocaleString()}<span className="ml-1 text-[11px] font-normal text-ink-dim">rep</span></div>
+                  <div className="text-[9px] uppercase tracking-wide text-ink-faint">Reputation</div>
+                  <AgentStat ag={ag} repMax={repMax} earnMax={earnMax} />
+                  {/* the record */}
                   <div className="mt-1 divide-y divide-line text-[11px]">
-                    <div className="ng-row !py-1"><span className="ng-row__k">Your split</span><span className="ng-row__v font-normal text-ink-dim">{Math.round((ag.owner_split_bps ?? 0) / 100)}%</span></div>
-                    {ag.origin === "external" && <div className="ng-row !py-1"><span className="ng-row__k">Bond</span><Mark plain className="!text-[11px]">{(ag.bond_amount ?? 0).toLocaleString()}</Mark></div>}
-                    {ag.trust_tier === "probation" && <div className="ng-row !py-1"><span className="ng-row__k">To trusted</span><span className="ng-row__v font-normal text-amber">{ag.jobs_to_trusted ?? 3} job{(ag.jobs_to_trusted ?? 3) === 1 ? "" : "s"}</span></div>}
+                    <div className="ng-row !py-1.5"><span className="ng-row__k">Your split</span><span className="ng-row__v font-normal text-ink-dim">{Math.round((ag.owner_split_bps ?? 0) / 100)}%</span></div>
+                    {ag.origin === "external" && <div className="ng-row !py-1.5"><span className="ng-row__k">Bond</span><Mark plain className="!text-[11px]">{(ag.bond_amount ?? 0).toLocaleString()}</Mark></div>}
+                    {ag.trust_tier === "probation" && <div className="ng-row !py-1.5"><span className="ng-row__k">To trusted</span><span className="ng-row__v font-normal text-amber">{ag.jobs_to_trusted ?? 3} job{(ag.jobs_to_trusted ?? 3) === 1 ? "" : "s"}</span></div>}
                   </div>
-                  <button onClick={() => deployAgent(ag.agent_id)} disabled={!!busy || openJobs.length === 0} className="ng-btn ng-btn-primary ng-btn--sm ng-btn--block mt-3 disabled:opacity-40">{busy === ag.agent_id ? "Deploying…" : openJobs.length ? <><IconBolt className="h-3.5 w-3.5" /> Deploy on a Job</> : "No open jobs"}</button>
+                  {/* footer — capability chips + ONE action */}
+                  <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-2.5">
+                    <div className="flex min-w-0 flex-wrap gap-1.5">{ag.capabilities.slice(0, 2).map((c) => <Tag key={c} className="!text-[9px]">{c}</Tag>)}</div>
+                    <button onClick={() => deployAgent(ag.agent_id)} disabled={!!busy || openJobs.length === 0} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-40">{busy === ag.agent_id ? "Deploying…" : openJobs.length ? <><IconBolt className="h-3.5 w-3.5" /> Deploy</> : "No open jobs"}</button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -259,13 +280,27 @@ export default function AgentsPage() {
           {allAgents.length ? (
             <div className="grid grid-cols-1 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
               {allAgents.map((a) => (
-                <Link key={a.agent_id} href={`/agents/${a.agent_id}`} className="ng-card block p-3.5">
-                  <div className="flex items-center gap-2.5">
-                    <MatrixAvatar seed={a.agent_id} size={34} />
-                    <div className="min-w-0 flex-1"><div className="truncate text-sm font-bold text-neon">{a.name}</div><div className="flex items-center gap-1.5 text-[10px] text-ink-dim"><Tag>{a.origin ?? "native"}</Tag><Mark plain accent={tierAccent(a.trust_tier)} className="!text-[9px]">{a.trust_tier ?? "trusted"}</Mark></div></div>
+                <Link key={a.agent_id} href={`/agents/${a.agent_id}`} className="ng-card group flex flex-col p-3.5">
+                  {/* identity — name + ONE trust chip */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <MatrixAvatar seed={a.agent_id} size={34} />
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-bold text-neon">{a.name}</div>
+                        <div className="truncate text-[10px] text-ink-faint">{a.origin ?? "native"}</div>
+                      </div>
+                    </div>
+                    <Mark plain accent={tierAccent(a.trust_tier)} className="!text-[9px] shrink-0">{a.trust_tier ?? "trusted"}</Mark>
                   </div>
-                  {(a.capabilities ?? []).length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{a.capabilities.slice(0, 3).map((c) => <Tag key={c}>{c}</Tag>)}</div>}
-                  <AgentStat ag={a} />
+                  {/* hero — reputation headline + the vitals meters */}
+                  <div className="mt-3 ng-stat__v !text-2xl text-neon tnum">{Math.round(a.reputation?.total ?? 0).toLocaleString()}<span className="ml-1 text-[11px] font-normal text-ink-dim">rep</span></div>
+                  <div className="text-[9px] uppercase tracking-wide text-ink-faint">Reputation</div>
+                  <AgentStat ag={a} repMax={repMax} earnMax={earnMax} />
+                  {/* footer — capability chips + the link affordance */}
+                  <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-2.5">
+                    <div className="flex min-w-0 flex-wrap gap-1.5">{(a.capabilities ?? []).slice(0, 2).map((c) => <Tag key={c} className="!text-[9px]">{c}</Tag>)}</div>
+                    <span className="shrink-0 text-[11px] text-ink-dim transition group-hover:text-neon">View agent ›</span>
+                  </div>
                 </Link>
               ))}
             </div>
@@ -294,7 +329,7 @@ export default function AgentsPage() {
                   <div className="flex items-center gap-2.5">
                     <span className="text-[11px] font-bold text-neon/50">#{i + 1}</span>
                     <MatrixAvatar seed={a.agent_id} size={30} />
-                    <div className="min-w-0 flex-1"><div className="truncate text-sm text-ink">{a.name}</div><div className="text-[10px] text-ink-dim">{(a.earnings ?? 0).toLocaleString()} Pulse earned</div></div>
+                    <div className="min-w-0 flex-1"><div className="truncate text-xs text-ink">{a.name}</div><div className="text-[10px] text-ink-dim">{(a.earnings ?? 0).toLocaleString()} Pulse earned</div></div>
                     <span className="flex items-center gap-1 text-[11px] text-neon"><IconStar className="h-3 w-3" />{(a.rating ?? 0).toFixed(1)}</span>
                   </div>
                 </div>

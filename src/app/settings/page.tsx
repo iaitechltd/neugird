@@ -18,7 +18,14 @@ import { Decrypt } from "@/components/app/typefx";
 import WalletConnect from "@/components/app/WalletConnect";
 
 type Me = { id: string; username: string; wallet: string | null; pulse: number; reputation?: { total?: number } | null; balances?: { grid: number; usdc: number } };
-type Prof = { headline: string; rate_usdc?: number; available: boolean; skills: string[]; listed: boolean };
+type Prof = { headline: string; bio?: string; rate_usdc?: number; available: boolean; skills: string[]; listed: boolean };
+type Humanity = {
+  tier: number; tier_name: string;
+  signals: { wallet_age_days?: number; tx_count?: number; checked_at: string } | null;
+  attestation: { provider: string; ref?: string; at: string } | null;
+  thresholds: { wallet_age_days: number; tx_count: number };
+  gates: { starter: { required: number; ok: boolean }; rewards: { required: number; ok: boolean } };
+};
 type Grid = { price: number; balances: { grid: number; usdc: number }; pay_fees_in_grid?: boolean; fee_discount_bps?: number };
 type Ref = { code?: string; verified: number; pending: number; affiliate: { grid: number; share_bps: number } };
 
@@ -53,6 +60,10 @@ export default function SettingsPage() {
   const [ref, setRef] = useState<Ref | null>(null);
 
   const [headline, setHeadline] = useState("");
+  const [bio, setBio] = useState("");
+  const [hum, setHum] = useState<Humanity | null>(null);
+  const [humBusy, setHumBusy] = useState(false);
+  const [civicMsg, setCivicMsg] = useState<string | null>(null);
   const [rate, setRate] = useState("");
   const [available, setAvailable] = useState(true);
   const [skills, setSkills] = useState<string[]>([]);
@@ -67,25 +78,51 @@ export default function SettingsPage() {
   const load = useCallback(() => {
     fetch("/api/me").then((r) => r.json()).then((d) => { if (d?.id) setMe(d); }).catch(() => {});
     fetch("/api/talent").then((r) => r.json()).then((d) => {
-      if (d?.me) { setProf(d.me); setHeadline(d.me.headline ?? ""); setRate(d.me.rate_usdc ? String(d.me.rate_usdc) : ""); setAvailable(d.me.available ?? true); setSkills(d.me.skills ?? []); }
+      if (d?.me) { setProf(d.me); setHeadline(d.me.headline ?? ""); setBio(d.me.bio ?? ""); setRate(d.me.rate_usdc ? String(d.me.rate_usdc) : ""); setAvailable(d.me.available ?? true); setSkills(d.me.skills ?? []); }
     }).catch(() => {});
     fetch("/api/grid").then((r) => r.json()).then(setGrid).catch(() => {});
     fetch("/api/rewards").then((r) => r.json()).then((d) => setRef(d?.referrals ?? null)).catch(() => {});
+    fetch("/api/humanity").then((r) => r.json()).then(setHum).catch(() => {});
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  const dirty = !!prof && (headline !== (prof.headline ?? "") || rate !== (prof.rate_usdc ? String(prof.rate_usdc) : "") || available !== (prof.available ?? true) || skills.join(",") !== (prof.skills ?? []).join(","));
+  const dirty = !!prof && (headline !== (prof.headline ?? "") || bio !== (prof.bio ?? "") || rate !== (prof.rate_usdc ? String(prof.rate_usdc) : "") || available !== (prof.available ?? true) || skills.join(",") !== (prof.skills ?? []).join(","));
 
   async function saveProfile() {
     if (savingProfile) return;
     setSavingProfile(true);
-    const r = await fetch("/api/talent", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ headline, rate_usdc: rate ? Number(rate) : undefined, available, skills }) }).then((x) => x.json()).catch(() => null);
+    const r = await fetch("/api/talent", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ headline, bio, rate_usdc: rate ? Number(rate) : undefined, available, skills }) }).then((x) => x.json()).catch(() => null);
     setSavingProfile(false);
-    if (r && !r.error) { setProf((p) => (p ? { ...p, headline, rate_usdc: r.listing?.rate_usdc, available, skills: r.skills ?? skills, listed: true } : p)); notify("Profile saved"); window.dispatchEvent(new Event("neugrid:refresh-me")); }
+    if (r && !r.error) { setProf((p) => (p ? { ...p, headline, bio, rate_usdc: r.listing?.rate_usdc, available, skills: r.skills ?? skills, listed: true } : p)); notify("Profile saved"); window.dispatchEvent(new Event("neugrid:refresh-me")); }
     else notify("Could not save profile");
   }
   function addSkill() { const s = skillInput.trim().toLowerCase().slice(0, 24); if (s && !skills.includes(s) && skills.length < 12) setSkills([...skills, s]); setSkillInput(""); }
   function removeSkill(s: string) { setSkills(skills.filter((x) => x !== s)); }
+
+  async function refreshHumanity() {
+    if (humBusy) return;
+    setHumBusy(true);
+    try {
+      const r = await fetch("/api/humanity/refresh", { method: "POST" });
+      const d = await r.json().catch(() => null);
+      if (d?.state) setHum(d.state);
+    } finally { setHumBusy(false); }
+  }
+  async function checkCivic() {
+    if (humBusy) return;
+    setHumBusy(true);
+    setCivicMsg(null);
+    try {
+      const r = await fetch("/api/humanity/civic", { method: "POST" });
+      const d = await r.json().catch(() => null);
+      if (d?.state) setHum(d.state);
+      if (r.ok) setCivicMsg("Verified — you're tier 2.");
+      else setCivicMsg(d?.error === "no_valid_pass" ? "No pass on your wallet yet — get one first, then re-check."
+        : d?.error === "connect_wallet_first" ? "Connect your wallet first."
+        : d?.error === "invalid_wallet" ? "Your session wallet isn't a real Solana address — connect a wallet first."
+        : "Civic check unavailable right now — try again shortly.");
+    } finally { setHumBusy(false); }
+  }
 
   async function toggleFee() {
     if (busyFee || !grid) return;
@@ -126,7 +163,7 @@ export default function SettingsPage() {
 
             <div className="ng-label mb-2 mt-4 !text-ink-dim">On this page</div>
             <div className="divide-y divide-line text-[12px]">
-              {[["Public profile", "your Talent listing"], ["Payments & fees", "GRID fee preference"], ["Wallet", "connect · balances"], ["Referrals", "your invite link"]].map(([k, s]) => (
+              {[["Public profile", "headline · bio · skills"], ["Payments & fees", "GRID fee preference"], ["Verification", "humanity tier · Civic"], ["Wallet", "connect · balances"], ["Referrals", "your invite link"]].map(([k, s]) => (
                 <div key={k} className="flex items-center justify-between py-2"><span className="text-ink">{k}</span><span className="text-[10px] text-ink-faint">{s}</span></div>
               ))}
             </div>
@@ -150,6 +187,10 @@ export default function SettingsPage() {
             <label className="ng-label !text-ink-dim">Headline</label>
             <input value={headline} onChange={(e) => setHeadline(e.target.value.slice(0, 80))} placeholder="e.g. Full-stack builder · Solana + AI agents" className="ng-input mb-1 mt-1 w-full text-[13px]" />
             <div className="mb-3 text-right text-[9px] text-ink-faint">{headline.length}/80</div>
+
+            <label className="ng-label !text-ink-dim">Bio</label>
+            <textarea value={bio} onChange={(e) => setBio(e.target.value.slice(0, 280))} rows={3} placeholder="A few lines about what you build — shown on your public profile." className="ng-input mb-1 mt-1 w-full resize-none text-[12px]" />
+            <div className="mb-3 text-right text-[9px] text-ink-faint">{bio.length}/280</div>
 
             <label className="ng-label !text-ink-dim">Skills <span className="text-ink-faint">({skills.length}/12)</span></label>
             <div className="mb-1.5 mt-1 flex flex-wrap items-center gap-1.5">
@@ -202,6 +243,42 @@ export default function SettingsPage() {
               <div className="ng-card p-3.5"><div className="ng-label !text-ink-dim">USDC balance</div><div className="ng-stat__v !text-xl tnum text-cyan">{Math.round(usdcBal).toLocaleString()}</div></div>
             </div>
             <p className="mt-2 text-[10px] text-ink-faint">Acquire GRID on the <Link href="/rewards" className="text-neon hover:underline">Rewards</Link> page (earned) or the GRID market on your profile.</p>
+          </Panel>
+
+          {/* VERIFICATION — the humanity tier (docs/POH_GATE.md): gates reward
+              counting + the starter grant once governance arms them */}
+          <Panel bodyClass="p-4">
+            <SecLabel icon={<IconShield className="h-3.5 w-3.5" />} note={hum ? `tier ${hum.tier} · ${hum.tier_name}` : undefined}>Verification</SecLabel>
+            <p className="mb-3 text-[11px] leading-relaxed text-ink-dim">One human, one counted reward ledger. Verify once — everything you&apos;ve ever earned counts at the TGE. Never required just to use NeuGrid.</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="ng-card p-3.5">
+                <div className="ng-label !text-ink-dim">Wallet signals</div>
+                <div className="mt-1 divide-y divide-line">
+                  <DataRow k={`Age (need ${hum?.thresholds.wallet_age_days ?? 30}d)`} v={hum?.signals ? `${hum.signals.wallet_age_days ?? 0}d` : "—"} />
+                  <DataRow k={`Transactions (need ${hum?.thresholds.tx_count ?? 25})`} v={hum?.signals ? `${hum.signals.tx_count ?? 0}` : "—"} />
+                </div>
+                <button onClick={refreshHumanity} disabled={humBusy} className="ng-btn ng-btn--sm ng-btn--block mt-2.5 justify-center disabled:opacity-40">{humBusy ? "Reading chain…" : "Refresh signals"}</button>
+              </div>
+              <div className="ng-card p-3.5">
+                <div className="ng-label !text-ink-dim">Verified human</div>
+                {hum?.attestation ? (
+                  <div className="mt-1 divide-y divide-line">
+                    <DataRow k="Attested by" v={hum.attestation.provider} accent="neon" />
+                    <DataRow k="Since" v={new Date(hum.attestation.at).toLocaleDateString()} />
+                  </div>
+                ) : (
+                  <>
+                    <p className="mt-1 text-[10.5px] leading-relaxed text-ink-dim">A quick video selfie with Civic — no ID documents, nothing stored here.</p>
+                    <div className="mt-2.5 flex gap-2">
+                      <a href="https://getpass.civic.com/?pass=unique&chain=solana" target="_blank" rel="noopener noreferrer" className="ng-btn ng-btn-cyan ng-btn--sm flex-1 justify-center">Get pass ↗</a>
+                      <button onClick={checkCivic} disabled={humBusy} className="ng-btn ng-btn-primary ng-btn--sm flex-1 justify-center disabled:opacity-40">{humBusy ? "Checking…" : "Check pass"}</button>
+                    </div>
+                    {civicMsg && <p className="mt-1.5 text-[10px] leading-relaxed text-ink-dim">{civicMsg}</p>}
+                  </>
+                )}
+              </div>
+            </div>
+            <p className="mt-2 text-[10px] text-ink-faint">{hum && hum.gates.rewards.required > 0 ? (hum.gates.rewards.ok ? "Verified — your allocation counts at the TGE." : `Season rewards require tier ${hum.gates.rewards.required} — your earnings wait as pending until you verify.`) : "Verification gates are open this season — this becomes required only when governance turns it on."}</p>
           </Panel>
 
           {/* APPEARANCE — honest note (the terminal is the fixed house style) */}

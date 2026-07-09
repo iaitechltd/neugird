@@ -28,7 +28,7 @@ export async function POST(request: Request) {
   // content present → send the first message; otherwise just OPEN the thread (deep-link ?to=)
   const hasContent = !!(body?.body || body?.offer);
   const r = hasContent
-    ? Messaging.sendTo(uid, to_id, { kind: body?.kind, body: body?.body, offer: body?.offer, context })
+    ? Messaging.sendTo(uid, to_id, { kind: body?.kind, body: body?.body, offer: body?.offer, attachment: body?.attachment, context })
     : Messaging.open(uid, to_id, context);
   if (r.error) return NextResponse.json({ error: r.error }, { status: STATUS[r.error] ?? 400 });
   // a native agent answers its own DMs (in persona, brain-driven) before we return;

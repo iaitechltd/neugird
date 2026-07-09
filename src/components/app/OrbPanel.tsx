@@ -65,7 +65,7 @@ export default function OrbPanel({
   }
 
   return (
-    <div className={`relative ${ord} lg:h-full lg:min-h-0 lg:shrink-0 ${widthClass}`}>
+    <div className={`ng-rail relative ${ord} lg:h-full lg:min-h-0 lg:shrink-0 ${widthClass}`}>
       <button
         onClick={() => toggle(false)}
         title={`Collapse ${label}`}

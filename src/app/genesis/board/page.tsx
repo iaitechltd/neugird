@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import NeuHeader from "@/components/app/NeuHeader";
 import OrbPanel from "@/components/app/OrbPanel";
-import { Panel, Tag, Mark, DataRow, ProgressBar, IconRocket, IconActivity, IconBolt, IconCheck, IconArrowRight , kpiColor } from "@/components/app/ui";
+import { Panel, Tag, Mark, DataRow, IconRocket, IconActivity, IconBolt, IconCheck, IconArrowRight , kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import GenesisProposeWizard from "@/components/app/GenesisProposeWizard";
 import { PanelChart } from "@/components/app/terminal";
@@ -105,8 +105,8 @@ export default function GenesisBoard() {
 
             <div className="ng-card mt-4 p-3">
               <div className="text-[11px] text-ink-dim">Your reputation</div>
-              <div className="ng-stat__v !text-xl text-neon">{me?.reputation ?? 0}</div>
-              <div className="mt-1 text-[10px] text-ink-faint">{me?.can_propose ? "✓ Eligible to propose" : `Earn ${me?.min ?? 100}+ to propose`}</div>
+              <div className="ng-stat__v !text-lg text-neon">{me?.reputation ?? 0}</div>
+              <div className="mt-1 text-[10px] text-ink-faint">{me?.can_propose ? "✓ Eligible to propose" : `Ship a build + earn ${me?.min ?? 100}+ rep to propose`}</div>
             </div>
           </Panel>
         </OrbPanel>
@@ -120,7 +120,7 @@ export default function GenesisBoard() {
             </div>
             {me?.can_propose
               ? <button onClick={() => setCreating(true)} className="ng-btn ng-btn-primary shrink-0">+ Propose</button>
-              : <Mark plain className="shrink-0 text-[11px]">Earn {me?.min ?? 100}+ rep to propose</Mark>}
+              : <Mark plain className="shrink-0 text-[11px]">Build with Echo + {me?.min ?? 100} rep unlocks raising</Mark>}
           </div>
 
           {/* page KPIs — 3 by default, 4/5 as the side panels collapse */}
@@ -141,30 +141,56 @@ export default function GenesisBoard() {
               const p = v.proposal;
               const pct = Math.min(100, p.ask_amount ? Math.round((v.raised / p.ask_amount) * 100) : 0);
               const isAuthor = me?.id === p.author_id;
+              // Capital strip (REAL $): with milestones each segment's width = its
+              // amount, colored by status; before milestones exist it's raised vs
+              // the remaining ask (faint track = capital not yet in).
+              const strip = v.milestones.length
+                ? v.milestones.map((m) => ({
+                    weight: m.amount || 1,
+                    fill: m.status === "pending" ? 0 : 1,
+                    color: m.status === "released" || m.status === "approved" ? "#00ff00" : m.status === "rejected" ? "#ffb020" : "#48f5ff",
+                  }))
+                : [
+                    { weight: v.raised, fill: 1, color: "#00ff00" },
+                    { weight: Math.max(0, p.ask_amount - v.raised), fill: 0, color: "#00ff00" },
+                  ];
               return (
                 <div key={p.proposal_id} className="ng-card mb-3 break-inside-avoid p-4">
+                  {/* identity — title + ONE status chip (rep lives in the tooltip) */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <Link href={`/genesis/${p.proposal_id}`} className="text-base font-bold text-neon transition hover:text-glow">{p.title}</Link>
-                      <div className="mt-0.5 text-[10px] text-ink-faint">{p.category} · by <span className="text-ink-dim">{isAuthor ? "you" : v.founder?.username ?? p.author_id}</span>{v.founder ? <span> · rep {v.founder.reputation}</span> : null}</div>
+                      <div className="mt-0.5 truncate text-[10px] text-ink-faint" title={v.founder ? `rep ${v.founder.reputation}` : undefined}>{p.category} · by <span className="text-ink-dim">{isAuthor ? "you" : v.founder?.username ?? p.author_id}</span></div>
                     </div>
                     <Mark plain accent={p.status === "funded" ? "neon" : "cyan"} className="!text-[10px] shrink-0">{p.status}</Mark>
                   </div>
-                  <p className="mt-2 text-[12px] leading-relaxed text-ink-dim">{p.summary}</p>
+                  {p.summary && <p className="mt-2 truncate text-[11px] text-ink-dim" title={p.summary}>{p.summary}</p>}
 
-                  <div className="mt-3">
-                    <div className="mb-1 flex items-center justify-between text-[11px] text-ink-dim"><span>${v.raised.toLocaleString()} / ${p.ask_amount.toLocaleString()} USDC</span><span>{v.backers} backers · {pct}%{p.status === "open" && daysLeft(v.closes_at) != null ? <span className="text-amber"> · {daysLeft(v.closes_at)}d left</span> : null}</span></div>
-                    <ProgressBar percent={pct} />
+                  {/* hero — raised headline + the capital strip (segment width = REAL $) */}
+                  <div className="ng-stat__v mt-3 !text-2xl text-neon tnum">${v.raised.toLocaleString()}</div>
+                  <div className="flex items-center justify-between text-[9px] uppercase tracking-wide text-ink-faint"><span>Raised</span><span>{pct}% of ${p.ask_amount.toLocaleString()}</span></div>
+                  <div className="mt-1.5">
+                    <Marimekko data={strip} h={20} gap={2} />
+                    <div className="mt-1 text-right text-[9px] text-ink-faint">{v.milestones.length ? <span><span className="text-neon">released</span> · <span className="text-cyan">review</span> · faint locked</span> : <span><span className="text-neon">raised</span> · faint ask</span>}</div>
                   </div>
 
+                  {/* the record */}
+                  <div className="mt-3 divide-y divide-line text-[11px]">
+                    <div className="ng-row !py-1"><span className="ng-row__k">Backers</span><span className="ng-row__v font-normal text-ink-dim tnum">{v.backers}</span></div>
+                    <div className="ng-row !py-1"><span className="ng-row__k">Ask</span><span className="ng-row__v font-normal text-ink-dim tnum">${p.ask_amount.toLocaleString()} USDC</span></div>
+                    {p.status === "open" && daysLeft(v.closes_at) != null && <div className="ng-row !py-1"><span className="ng-row__k">Closes</span><span className="ng-row__v font-normal text-amber tnum">{daysLeft(v.closes_at)}d</span></div>}
+                    {p.status === "expired" && <div className="ng-row !py-1"><span className="ng-row__k">Refunded</span><span className="ng-row__v font-normal text-amber tnum">${Math.round(v.refunded ?? 0).toLocaleString()}</span></div>}
+                    {p.status === "funded" && <div className="ng-row !py-1"><span className="ng-row__k">Milestones</span><span className="ng-row__v font-normal text-ink-dim tnum">{v.milestones.filter((m) => m.status === "released").length}/{v.milestones.length} released</span></div>}
+                  </div>
+
+                  {/* footer — the action */}
                   {p.status === "open" && !isAuthor && (
                     <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); const a = Number(fd.get("amt") ?? 0); if (a > 0) act(`/api/proposals/${p.proposal_id}/fund`, { amount: a }, "Backed"); }} className="mt-3 flex gap-2 border-t border-line pt-3">
                       <input name="amt" type="number" placeholder="Amount" className="ng-input !py-1.5 text-xs" />
                       <button type="submit" disabled={busy} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-50"><IconBolt className="h-3.5 w-3.5" /> Back</button>
                     </form>
                   )}
-                  {p.status === "open" && isAuthor && <div className="mt-3 border-t border-line pt-3 text-[11px] text-ink-faint">Your raise is open — share it to attract backers.</div>}
-                  {p.status === "expired" && <div className="mt-3 border-t border-line pt-3 text-[11px] text-amber">Window closed unfilled — ${Math.round(v.refunded ?? 0).toLocaleString()} refunded to backers.</div>}
+                  {p.status === "open" && isAuthor && <div className="mt-3 border-t border-line pt-2.5 text-[10px] text-ink-faint">Your raise — share it to attract backers.</div>}
 
                   {p.status === "funded" && (
                     <div className="mt-3 border-t border-line pt-3">
@@ -175,8 +201,9 @@ export default function GenesisBoard() {
                       <div className="space-y-1.5">
                         {v.milestones.map((m) => (
                           <div key={m.milestone_id} className="flex items-center justify-between gap-2 text-[11px]">
-                            <span className="min-w-0 truncate text-ink-dim"><span className="text-ink">{m.title}</span> · {m.amount}</span>
+                            <span className="min-w-0 truncate text-ink" title={`${m.title} · $${m.amount}`}>{m.title}</span>
                             <span className="flex shrink-0 items-center gap-2">
+                              <span className="tnum text-[10px] text-ink-faint">${m.amount}</span>
                               <Mark plain accent={M_ACCENT[m.status] ?? "amber"} className="!text-[9px]">{m.status}</Mark>
                               {isAuthor && (m.status === "pending" || m.status === "rejected") && <button disabled={busy} onClick={() => act(`/api/milestones/${m.milestone_id}/submit`, {}, "Submitted for approval")} className="ng-btn ng-btn--sm disabled:opacity-50">Submit</button>}
                               {v.i_backed && m.status === "submitted" && <button disabled={busy} onClick={() => act(`/api/milestones/${m.milestone_id}/approve`, {}, "Approved")} className="ng-btn ng-btn-primary ng-btn--sm disabled:opacity-50">Approve</button>}

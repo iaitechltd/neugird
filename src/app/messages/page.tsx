@@ -11,13 +11,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import NeuHeader from "@/components/app/NeuHeader";
 import OrbPanel from "@/components/app/OrbPanel";
-import { Panel, Mark, Tag, DataRow, IconMessage, IconBot, IconUser, IconCoins, IconArrowRight, IconCheck, IconClose, IconPlus } from "@/components/app/ui";
+import { Panel, Mark, Tag, DataRow, IconMessage, IconBot, IconUser, IconCoins, IconArrowRight, IconCheck, IconClose, IconPlus, IconPaperclip } from "@/components/app/ui";
 import { CountUp } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 
 type Party = { id: string; type: "user" | "agent"; name: string; reputation?: number; rating?: number; trust_tier?: string; owner_name?: string; earnings?: number; jobs?: number; skills?: string[]; capabilities?: string[]; grids?: number; bio?: string; href: string };
 type Offer = { offer_kind: "deal" | "hire"; amount: number; asset?: string; terms: string; success_metric?: string; status: "pending" | "accepted" | "declined"; result_ref?: string; result_kind?: "job" | "agreement" };
-type Msg = { message_id: string; from_id: string; mine: boolean; from_name: string; kind: "text" | "deal" | "hire"; body: string; offer?: Offer; ago: string };
+type Attachment = { name: string; mime: string; size: number; data_uri: string };
+type Msg = { message_id: string; from_id: string; mine: boolean; from_name: string; kind: "text" | "deal" | "hire"; body: string; offer?: Offer; attachment?: Attachment; ago: string };
 type Ctx = { label: string; href?: string } | null;
 type DealRow = { id: string; kind: "deal" | "hire"; amount: number; asset?: string; terms: string; status: string };
 type Convo = { conversation_id: string; counterparty: Party; context: Ctx; last_text: string; last_ago: string; unread: number; pending_offer: boolean };
@@ -35,6 +36,9 @@ export default function MessagesPage() {
   const [mode, setMode] = useState<"text" | "deal" | "hire">("text");
   const [offer, setOffer] = useState({ amount: "", asset: "USDC", terms: "", success_metric: "" });
   const [busy, setBusy] = useState(false);
+  const [attach, setAttach] = useState<Attachment | null>(null);
+  const [attachErr, setAttachErr] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [composing, setComposing] = useState(false);
   const [newTo, setNewTo] = useState("");
   const [lOpen, setLOpen] = useState(true);
@@ -86,18 +90,31 @@ export default function MessagesPage() {
   // auto-scroll to newest
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [thread?.messages.length, activeId]);
 
+  const ATTACH_ACCEPT = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml,application/pdf,text/plain,text/csv,application/json,application/zip";
+  function pickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    e.target.value = ""; // re-pickable
+    if (!f) return;
+    setAttachErr(null);
+    if (f.size > 512 * 1024) { setAttachErr("Max 512KB — send a link for anything bigger."); return; }
+    if (!ATTACH_ACCEPT.split(",").includes(f.type)) { setAttachErr("Images, PDF, text, JSON, CSV or ZIP only."); return; }
+    const reader = new FileReader();
+    reader.onload = () => setAttach({ name: f.name, mime: f.type, size: f.size, data_uri: String(reader.result) });
+    reader.readAsDataURL(f);
+  }
+
   async function sendMessage() {
     if (!activeId || busy) return;
     const isOffer = mode !== "text";
     if (isOffer && !offer.terms.trim()) return;
-    if (!isOffer && !draft.trim()) return;
+    if (!isOffer && !draft.trim() && !attach) return;
     setBusy(true);
     const payload = isOffer
       ? { kind: mode, body: draft.trim(), offer: { amount: Number(offer.amount) || 0, asset: offer.asset, terms: offer.terms.trim(), success_metric: mode === "deal" ? offer.success_metric.trim() : undefined } }
-      : { kind: "text", body: draft.trim() };
+      : { kind: "text", body: draft.trim(), attachment: attach ?? undefined };
     const r = await fetch(`/api/messages/${activeId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).then((x) => x.json()).catch(() => null);
     setBusy(false);
-    if (r?.conversation_id) { setThread(r); setDraft(""); setOffer({ amount: "", asset: "USDC", terms: "", success_metric: "" }); setMode("text"); loadConvos(); }
+    if (r?.conversation_id) { setThread(r); setDraft(""); setAttach(null); setOffer({ amount: "", asset: "USDC", terms: "", success_metric: "" }); setMode("text"); loadConvos(); }
   }
   async function resolveOffer(message_id: string, accept: boolean) {
     if (!activeId) return;
@@ -134,7 +151,7 @@ export default function MessagesPage() {
             <div className="mb-2.5 grid grid-cols-3 gap-1.5">
               {kpis.slice(0, 3).map(([k, v, unit]) => (
                 <div key={k} className="ng-card p-2.5 text-center">
-                  <div className="ng-stat__v !text-lg">{unit === "$" && <span className="text-cyan">$</span>}<CountUp key={v} value={v} /></div>
+                  <div className="ng-stat__v !text-base">{unit === "$" && <span className="text-cyan">$</span>}<CountUp key={v} value={v} /></div>
                   <div className="ng-stat__k">{k}</div>
                 </div>
               ))}
@@ -224,7 +241,19 @@ export default function MessagesPage() {
                         </div>
                       ) : (
                         <div className={`rounded-lg px-3 py-2 ${m.mine ? "bg-neon/15 text-ink" : "bg-line/40 text-ink-dim"}`}>
-                          <p className="whitespace-pre-wrap text-[12.5px] leading-snug">{m.body}</p>
+                          {m.body && <p className="whitespace-pre-wrap text-[12.5px] leading-snug">{m.body}</p>}
+                          {m.attachment && (m.attachment.mime.startsWith("image/") ? (
+                            <a href={m.attachment.data_uri} download={m.attachment.name} title={`${m.attachment.name} · click to save`} className="mt-1.5 block">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={m.attachment.data_uri} alt={m.attachment.name} className="max-h-56 max-w-full border border-line" />
+                            </a>
+                          ) : (
+                            <a href={m.attachment.data_uri} download={m.attachment.name} className="mt-1.5 flex items-center gap-2 border border-line px-2.5 py-1.5 text-[11px] text-neon transition hover:border-neon/40">
+                              <IconPaperclip className="h-3 w-3" />
+                              <span className="min-w-0 truncate">{m.attachment.name}</span>
+                              <span className="shrink-0 text-[9px] text-ink-faint">{Math.max(1, Math.round(m.attachment.size / 1024))} KB · save</span>
+                            </a>
+                          ))}
                           <div className="mt-0.5 text-right text-[9px] text-ink-faint">{m.ago}</div>
                         </div>
                       )}
@@ -250,9 +279,25 @@ export default function MessagesPage() {
                     {mode === "deal" && <input value={offer.success_metric} onChange={(e) => setOffer((o) => ({ ...o, success_metric: e.target.value }))} placeholder="Success metric (an outcome)" className="ng-input w-full !py-1.5 text-[12px]" />}
                   </div>
                 )}
+                {attach && (
+                  <div className="mb-1.5 flex items-center gap-2 border border-line px-2.5 py-1.5 text-[11px]">
+                    {attach.mime.startsWith("image/")
+                      // eslint-disable-next-line @next/next/no-img-element
+                      ? <img src={attach.data_uri} alt="" className="h-8 w-8 shrink-0 border border-line object-cover" />
+                      : <IconPaperclip className="h-3 w-3 shrink-0 text-neon" />}
+                    <span className="min-w-0 truncate text-ink">{attach.name}</span>
+                    <span className="shrink-0 text-[9px] text-ink-faint">{Math.max(1, Math.round(attach.size / 1024))} KB</span>
+                    <button onClick={() => setAttach(null)} className="ml-auto shrink-0 text-ink-faint transition hover:text-danger"><IconClose className="h-3 w-3" /></button>
+                  </div>
+                )}
+                {attachErr && <p className="mb-1.5 text-[10px] text-amber">{attachErr}</p>}
                 <div className="flex items-center gap-1.5">
-                  <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && mode === "text") sendMessage(); }} placeholder={mode === "text" ? "Message…" : "Add a note (optional)"} className="ng-input min-w-0 flex-1 !py-2 text-[12px]" />
-                  <button onClick={sendMessage} disabled={busy || (mode === "text" ? !draft.trim() : !offer.terms.trim())} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-50">{mode === "text" ? "Send" : "Send offer"}</button>
+                  <input ref={fileRef} type="file" accept={ATTACH_ACCEPT} onChange={pickFile} className="hidden" />
+                  {mode === "text" && (
+                    <button onClick={() => fileRef.current?.click()} disabled={busy} title="Attach a file or picture" aria-label="Attach a file" className="ng-btn ng-btn-ghost ng-btn--sm shrink-0 !px-2"><IconPaperclip className="h-3.5 w-3.5" /></button>
+                  )}
+                  <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && mode === "text") sendMessage(); }} placeholder={mode === "text" ? (attach ? "Add a caption (optional)…" : "Message…") : "Add a note (optional)"} className="ng-input min-w-0 flex-1 !py-2 text-[12px]" />
+                  <button onClick={sendMessage} disabled={busy || (mode === "text" ? !draft.trim() && !attach : !offer.terms.trim())} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-50">{mode === "text" ? "Send" : "Send offer"}</button>
                 </div>
               </div>
             </Panel>
@@ -268,7 +313,7 @@ export default function MessagesPage() {
               <>
                 <div className="flex flex-col items-center text-center">
                   <MatrixAvatar seed={cp.name} size={56} />
-                  <div className="mt-2 text-sm font-bold text-ink">{cp.name}</div>
+                  <div className="mt-2 text-xs font-bold text-ink">{cp.name}</div>
                   <Tag accent={cp.type === "agent" ? "neon" : "amber"} className="mt-1 !text-[9px]">{cp.type === "agent" ? "Agent" : "Human"}</Tag>
                 </div>
                 {cp.type === "agent" ? (

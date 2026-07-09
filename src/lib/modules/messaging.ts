@@ -10,7 +10,7 @@ import { db } from "../store";
 import { Proofs as ChainProofs } from "../chain";
 import { newId, nowISO } from "../id";
 import * as Jobs from "./jobs";
-import type { Agreement, Conversation, DirectMessage, DMKind, DMOffer } from "../types";
+import type { Agreement, Conversation, DirectMessage, DMAttachment, DMKind, DMOffer } from "../types";
 
 const pairKey = (a: string, b: string) => [a, b].sort().join("|");
 type Context = { label: string; href?: string };
@@ -75,7 +75,22 @@ export function getOrCreate(a_id: string, b_id: string, context?: Context): Conv
   return c;
 }
 
-export interface SendInput { kind?: DMKind; body?: string; offer?: Partial<DMOffer>; }
+export interface SendInput { kind?: DMKind; body?: string; offer?: Partial<DMOffer>; attachment?: { name?: string; mime?: string; data_uri?: string }; }
+
+/** Attachment guard: mime allowlist + ~512KB decoded cap. Rejecting here keeps
+ *  every door (UI, gateway) behind the same rule. */
+const ATTACH_MIMES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "application/pdf", "text/plain", "text/csv", "application/json", "application/zip"]);
+const ATTACH_MAX_B64 = 700_000; // ≈512KB decoded
+function cleanAttachment(a?: { name?: string; mime?: string; data_uri?: string }): { attachment?: DMAttachment; error?: string } {
+  if (!a?.data_uri) return {};
+  const m = /^data:([\w.+-]+\/[\w.+-]+);base64,([A-Za-z0-9+/=]+)$/.exec(a.data_uri);
+  if (!m) return { error: "bad_attachment" };
+  const mime = m[1].toLowerCase();
+  if (!ATTACH_MIMES.has(mime)) return { error: "attachment_type" };
+  if (m[2].length > ATTACH_MAX_B64) return { error: "attachment_too_big" };
+  const name = (a.name ?? "file").replace(/[^\w. ()\[\]-]/g, "").slice(0, 80) || "file";
+  return { attachment: { name, mime, size: Math.floor((m[2].length * 3) / 4), data_uri: a.data_uri } };
+}
 
 export function send(conversation_id: string, from_id: string, input: SendInput): { message?: DirectMessage; error?: string } {
   const c = convos().find((x) => x.conversation_id === conversation_id);
@@ -95,9 +110,11 @@ export function send(conversation_id: string, from_id: string, input: SendInput)
       status: "pending",
     };
   }
+  const att = kind === "text" ? cleanAttachment(input.attachment) : {};
+  if (att.error) return { error: att.error };
   const body = (input.body ?? "").trim().slice(0, 2000);
-  if (kind === "text" && !body) return { error: "empty" };
-  const m: DirectMessage = { message_id: newId("dm"), conversation_id, from_id, kind, body, offer, read_by: [from_id], created_at: nowISO() };
+  if (kind === "text" && !body && !att.attachment) return { error: "empty" };
+  const m: DirectMessage = { message_id: newId("dm"), conversation_id, from_id, kind, body, offer, attachment: att.attachment, read_by: [from_id], created_at: nowISO() };
   msgs().push(m);
   c.last_at = m.created_at;
   return { message: m };
@@ -200,6 +217,7 @@ export function thread(conversation_id: string, viewer_id: string) {
     messages: ms.map((m) => ({
       message_id: m.message_id, from_id: m.from_id, mine: m.from_id === viewer_id,
       from_name: resolveParty(m.from_id).name, kind: m.kind, body: m.body, offer: m.offer,
+      attachment: m.attachment,
       ago: ago(m.created_at), created_at: m.created_at,
     })),
   };

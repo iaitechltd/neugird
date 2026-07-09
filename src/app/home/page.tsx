@@ -33,7 +33,7 @@ export default function HomePage() {
   const closed = (lOpen ? 0 : 1) + (rOpen ? 0 : 1);
 
   /* real state */
-  const [me, setMe] = useState<{ username?: string; pulse?: number; reputation?: { total?: number; by_dimension?: Record<string, number> } | null; joined_grids?: string[]; rep_series?: number[]; income?: { total?: number; series?: number[] }; starter?: { wallet_connected: boolean; claimed: boolean; eligible: boolean; credit: number; amount: number; builds: number; show: boolean } } | null>(null);
+  const [me, setMe] = useState<{ username?: string; pulse?: number; reputation?: { total?: number; by_dimension?: Record<string, number> } | null; joined_grids?: string[]; rep_series?: number[]; income?: { total?: number; series?: number[] }; starter?: { wallet_connected: boolean; claimed: boolean; eligible: boolean; needs_verification?: boolean; credit: number; amount: number; builds: number; show: boolean } } | null>(null);
   const [claiming, setClaiming] = useState(false);
   async function claimStarter() {
     if (claiming) return;
@@ -109,7 +109,7 @@ export default function HomePage() {
             {/* profile */}
             <div className="ng-card p-3.5">
               <div className="flex items-center gap-3">
-                <span className="grid h-12 w-12 place-items-center rounded-full bg-neon text-lg font-bold text-bg" style={{ boxShadow: "0 0 16px rgba(0,255,0,0.5)" }}>{(me?.username?.[0] ?? "N").toUpperCase()}</span>
+                <span className="grid h-12 w-12 place-items-center rounded-full bg-neon text-base font-bold text-bg" style={{ boxShadow: "0 0 16px rgba(0,255,0,0.5)" }}>{(me?.username?.[0] ?? "N").toUpperCase()}</span>
                 <div className="min-w-0">
                   <div className="truncate text-base font-semibold text-ink">{me?.username ?? "—"}</div>
                   <Tag className="mt-0.5">Builder</Tag>
@@ -142,7 +142,7 @@ export default function HomePage() {
             {myGrids.length ? (
               <div className="divide-y divide-line">
                 {myGrids.map((g) => (
-                  <Link key={g.grid_id} href={`/grid/${g.slug}`} className="group flex items-center justify-between py-2.5 text-sm text-ink transition hover:text-neon">
+                  <Link key={g.grid_id} href={`/grid/${g.slug}`} className="group flex items-center justify-between py-2.5 text-xs text-ink transition hover:text-neon">
                     <span className="flex items-center gap-2 truncate"><IconGrid className="h-3.5 w-3.5 text-neon/70" />{g.name}</span>
                     <span className="shrink-0 text-[11px] text-ink-dim">{g.member_count}</span>
                   </Link>
@@ -191,6 +191,8 @@ export default function HomePage() {
                     <p className="mt-1 leading-relaxed text-ink-dim">{Math.round(me.starter.credit).toLocaleString()} credit ready — enough for your first build.</p>
                   ) : me.starter.eligible ? (
                     <button onClick={claimStarter} disabled={claiming} className="ng-btn ng-btn-cyan ng-btn--sm mt-1.5 disabled:opacity-50">Claim {me.starter.amount.toLocaleString()} Echo credit</button>
+                  ) : me.starter.needs_verification ? (
+                    <p className="mt-1 leading-relaxed text-amber">One step left — <Link href="/rewards" className="underline">verify your wallet</Link> to unlock the grant (anti-bot, not KYC).</p>
                   ) : (
                     <p className="mt-1 leading-relaxed text-ink-faint">Unlocks when your wallet is connected — one grant per wallet.</p>
                   )}
@@ -276,7 +278,7 @@ export default function HomePage() {
               <span className="flex items-center gap-2"><span className="text-neon"><IconLayers className="h-3.5 w-3.5" /></span>Metered Resource Catalogue</span>
               <span className="hidden text-[10px] text-ink-faint sm:inline">discoverable · GET /api/x402/discovery</span>
             </div>
-            <div className="space-y-1.5">
+            <div className="ng-2col-wide space-y-1.5">
               {(economy?.x402.resources ?? []).map((r) => (
                 <div key={r.name} className="flex items-center justify-between gap-3 border-b border-neon/10 pb-1.5 text-[11px] last:border-0 last:pb-0">
                   <div className="flex min-w-0 items-baseline gap-2">
@@ -338,7 +340,7 @@ export default function HomePage() {
           <Panel scroll title="SIGNAL" icon={<IconShield className="h-4 w-4" />} action={<IconChevronDown className="h-4 w-4 text-ink-dim" />} bodyClass="p-3.5">
             <Section icon={<IconBolt className="h-3.5 w-3.5" />}>Reputation</Section>
             <div className="ng-card p-3.5">
-              <div className="flex items-baseline justify-between"><span className="ng-stat__v !text-2xl">{rep}</span><span className="text-[11px] text-ink-dim">total Pulse</span></div>
+              <div className="flex items-baseline justify-between"><span className="ng-stat__v !text-xl">{rep}</span><span className="text-[11px] text-ink-dim">total Pulse</span></div>
             </div>
 
             {/* two Signal-rail charts — a ratio-ring cluster + a GRID gauge (founder, screenshot-inspired 2026-07-04) */}
@@ -365,7 +367,7 @@ export default function HomePage() {
               <div className="space-y-2">
                 {recommendedGrids.map((g) => (
                   <Link key={g.grid_id} href={`/grid/${g.slug}`} className="ng-card flex items-center justify-between p-3">
-                    <div className="min-w-0"><div className="truncate text-sm text-ink">{g.name}</div><div className="text-[10px] text-ink-dim">{g.category}</div></div>
+                    <div className="min-w-0"><div className="truncate text-xs text-ink">{g.name}</div><div className="text-[10px] text-ink-dim">{g.category}</div></div>
                     <span className="flex items-center gap-2 text-[11px] text-ink-dim">{g.member_count}<IconArrowRight className="h-3.5 w-3.5 text-neon/70" /></span>
                   </Link>
                 ))}
