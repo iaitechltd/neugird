@@ -52,7 +52,16 @@ export function markTwap(market_id: string, windowMs = TWAP_WINDOW_MS): number {
     .map((t) => ({ at: Date.parse(t.at), price: t.price }))
     .sort((a, b) => a.at - b.at);
   if (!win.length) return spot;
-  let acc = 0, lastPrice = win[0].price, lastAt = since;
+  // The price holding at window-start is the last trade BEFORE the window —
+  // otherwise a market quiet for > windowMs lets the first burst after the
+  // silence define the whole TWAP, and the ±band never binds on the shove.
+  let priorPrice: number | undefined, priorAt = -Infinity;
+  for (const t of db.trades) {
+    if (t.market_id !== market_id) continue;
+    const at = Date.parse(t.at);
+    if (at < since && at > priorAt) { priorAt = at; priorPrice = t.price; }
+  }
+  let acc = 0, lastPrice = priorPrice ?? win[0].price, lastAt = since;
   for (const t of win) { acc += lastPrice * (t.at - lastAt); lastPrice = t.price; lastAt = t.at; }
   acc += lastPrice * (now - lastAt);
   return acc / windowMs;
