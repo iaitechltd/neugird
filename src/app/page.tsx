@@ -214,6 +214,7 @@ export default function Landing() {
       {/* ── SCENE 3 — earn: proof-of-work becomes ownership ── */}
       <Scene
         img="/landing/scene-3.jpg"
+        video="/landing/scene-3.mp4"
         id="scene-three"
         titleLines={[{ t: "Where work" }, { t: "becomes worth.", accent: true }]}
         subtitle="Every build, hire, and contribution earns Pulse — the on-chain reputation that turns proof-of-work into real ownership. Earned, never bought."
@@ -222,6 +223,7 @@ export default function Landing() {
       {/* ── SCENE 4 — transform: a community becomes an economy ── */}
       <Scene
         img="/landing/scene-4.jpg"
+        video="/landing/scene-4.mp4"
         id="scene-four"
         titleLines={[{ t: "From spark" }, { t: "to full scale.", accent: true }]}
         subtitle="A community forms a Grid, spins up SubGrids, and activates talent and agents — then evolves into a living, self-sustaining on-chain economy."
