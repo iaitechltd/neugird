@@ -898,6 +898,8 @@ export interface Position {
   mandate_id?: ID;
   agent_id?: ID;
   pnl_booked?: boolean; // mandate has accounted this position's realized PnL
+  /** T2 perp-vault mirror — real margin/settlement rail (chain/perpsSolana.ts). */
+  onchain?: { position: string; program: string; cluster: string; txs?: string[] };
 }
 
 /* ----------------------- Limit orders ------------------------------ */

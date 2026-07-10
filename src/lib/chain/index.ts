@@ -21,6 +21,7 @@ import * as splitsSolana from "./splitsSolana";
 import * as proofsSolana from "./proofsSolana";
 import * as mandateSolana from "./mandateSolana";
 import * as ammSolana from "./ammSolana";
+import * as perpsSolana from "./perpsSolana";
 import * as icpHosting from "./icpHosting";
 
 /* -------------------------------- SAS seam ------------------------------------ */
@@ -236,6 +237,20 @@ export const Amm = {
   swap: (m: MarketT, side: "buy" | "sell", amount: number) =>
     guard("amm.swap", () => ammSolana.mirrorSwap(m, side, amount)),
   halt: (m: MarketT, halted: boolean) => guard("amm.halt", () => ammSolana.mirrorHalt(m, halted)),
+};
+
+/* --------------------------------- Perp vault ---------------------------------- */
+// T2 — futures get a REAL counterparty (audit F1): segregated margin vaults,
+// a treasury-seeded LP pool that pays profits and receives losses, and the
+// insurance fund on-chain. Guarded fire-and-forget from perps.ts.
+
+import type { Position as PositionT } from "../types";
+
+export const PerpChain = {
+  configured: (): boolean => !!perpsSolana.perpConfig(),
+  open: (p: PositionT) => guard("perp.open", () => perpsSolana.mirrorOpen(p)),
+  close: (p: PositionT, toTrader: number, toInsurance: number, insuranceToLp: number) =>
+    guard("perp.close", () => perpsSolana.mirrorClose(p, toTrader, toInsurance, insuranceToLp)),
 };
 
 /* -------------------------------- ICP hosting ---------------------------------- */

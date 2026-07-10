@@ -553,7 +553,8 @@ create table if not exists positions (
   close_reason      text,       -- manual | liquidation | take_profit | stop_loss | trailing_stop
   mandate_id        text,       -- set when an agent opened this under a mandate (Agent Mode)
   agent_id          text,
-  pnl_booked        boolean     default false -- mandate has accounted this position's PnL
+  pnl_booked        boolean     default false, -- mandate has accounted this position's PnL
+  onchain           jsonb       -- T2 perp-vault mirror: {position, program, cluster, txs[]}
 );
 
 -- Spot/futures resting limit orders.

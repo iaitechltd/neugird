@@ -15,6 +15,7 @@ import { db } from "../store";
 import { newId, nowISO } from "../id";
 import * as Params from "./params";
 import * as Wallets from "./wallets";
+import { PerpChain } from "../chain";
 import type { LimitOrder, Position, PositionSide } from "../types";
 
 export const MAX_LEVERAGE = 10;
@@ -133,11 +134,14 @@ function accrueFunding(p: Position, mark: number, rate: number, now: number): vo
 /** Settle a position to USDC at `mark` (margin already net of funding). Returns PnL. */
 function closeAt(p: Position, mark: number, reason: NonNullable<Position["close_reason"]>): number {
   const pnl = pnlOf(p, mark);
-  Wallets.creditUsdc(p.user_id, Math.max(0, p.margin + pnl));
+  const payout = Math.max(0, p.margin + pnl);
+  Wallets.creditUsdc(p.user_id, payout);
   p.status = "closed";
   p.pnl = pnl;
   p.close_reason = reason;
   p.closed_at = nowISO();
+  // T2 mirror: profit is PAID by the real LP pool / loss flows into it
+  void PerpChain.close(p, payout, 0, 0);
   return pnl;
 }
 
@@ -175,6 +179,7 @@ export function openPosition(market_id: string, user_id: string, side: PositionS
     pos.trail_anchor = entry;
   }
   store().push(pos);
+  void PerpChain.open(pos); // T2 mirror: real margin into the segregated collateral vault
   return { position: pos };
 }
 
@@ -228,7 +233,10 @@ export function settle(market_id: string): void {
       // balance reads "underwater" and is the signal to recapitalize).
       const remainder = p.margin + pnlOf(p, mark);
       Wallets.get(Wallets.INSURANCE).usdc += remainder;
-      p.status = "liquidated"; p.pnl = -p.margin; p.close_reason = "liquidation"; p.closed_at = nowISO(); continue;
+      p.status = "liquidated"; p.pnl = -p.margin; p.close_reason = "liquidation"; p.closed_at = nowISO();
+      // T2 mirror: remainder → the real insurance vault; a gapped loss draws it down
+      void PerpChain.close(p, 0, Math.max(0, remainder), Math.max(0, -remainder));
+      continue;
     }
     const tpHit = p.take_profit != null && (p.side === "long" ? mark >= p.take_profit : mark <= p.take_profit);
     const slHit = p.stop_loss != null && (p.side === "long" ? mark <= p.stop_loss : mark >= p.stop_loss);
