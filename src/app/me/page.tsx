@@ -35,7 +35,7 @@ export default function MePage() {
   const [toast, setToast] = useState<string | null>(null);
   function notify(msg: string) { setToast(msg); window.clearTimeout((notify as unknown as { t?: number }).t); (notify as unknown as { t?: number }).t = window.setTimeout(() => setToast(null), 2400); }
 
-  const [me, setMe] = useState<{ username?: string; pulse?: number; reputation?: { total?: number; by_dimension?: Record<string, number> } | null; joined_grids?: string[]; skills?: string[]; balances?: { usdc: number; grid: number }; reward?: { accrued: number; sybil_adjusted: number; sybil_factor: number; claimed: number; rate: number; breakdown: { dimension: string; units: number; events: number }[]; vests_at_tge: boolean; tge?: { executed: boolean; at: string }; vesting?: { total: number; released: number; claimable: number; vested_pct: number; unlock_pct: number; cliff_days: number; duration_days: number; start_at: string } | null } | null; rep_events?: { action: string; weight: number; reason: string; at: string }[]; rep_series?: number[]; income?: { total: number; direct: number; agents_total: number; series: number[]; recent: { kind: string; amount: number; at: string }[] }; follows?: { followers: number; following: number } } | null>(null);
+  const [me, setMe] = useState<{ demo?: boolean; username?: string; pulse?: number; reputation?: { total?: number; by_dimension?: Record<string, number> } | null; joined_grids?: string[]; skills?: string[]; balances?: { usdc: number; grid: number }; reward?: { accrued: number; sybil_adjusted: number; sybil_factor: number; claimed: number; rate: number; breakdown: { dimension: string; units: number; events: number }[]; vests_at_tge: boolean; tge?: { executed: boolean; at: string }; vesting?: { total: number; released: number; claimable: number; vested_pct: number; unlock_pct: number; cliff_days: number; duration_days: number; start_at: string } | null } | null; rep_events?: { action: string; weight: number; reason: string; at: string }[]; rep_series?: number[]; income?: { total: number; direct: number; agents_total: number; series: number[]; recent: { kind: string; amount: number; at: string }[] }; follows?: { followers: number; following: number } } | null>(null);
   const [builds, setBuilds] = useState<Build[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -373,7 +373,7 @@ export default function MePage() {
               <div className="mt-3 divide-y divide-line text-[11px]">
                 <div className="ng-row !py-1"><span className="ng-row__k">Raw accrued</span><span className="ng-row__v font-normal">{(me?.reward?.accrued ?? 0).toLocaleString()}</span></div>
                 <div className="ng-row !py-1"><span className="ng-row__k">Sybil filter</span><span className="ng-row__v font-normal">×{me?.reward?.sybil_factor ?? 1}</span></div>
-                <div className="ng-row !py-1"><span className="ng-row__k">Wallet GRID</span><span className="ng-row__v font-normal">{Math.round(me?.balances?.grid ?? 0).toLocaleString()} <span className="text-ink-faint">· faucet</span></span></div>
+                <div className="ng-row !py-1"><span className="ng-row__k">Wallet GRID</span><span className="ng-row__v font-normal">{Math.round(me?.balances?.grid ?? 0).toLocaleString()}{me?.demo && <span className="text-ink-faint"> · faucet</span>}</span></div>
               </div>
               {me?.reward?.tge?.executed && me?.reward?.vesting ? (
                 <div className="mt-3 border-t border-line pt-3">
@@ -391,7 +391,7 @@ export default function MePage() {
                 <div className="mt-3 border-t border-line pt-3">
                   <div className="flex items-center justify-between text-[11px]"><span className="text-ink-dim">TGE</span><span className="text-ink-faint">not yet run</span></div>
                   <p className="mt-1 text-[10px] leading-relaxed text-ink-faint">Your allocation converts to vested GRID at the one-time platform TGE (Option A · no raise).</p>
-                  <button onClick={runTGE} className="ng-btn ng-btn-ghost ng-btn--sm ng-btn--block mt-2"><IconBolt className="h-3.5 w-3.5" /> Simulate TGE (demo)</button>
+                  {me?.demo && <button onClick={runTGE} className="ng-btn ng-btn-ghost ng-btn--sm ng-btn--block mt-2"><IconBolt className="h-3.5 w-3.5" /> Simulate TGE (demo)</button>}
                 </div>
               )}
             </div>

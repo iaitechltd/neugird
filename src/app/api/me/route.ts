@@ -14,8 +14,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "no_user" }, { status: 404 });
+  if (!user) return NextResponse.json({ error: "no_user", demo: demoMode() }, { status: 404 });
   return NextResponse.json({
+    demo: demoMode(), // demo posture — clients hide dev-only controls when false
     id: user.id,
     username: user.username,
     wallet: user.wallet_addresses[0] ?? null,

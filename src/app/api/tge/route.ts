@@ -5,7 +5,7 @@
 
 import { NextResponse } from "next/server";
 import { Rewards, Wallets } from "@/lib/modules";
-import { getCurrentUserId } from "@/lib/session";
+import { demoMode, getCurrentUserId } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +24,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ ...r, vesting: Rewards.vestingView(uid), balances: Wallets.balances(uid) });
   }
 
+  // Running the one-time TGE is demo-only — the real event is a founder/
+  // governance action, never a user-facing button.
+  if (!demoMode()) return NextResponse.json({ error: "demo_only" }, { status: 403 });
   const r = Rewards.runTGE(); // default action: run the one-time event
   return NextResponse.json({ ...r, vesting: Rewards.vestingView(uid) });
 }

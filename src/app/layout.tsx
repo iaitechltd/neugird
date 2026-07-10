@@ -3,6 +3,7 @@ import { JetBrains_Mono, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import HudBackground from "@/components/HudBackground";
 import NeuGridDock from "@/components/app/NeuGridDock";
+import TestnetNotice from "@/components/app/TestnetNotice";
 
 // Mono for data/labels/body; Space Grotesk display for titles + headlines.
 const mono = JetBrains_Mono({
@@ -38,6 +39,8 @@ export default function RootLayout({
             in Chrome (looked clickable, wasn't). Rendered once here, it hides
             itself on "/" and "/d/". */}
         <NeuGridDock />
+        {/* staging-only "test money" chip — renders nothing in demo mode */}
+        <TestnetNotice />
       </body>
     </html>
   );
