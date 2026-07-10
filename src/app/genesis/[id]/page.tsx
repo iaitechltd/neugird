@@ -14,10 +14,12 @@ import NeuHeader from "@/components/app/NeuHeader";
 import OrbPanel from "@/components/app/OrbPanel";
 import {
   Mark, Tag, Bracket, ProgressBar,
-  IconRocket, IconCoins, IconBolt, IconCheck, IconArrowRight, IconShield, IconActivity, IconNetwork, IconUser, IconLayers,
+  IconRocket, IconBolt, IconCheck, IconArrowRight, IconShield, IconActivity, IconNetwork, IconUser, IconLayers,
 } from "@/components/app/ui";
 import { Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
+import { PanelChart } from "@/components/app/terminal";
+import { Area, Donut, Dumbbell, Funnel } from "@/components/app/charts";
 import type { Milestone, Proposal } from "@/lib/types";
 
 type Backer = { backer_id: string; name?: string; amount: number; created_at: string };
@@ -48,6 +50,10 @@ type View = {
 const daysLeft = (iso?: string) => (iso ? Math.max(0, Math.ceil((Date.parse(iso) - Date.now()) / 86_400_000)) : null);
 
 const M_ACCENT: Record<string, "neon" | "cyan" | "amber"> = { pending: "amber", submitted: "cyan", released: "neon", rejected: "amber" };
+
+const fmtUsd = (v: number) => (v >= 1000 ? `$${(v / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })}k` : `$${Math.round(v).toLocaleString()}`);
+// top-4 backers + "rest" — phosphor rotation, no cyan (cyan = the money-in curve on this rail)
+const DONUT_COLORS = ["#00ff00", "#7cf57c", "#ffb020", "#ff4d5e", "rgba(0,255,0,0.3)"];
 
 /** Hoisted (stable identity) so a parent re-render can't remount it and wipe a half-typed amount. */
 function FundForm({ busy, balance, shareBps, onSubmit }: { busy: boolean; balance?: number; shareBps?: number; onSubmit: (e: React.FormEvent<HTMLFormElement>) => void }) {
@@ -151,6 +157,41 @@ export default function ProposalDetail() {
   const isOpen = p.status === "open";
   const released = view.milestones.filter((m) => m.status === "released").reduce((s, m) => s + m.amount, 0);
 
+  // rail-chart data — all real, from this page's own payload
+  const backingsAsc = [...view.backer_list].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+  // cumulative escrowed USDC, starting at the honest $0 the raise opened on
+  const fundCurve = backingsAsc.length ? backingsAsc.reduce<number[]>((acc, b) => [...acc, acc[acc.length - 1] + b.amount], [0]) : [];
+  const byBacker = Object.values(
+    backingsAsc.reduce<Record<string, { name: string; amount: number }>>((m, b) => ({
+      ...m,
+      [b.backer_id]: { name: b.backer_id === view.me.id ? "you" : b.name ?? b.backer_id, amount: (m[b.backer_id]?.amount ?? 0) + b.amount },
+    }), {}),
+  ).sort((a, b) => b.amount - a.amount);
+  const restAmt = byBacker.slice(4).reduce((s, b) => s + b.amount, 0);
+  const donutSlices = [
+    ...byBacker.slice(0, 4).map((b) => ({ label: b.name, amount: b.amount })),
+    ...(restAmt > 0 ? [{ label: `rest (${byBacker.length - 4})`, amount: restAmt }] : []),
+  ];
+  const msRows = view.milestones.map((m) => ({ a: m.amount, b: m.status === "released" ? m.amount : 0, label: m.title }));
+  const releasedCount = view.milestones.filter((m) => m.status === "released").length;
+  const funnelStages = [
+    { label: "ask", value: p.ask_amount, color: "#7cf57c" },
+    { label: "backed", value: view.raised, color: "#48f5ff" },
+    { label: "released", value: released, color: "#00ff00" },
+  ];
+  // backings bucketed by real day, oldest → now — the center timeline
+  const flowDays: { key: string; amt: number; n: number }[] = (() => {
+    if (!backingsAsc.length) return [];
+    const m = new Map<string, { amt: number; n: number }>();
+    for (const b of backingsAsc) {
+      const key = new Date(b.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      const cur = m.get(key) ?? { amt: 0, n: 0 };
+      m.set(key, { amt: cur.amt + b.amount, n: cur.n + 1 });
+    }
+    return [...m.entries()].slice(-14).map(([key, v]) => ({ key, ...v }));
+  })();
+  const flowMax = Math.max(1, ...flowDays.map((d) => d.amt));
+
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
       <NeuHeader title="Fund" collapsed={!lOpen && !rOpen} onToggleCollapse={() => { const v = lOpen || rOpen; setLOpen(!v); setROpen(!v); }} />
@@ -170,6 +211,35 @@ export default function ProposalDetail() {
             </div>
           </div>
 
+          <PanelChart title="FUNDING · CUMULATIVE" read={`${fmtUsd(view.raised)} of ${fmtUsd(p.ask_amount)} ask`}>
+            {fundCurve.length >= 2 ? (
+              <div>
+                <Area data={fundCurve} gid={`genfund-${p.proposal_id}`} color="#48f5ff" w={260} h={52} />
+                <div className="mt-1 flex items-center justify-between text-[9px] text-ink-faint">
+                  <span>{view.backers} backer{view.backers === 1 ? "" : "s"}</span>
+                  <span>{remaining > 0 ? `${fmtUsd(remaining)} to go` : "fully backed"}</span>
+                </div>
+              </div>
+            ) : <p className="text-[10px] text-ink-faint">No backings yet — the curve draws with the first one.</p>}
+          </PanelChart>
+
+          <PanelChart title="BACKERS · COMPOSITION" read={`${view.backers} backer${view.backers === 1 ? "" : "s"}`}>
+            {donutSlices.length > 0 ? (
+              <div className="flex items-center gap-3">
+                <Donut data={donutSlices.map((s) => s.amount)} size={92} thickness={12} colors={DONUT_COLORS} />
+                <div className="min-w-0 space-y-1 text-[9.5px] text-ink-dim">
+                  {donutSlices.map((s, i) => (
+                    <div key={`${s.label}-${i}`} className="flex items-center gap-1.5">
+                      <span className="inline-block h-2 w-2 shrink-0" style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }} />
+                      <span className="truncate" title={s.label}>{s.label}</span>
+                      <span className="shrink-0 text-neon tnum">{fmtUsd(s.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : <p className="text-[10px] text-ink-faint">No backers yet{isOpen && !view.is_author ? " — be the first" : ""}.</p>}
+          </PanelChart>
+
           {/* FOUNDER — who is asking, verifiable (the anti-pitch-deck) */}
           {view.founder && (
             <div className="ng-card p-3.5">
@@ -188,13 +258,6 @@ export default function ProposalDetail() {
               <Link href={`/talent/${view.founder.id}`} className="mt-2 flex items-center gap-1 text-[11px] text-ink-dim transition hover:text-neon">Verify the full track record <IconArrowRight className="h-3 w-3" /></Link>
             </div>
           )}
-
-          <div className="ng-card p-3.5">
-            <div className="ng-label mb-2 flex items-center gap-2 !text-ink-dim"><span className="text-neon"><IconCoins className="h-4 w-4" /></span>Funding</div>
-            <div className="mb-1 flex items-center justify-between text-[11px] text-ink-dim"><span>{view.raised.toLocaleString()} / {p.ask_amount.toLocaleString()}</span><span>{pct}%</span></div>
-            <ProgressBar percent={pct} />
-            <div className="mt-2 text-[10px] text-ink-faint">{view.backers} backers · {remaining.toLocaleString()} to go</div>
-          </div>
 
           <div className="ng-card p-3.5">
             <div className="ng-label mb-2 flex items-center gap-2 !text-ink-dim"><span className="text-neon"><IconBolt className="h-4 w-4" /></span>Action</div>
@@ -251,6 +314,25 @@ export default function ProposalDetail() {
               )}
             </div>
           </Bracket>
+
+          {/* BACKING FLOW — every escrowed dollar, on the real day it landed */}
+          {flowDays.length > 0 && (
+            <div className="ng-card p-3.5">
+              <div className="mb-2 flex items-center justify-between text-[10px]">
+                <span className="ng-label !text-ink-dim">BACKING FLOW · BY DAY</span>
+                <span className="text-ink-faint">{view.backer_list.length} backing{view.backer_list.length === 1 ? "" : "s"} · ${view.raised.toLocaleString()} of ${p.ask_amount.toLocaleString()} escrowed</span>
+              </div>
+              <div className="flex items-end gap-4">
+                {flowDays.map((d) => (
+                  <div key={d.key} className="flex w-12 flex-col items-center gap-1" title={`${d.n} backing${d.n === 1 ? "" : "s"} · $${d.amt.toLocaleString()}`}>
+                    <span className="text-[10px] font-bold text-cyan tnum">{fmtUsd(d.amt)}</span>
+                    <div className="w-5 bg-cyan/80" style={{ height: `${Math.max(4, Math.round((d.amt / flowMax) * 46))}px` }} />
+                    <span className="text-[9px] text-ink-faint">{d.key}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* THE PRODUCT — try the actual software before you back it */}
           {view.build && (view.build.has_preview || view.build.deployed_slug) && (
@@ -351,6 +433,32 @@ export default function ProposalDetail() {
 
         {/* RIGHT */}
         <OrbPanel label="Signal" open={rOpen} onToggle={setROpen} widthClass="lg:w-[300px] xl:w-[320px]" className="space-y-3 lg:overflow-y-auto">
+          <PanelChart title="RAISE · PIPELINE" read={`${pct}% backed`}>
+            {view.raised > 0 ? (
+              <div>
+                <Funnel data={funnelStages} w={260} h={54} gap={3} />
+                <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[9px] text-ink-dim">
+                  {funnelStages.map((s) => (
+                    <span key={s.label} className="flex items-center gap-1"><span className="inline-block h-2 w-2" style={{ background: s.color }} />{s.label} {fmtUsd(s.value)}</span>
+                  ))}
+                </div>
+              </div>
+            ) : <p className="text-[10px] text-ink-faint">Nothing in the pipeline yet — it draws on the first backing.</p>}
+          </PanelChart>
+
+          <PanelChart title="MILESTONES · ASK VS RELEASED" read={view.milestones.length ? `${releasedCount}/${view.milestones.length} released` : `${p.roadmap.length} planned`}>
+            {msRows.length > 0 ? (
+              <div>
+                <Dumbbell data={msRows} w={260} rowH={13} gap={6} />
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[9px] text-ink-dim">
+                  <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full" style={{ background: "#ffb020" }} />asked</span>
+                  <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full" style={{ background: "#00ff00" }} />released</span>
+                  <span className="ml-auto tnum text-ink-faint">{fmtUsd(released)} of {fmtUsd(p.ask_amount)}</span>
+                </div>
+              </div>
+            ) : <p className="text-[10px] text-ink-faint">Milestones escrow on a full raise — asked vs released draws then.</p>}
+          </PanelChart>
+
           <div className="ng-card p-3.5">
             <div className="ng-label mb-2 !text-ink-dim">Raise</div>
             <div className="divide-y divide-line text-[12px]">

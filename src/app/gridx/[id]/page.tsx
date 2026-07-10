@@ -20,13 +20,17 @@ import {
 import { Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import OrbPanel from "@/components/app/OrbPanel";
+import { PanelChart } from "@/components/app/terminal";
+import { ConcentricRings, LineMulti, Histogram, Bullet, SERIES } from "@/components/app/charts";
 import type { Build, Grid, Product } from "@/lib/types";
 
 type EnrichedProduct = Product & { opens_30d?: number; purchases?: number };
 type Review = { review_id: string; user_id: string; username: string; rating: number; text?: string; created_at: string };
+type Activity = { opens_daily: number[]; sales_daily: number[]; sales_total: number; sales_weeks: { key: string; sales: number; usdc: number }[] };
 type View = {
   product: EnrichedProduct; grid: Grid | null; build: Build | null;
   market: { market_id: string; stage: string } | null; launch: { ok: boolean; reason?: string } | null;
+  activity?: Activity;
   reviews: Review[];
   owner: { id: string; username: string; reputation: number } | null;
   me: { id: string; owned: boolean; purchased: boolean; can_review: boolean; review_block?: string };
@@ -57,6 +61,7 @@ export default function GridXDetail() {
 
   const [view, setView] = useState<View | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [cat, setCat] = useState<{ avg_revenue: number; n: number } | null>(null);
   const [buying, setBuying] = useState(false);
   const [rating, setRating] = useState(0);
   const [reviewText, setReviewText] = useState("");
@@ -68,6 +73,20 @@ export default function GridXDetail() {
     fetch(`/api/gridx/${id}`).then((r) => (r.ok ? r.json() : null)).then((d) => { setView(d?.product ? d : null); setLoaded(true); }).catch(() => setLoaded(true));
   }, [id]);
   useEffect(load, [load]);
+
+  // catalogue baseline for the revenue bullet — one fetch of the existing list endpoint
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/gridx")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { products?: { onchain_revenue?: number }[] } | null) => {
+        if (!alive || !d?.products?.length) return;
+        const total = d.products.reduce((a, x) => a + (x.onchain_revenue ?? 0), 0);
+        setCat({ avg_revenue: Math.round((total / d.products.length) * 100) / 100, n: d.products.length });
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   // real-usage ping: rendering the live demo counts as an open (once per visit)
   useEffect(() => {
@@ -142,6 +161,25 @@ export default function GridXDetail() {
   const liveUrl = build?.deployment ? `/d/${build.deployment.slug}` : a?.preview_url;
   const revisions = [...(build?.revisions ?? [])].reverse();
 
+  // rail-chart data — all real, from this page's own payload (server-bucketed timestamps)
+  const act = view.activity;
+  const salesAll = act?.sales_total ?? 0;
+  const revenue = p.onchain_revenue ?? 0;
+  const dailyTotal = act ? act.opens_daily.reduce((x, y) => x + y, 0) + act.sales_daily.reduce((x, y) => x + y, 0) : 0;
+  const ev30 = (p.opens_30d ?? 0) + (p.purchases ?? 0);
+  const vitals = [
+    { label: "rating", pct: Math.round(((p.rating ?? 0) / 5) * 100), color: SERIES[0], val: `${p.rating ?? 0}/5` },
+    { label: "reviewed", pct: salesAll > 0 ? Math.round(Math.min(1, (p.review_count ?? 0) / salesAll) * 100) : 0, color: SERIES[1], val: `${p.review_count ?? 0}/${salesAll} sales` },
+    { label: "sales share 30d", pct: ev30 > 0 ? Math.round(((p.purchases ?? 0) / ev30) * 100) : 0, color: SERIES[3], val: `${p.purchases ?? 0}/${ev30} events` },
+  ];
+  const hasVitals = (p.review_count ?? 0) > 0 || salesAll > 0 || ev30 > 0;
+  const scores = reviews.map((r) => r.rating);
+  const scoreMin = scores.length ? Math.min(...scores) : 0;
+  const scoreMax = scores.length ? Math.max(...scores) : 0;
+  const salesWeeks = act?.sales_weeks ?? [];
+  const activeWeeks = salesWeeks.filter((w) => w.sales > 0 || w.usdc > 0).length;
+  const weekMax = Math.max(1, ...salesWeeks.map((w) => w.sales));
+
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
       <NeuHeader collapsed={!lOpen && !rOpen} onToggleCollapse={() => { const v = lOpen || rOpen; setLOpen(!v); setROpen(!v); }} />
@@ -178,6 +216,39 @@ export default function GridXDetail() {
               )}
             </div>
           </div>
+
+          <PanelChart title="PRODUCT · VITALS" read={p.review_count ? `${p.rating}★` : "unrated"}>
+            {hasVitals ? (
+              <div className="flex items-center gap-3">
+                <ConcentricRings rings={vitals.map((v) => ({ pct: v.pct, color: v.color }))} size={96} />
+                <div className="min-w-0 space-y-1.5 text-[9.5px] text-ink-dim">
+                  {vitals.map((v) => (
+                    <div key={v.label} className="flex items-center gap-1.5" title={`${v.label}: ${v.val}`}>
+                      <span className="inline-block h-2 w-2 shrink-0" style={{ background: v.color }} />
+                      <span className="truncate">{v.label}</span>
+                      <span className="shrink-0 text-neon tnum">{v.pct}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : <p className="text-[10px] text-ink-faint">Vitals draw as the product gets opened, bought, and reviewed.</p>}
+          </PanelChart>
+
+          <PanelChart title="ACTIVITY · 14 DAYS" read={`${dailyTotal} events`}>
+            {act && dailyTotal >= 3 ? (
+              <div>
+                <LineMulti series={[act.opens_daily, act.sales_daily]} colors={[SERIES[0], SERIES[2]]} gid={`gxa-${p.product_id}`} w={260} h={48} />
+                <div className="mt-1 flex items-center justify-between text-[9px] text-ink-faint">
+                  <span>14d ago</span>
+                  <span className="flex gap-2.5">
+                    <span className="flex items-center gap-1"><span className="inline-block h-[2px] w-3" style={{ background: SERIES[0] }} />opens</span>
+                    <span className="flex items-center gap-1"><span className="inline-block h-[2px] w-3" style={{ background: SERIES[2] }} />sales</span>
+                  </span>
+                  <span>today</span>
+                </div>
+              </div>
+            ) : <p className="text-[10px] text-ink-faint">Quiet fortnight — the lines draw as opens and sales land.</p>}
+          </PanelChart>
 
           {owner && (
             <div className="ng-card p-3.5">
@@ -231,6 +302,27 @@ export default function GridXDetail() {
               <div key={k} className="ng-row !py-1.5"><span className="ng-row__k">{k}</span><span className="ng-row__v !text-neon">{v}</span></div>
             ))}</div>
           </Bracket>
+
+          {/* SALES OVER TIME — real purchase timestamps + settled receipts, by week */}
+          {activeWeeks >= 2 && (
+            <div className="ng-card p-3.5">
+              <div className="mb-2 flex items-center justify-between text-[10px]">
+                <span className="ng-label !text-ink-dim">SALES OVER TIME</span>
+                <span className="text-ink-faint">{salesAll} sale{salesAll === 1 ? "" : "s"} all-time · <span className="text-cyan tnum">${revenue.toLocaleString()}</span> settled</span>
+              </div>
+              <div className="flex items-end gap-4">
+                {salesWeeks.map((w) => (
+                  <div key={w.key} className="flex w-14 flex-col items-center gap-1" title={`week ending ${w.key}: ${w.sales} sale${w.sales === 1 ? "" : "s"}${w.usdc > 0 ? ` · $${w.usdc} settled` : ""}`}>
+                    <span className="text-[10px] font-bold text-neon tnum">{w.sales}</span>
+                    <div className="w-5 bg-neon/80" style={{ height: `${Math.max(w.sales > 0 ? 4 : 2, Math.round((w.sales / weekMax) * 46))}px` }} />
+                    <span className="text-[9px] text-ink-faint">{w.key}</span>
+                    <span className={`text-[9px] tnum ${w.usdc > 0 ? "text-cyan" : "text-ink-faint"}`}>{w.usdc > 0 ? `$${w.usdc}` : "—"}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-[10px] text-ink-faint">Weeks end on the labeled day · every bar is a recorded purchase, every dollar a settled receipt.</p>
+            </div>
+          )}
 
           {/* THE LIVE APP — try before you buy */}
           {liveUrl ? (
@@ -347,6 +439,35 @@ export default function GridXDetail() {
             </div>
             <p className="mt-2 text-[10px] text-ink-faint">Derived from settled receipts + real opens — not self-reported.</p>
           </div>
+
+          <PanelChart title="REVIEWS · SPREAD" read={`${reviews.length} verified`}>
+            {scores.length >= 3 && scoreMin !== scoreMax ? (
+              <div>
+                <Histogram data={scores} bins={5} w={260} h={48} />
+                <div className="mt-1 flex justify-between text-[9px] text-ink-faint"><span>{scoreMin}★</span><span>{scoreMax}★</span></div>
+              </div>
+            ) : scores.length >= 3 ? (
+              <p className="text-[10px] text-ink-faint">All {scores.length} verified reviews landed on {scoreMax}★ — no spread to draw.</p>
+            ) : scores.length > 0 ? (
+              <p className="text-[10px] text-ink-faint">Only {scores.length} verified review{scores.length === 1 ? "" : "s"} — the spread draws at 3+.</p>
+            ) : (
+              <p className="text-[10px] text-ink-faint">No verified reviews yet — nothing to distribute.</p>
+            )}
+          </PanelChart>
+
+          <PanelChart title="REVENUE · VS CATALOGUE" read={`$${revenue.toLocaleString()}`}>
+            {cat ? (
+              revenue > 0 || cat.avg_revenue > 0 ? (
+                <div>
+                  <Bullet data={[{ value: revenue, target: cat.avg_revenue, label: "revenue" }]} w={260} rowH={14} />
+                  <div className="mt-1.5 flex items-center justify-between text-[9.5px] text-ink-dim">
+                    <span>this product <span className="text-cyan tnum">${revenue.toLocaleString()}</span></span>
+                    <span title={`Catalogue average across ${cat.n} products`}><span style={{ color: "var(--ng-amber)" }}>|</span> avg ${cat.avg_revenue.toLocaleString()}</span>
+                  </div>
+                </div>
+              ) : <p className="text-[10px] text-ink-faint">No settled revenue anywhere in the catalogue yet.</p>
+            ) : <p className="text-[10px] text-ink-faint">Waiting on the catalogue baseline…</p>}
+          </PanelChart>
 
           {grid && (
             <div className="ng-card p-3.5">

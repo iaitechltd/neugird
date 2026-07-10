@@ -7,9 +7,59 @@
 
 import { NextResponse } from "next/server";
 import { GridX, Users } from "@/lib/modules";
+import { db } from "@/lib/store";
 import { getCurrentUserId } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
+
+const DAY = 24 * 3600 * 1000;
+const WEEK = 7 * DAY;
+
+/** Real chart series for the detail page, derived from existing store data
+ *  (productEvents + settled purchase receipts) and bucketed server-side so the
+ *  client renders SSR-safe with no time math. Oldest → newest everywhere. */
+function activityFor(id: string) {
+  const now = Date.now();
+  const events = (db.productEvents ?? []).filter((e) => e.product_id === id);
+  const receipts = (db.settlements ?? []).filter(
+    (s) => s.resource === `product_purchase:${id}` && s.status === "settled",
+  );
+
+  // last 14 days: opens + sales per day
+  const opens_daily = Array<number>(14).fill(0);
+  const sales_daily = Array<number>(14).fill(0);
+  for (const e of events) {
+    const idx = 13 - Math.floor((now - Date.parse(e.at)) / DAY);
+    if (idx < 0 || idx > 13) continue;
+    if (e.kind === "open") opens_daily[idx] += 1;
+    else sales_daily[idx] += 1;
+  }
+
+  // last 8 weeks: sales count + settled USDC, each labeled by the week's end day
+  const weeks = Array.from({ length: 8 }, (_, i) => ({
+    key: new Date(now - (7 - i) * WEEK).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    sales: 0,
+    usdc: 0,
+  }));
+  for (const e of events) {
+    if (e.kind !== "purchase") continue;
+    const idx = 7 - Math.floor((now - Date.parse(e.at)) / WEEK);
+    if (idx >= 0 && idx <= 7) weeks[idx].sales += 1;
+  }
+  for (const s of receipts) {
+    const idx = 7 - Math.floor((now - Date.parse(s.created_at)) / WEEK);
+    if (idx >= 0 && idx <= 7) weeks[idx].usdc += s.amount;
+  }
+  for (const w of weeks) w.usdc = Math.round(w.usdc * 100) / 100;
+  const first = weeks.findIndex((w) => w.sales > 0 || w.usdc > 0);
+
+  return {
+    opens_daily,
+    sales_daily,
+    sales_total: events.filter((e) => e.kind === "purchase").length, // all-time
+    sales_weeks: first === -1 ? [] : weeks.slice(first),
+  };
+}
 
 export async function GET(_request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
@@ -25,6 +75,7 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
   const owner = owner_id ? Users.getUser(owner_id) : undefined;
   return NextResponse.json({
     ...view,
+    activity: activityFor(id),
     reviews,
     owner: owner ? { id: owner.id, username: owner.username, reputation: Math.round(owner.reputation?.total ?? 0) } : null,
     me: {

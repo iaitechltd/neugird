@@ -13,6 +13,8 @@ import {
 import { Decrypt, CountUp } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import OrbPanel from "@/components/app/OrbPanel";
+import { PanelChart } from "@/components/app/terminal";
+import { Gauge, Spark, StackBars, Stream, SERIES } from "@/components/app/charts";
 import type { Agent, AgentPersona, AgentWorkSession, Job, LearnedSkill } from "@/lib/types";
 
 type WorkView = { persona: AgentPersona | null; work: AgentWorkSession | null; skills: LearnedSkill[]; earnings: number; cap: number; offer_policy?: { auto_resolve: boolean; min_amount: number; skills?: string[] } | null };
@@ -154,6 +156,62 @@ export default function AgentDetail() {
   const verified = jobs.filter((j) => j.status === "paid").length;
   const repTotal = Math.round(a.reputation?.total ?? 0);
   const isExternal = a.origin === "external";
+  const rating = a.rating ?? 0;
+
+  // rail-chart data — all real, derived from this page's own payload
+  const monthKey = (d: Date) => d.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
+  const OUTCOME_COLORS = [SERIES[0], SERIES[3], SERIES[4]]; // paid · in-flight · rejected
+  // jobs bucketed by month (since the agent joined), split by outcome today
+  const jobMonths: { key: string; values: [number, number, number] }[] = (() => {
+    if (!jobs.length) return [];
+    const grp = (s: string) => (s === "paid" ? 0 : s === "rejected" || s === "cancelled" ? 2 : 1);
+    const first = new Date(Math.min(+new Date(a.created_at), ...jobs.map((j) => +new Date(j.created_at))));
+    const now = new Date();
+    if (Number.isNaN(+first) || +first > +now) return [];
+    const buckets = new Map<string, [number, number, number]>();
+    const cur = new Date(first.getFullYear(), first.getMonth(), 1);
+    while (buckets.size < 12 && +cur <= +now) {
+      buckets.set(monthKey(cur), [0, 0, 0]);
+      cur.setMonth(cur.getMonth() + 1);
+    }
+    for (const j of jobs) {
+      const b = buckets.get(monthKey(new Date(j.created_at)));
+      if (b) b[grp(j.status)] += 1;
+    }
+    return [...buckets.entries()].slice(-8).map(([key, values]) => ({ key, values }));
+  })();
+  const outcomeTotals = jobMonths.reduce<[number, number, number]>((t, m) => [t[0] + m.values[0], t[1] + m.values[1], t[2] + m.values[2]], [0, 0, 0]);
+  // work-runtime activity: log entries on a continuous day axis, one stream per kind
+  const runtimeLog = (a.work?.log ?? []).filter((e) => e.at);
+  const streamData: { axis: string[]; series: { kind: string; n: number; data: number[] }[] } | null = (() => {
+    if (!runtimeLog.length) return null;
+    const days = [...new Set(runtimeLog.map((e) => e.at.slice(0, 10)))].sort();
+    const kindCounts = [...runtimeLog.reduce((m, e) => m.set(e.kind, (m.get(e.kind) ?? 0) + 1), new Map<string, number>()).entries()]
+      .sort((x, y) => y[1] - x[1]).slice(0, 3);
+    if (kindCounts.length < 2 || days.length < 3) return null; // too thin for a multi-series stream
+    const DAY = 86400000;
+    const last = +new Date(`${days[days.length - 1]}T00:00:00Z`);
+    const span = Math.min(14, Math.round((last - +new Date(`${days[0]}T00:00:00Z`)) / DAY) + 1);
+    const axis = Array.from({ length: span }, (_, i) => new Date(last - (span - 1 - i) * DAY).toISOString().slice(0, 10));
+    const series = kindCounts.map(([kind, n]) => ({ kind, n, data: axis.map((d) => runtimeLog.filter((e) => e.kind === kind && e.at.slice(0, 10) === d).length) }));
+    return { axis, series };
+  })();
+  // paid deliveries, oldest → newest — the earnings-per-delivery series
+  const paidJobs = [...jobs].filter((j) => j.status === "paid").sort((x, y) => +new Date(x.updated_at ?? x.created_at) - +new Date(y.updated_at ?? y.created_at));
+  const paySeries = paidJobs.map((j) => j.reward_amount);
+  const lifetime = paySeries.reduce((s, v) => s + v, 0);
+  // center visual — reward earned per month from paid deliveries (real timestamps)
+  const earnMonths: { key: string; sum: number; n: number }[] = (() => {
+    if (!paidJobs.length) return [];
+    const m = new Map<string, { sum: number; n: number }>();
+    for (const j of paidJobs) {
+      const key = monthKey(new Date(j.updated_at ?? j.created_at));
+      const cur = m.get(key) ?? { sum: 0, n: 0 };
+      m.set(key, { sum: cur.sum + j.reward_amount, n: cur.n + 1 });
+    }
+    return [...m.entries()].slice(-12).map(([key, v]) => ({ key, ...v }));
+  })();
+  const earnMax = Math.max(1, ...earnMonths.map((b) => b.sum));
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
@@ -178,6 +236,28 @@ export default function AgentDetail() {
             </div>
             <Link href={`/messages?to=${a.agent_id}`} className="ng-btn ng-btn-primary ng-btn--block ng-btn--sm mt-3"><IconMessage className="h-3.5 w-3.5" /> Message · deal · hire</Link>
           </Bracket>
+
+          <PanelChart title="RATING · VERIFIED WORK" read={`${rating.toFixed(1)} / 5 · ${verified} verified`}>
+            {rating > 0
+              ? <div className="flex justify-center py-1"><Gauge percent={Math.round((rating / 5) * 100)} value={rating.toFixed(1)} w={116} /></div>
+              : <p className="text-[10px] text-ink-faint">Unrated — the dial fills as verified deliveries land.</p>}
+          </PanelChart>
+
+          <PanelChart title="JOBS · MONTHLY × OUTCOME" read={`${jobs.length} all-time`}>
+            {jobMonths.length > 0 ? (
+              <div>
+                <StackBars data={jobMonths.map((m) => ({ values: m.values }))} h={48} colors={OUTCOME_COLORS} />
+                <div className="mt-1 flex justify-between text-[8.5px] text-ink-faint">
+                  {(jobMonths.length <= 6 ? jobMonths : [jobMonths[0], jobMonths[jobMonths.length - 1]]).map((m) => <span key={m.key}>{m.key}</span>)}
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[9.5px] text-ink-dim">
+                  {(["paid", "in-flight", "rejected"] as const).map((lbl, gi) => (
+                    <span key={lbl} className="flex items-center gap-1"><span className="inline-block h-2 w-2" style={{ background: OUTCOME_COLORS[gi] }} />{lbl} {outcomeTotals[gi]}</span>
+                  ))}
+                </div>
+              </div>
+            ) : <p className="text-[10px] text-ink-faint">No jobs on record — the monthly mix draws as work lands.</p>}
+          </PanelChart>
 
           <Sec icon={<IconBolt className="h-3.5 w-3.5" />} title="Capabilities">
             {a.capabilities.length ? <div className="flex flex-wrap gap-2">{a.capabilities.map((c) => <Tag key={c}>{c}</Tag>)}</div> : <p className="text-[11px] text-ink-dim">None declared.</p>}
@@ -320,14 +400,39 @@ export default function AgentDetail() {
             </>
           )}
 
+          {earnMonths.length >= 2 && (
+            <div className="ng-card p-3.5">
+              <div className="mb-2 flex items-center justify-between text-[10px]">
+                <span className="ng-label !text-ink-dim">REWARDS OVER TIME</span>
+                <span className="text-ink-faint">{paidJobs.length} paid deliveries · ${lifetime.toLocaleString()} lifetime · split {Math.round((a.owner_split_bps ?? 0) / 100)}% to owner</span>
+              </div>
+              <div className="flex items-end gap-4">
+                {earnMonths.map((b) => (
+                  <div key={b.key} className="flex w-14 flex-col items-center gap-1" title={`${b.key}: ${b.n} paid job(s) · $${b.sum.toLocaleString()}`}>
+                    <span className="text-[10px] font-bold text-neon tnum">${b.sum.toLocaleString()}</span>
+                    <div className="w-5 bg-neon/80" style={{ height: `${Math.max(4, Math.round((b.sum / earnMax) * 46))}px` }} />
+                    <span className="text-[9px] text-ink-faint">{b.key}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <Sec icon={<IconActivity className="h-3.5 w-3.5" />} title={`Job History · ${jobs.length}`} action={<Link href="/jobs" className="text-[11px] text-ink-dim transition hover:text-neon">Job board</Link>}>
             {jobs.length ? (
               <div className="grid grid-cols-1 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 2 + closed } as React.CSSProperties}>
                 {jobs.map((j) => (
-                  <div key={j.job_id} className="ng-card p-3.5">
-                    <div className="flex items-center justify-between gap-2"><span className="truncate text-[13px] text-ink">{j.title}</span><Mark plain accent={j.status === "paid" ? "neon" : j.status === "rejected" ? "danger" : "amber"} className="!text-[9px]">{j.status}</Mark></div>
-                    <p className="mt-1 line-clamp-2 text-[11px] text-ink-dim">{j.description}</p>
-                    <div className="mt-2 flex items-center justify-between text-[10px]"><div className="flex flex-wrap gap-1.5">{j.required_skills.slice(0, 3).map((sk) => <Tag key={sk}>{sk}</Tag>)}</div><Mark plain className="!text-[11px]">{j.reward_amount}</Mark></div>
+                  <div key={j.job_id} className="ng-card flex flex-col p-3.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <Tag className="!text-[9px]">{(j.context ?? "job").replace(/_/g, " ")}</Tag>
+                      <Mark plain accent={j.status === "paid" ? "neon" : j.status === "rejected" ? "danger" : "amber"} className="!text-[9px] shrink-0">{j.status}</Mark>
+                    </div>
+                    <div className="mt-2 truncate text-[13px] font-semibold text-ink" title={j.title}>{j.title}</div>
+                    <p className="truncate pb-2 text-[10.5px] text-ink-dim" title={j.description}>{j.description}</p>
+                    <div className="mt-auto flex items-center justify-between gap-2 border-t border-line pt-1.5 text-[9px] text-ink-faint">
+                      <span className="truncate" title={j.required_skills.join(" · ")}>{j.required_skills.slice(0, 3).join(" · ") || "any skills"}</span>
+                      <span className="shrink-0 text-[11px] font-bold text-neon tnum">{j.reward_amount.toLocaleString()}</span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -342,6 +447,32 @@ export default function AgentDetail() {
             <div className="text-[11px] text-ink-dim">reputation · rating</div>
             {view.x402_spend > 0 && <div className="mt-2 flex items-center justify-between border-t border-line pt-2 text-[11px]"><span className="text-ink-dim">x402 spend</span><Mark plain className="!text-[11px]">{view.x402_spend} USDC</Mark></div>}
           </Sec>
+
+          <PanelChart title="WORK RUNTIME · BY KIND" read={runtimeLog.length ? `${runtimeLog.length} actions` : "idle"}>
+            {streamData ? (
+              <div className="space-y-1">
+                {streamData.series.map((s, i) => (
+                  <div key={s.kind}>
+                    <div className="flex items-center justify-between text-[8.5px] text-ink-faint"><span>{s.kind}</span><span className="tnum">{s.n}</span></div>
+                    <Stream data={s.data} gid={`agstream-${a.agent_id}-${i}`} h={22} color={[SERIES[0], SERIES[3], SERIES[1]][i]} />
+                  </div>
+                ))}
+                <div className="flex justify-between text-[8.5px] text-ink-faint"><span>{streamData.axis[0].slice(5)}</span><span>{streamData.axis[streamData.axis.length - 1].slice(5)}</span></div>
+              </div>
+            ) : (
+              <p className="text-[10px] text-ink-faint">
+                {runtimeLog.length
+                  ? "Single-kind activity so far — the stream splits once the runtime logs 2+ action kinds across 3+ days."
+                  : "No runtime activity yet — arm autonomous work to start the stream."}
+              </p>
+            )}
+          </PanelChart>
+
+          <PanelChart title="REWARDS · PER PAID DELIVERY" read={`$${lifetime.toLocaleString()} lifetime`}>
+            {paySeries.length >= 2
+              ? <Spark data={paySeries.slice(-12)} gid={`agpay-${a.agent_id}`} w={260} h={44} />
+              : <p className="text-[10px] text-ink-faint">{paySeries.length === 1 ? "One paid delivery so far — the trend needs a second point." : "No paid deliveries yet."}</p>}
+          </PanelChart>
 
           <Sec icon={<IconShield className="h-3.5 w-3.5" />} title="Trust Tier">
             <div className="flex items-center gap-2 text-[12px]"><Mark plain accent={tierAccent(a.trust_tier)} className="!text-[10px]">{a.trust_tier ?? "trusted"}</Mark></div>
