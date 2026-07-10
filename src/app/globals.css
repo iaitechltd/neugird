@@ -100,14 +100,12 @@ html {
 }
 
 body {
-  /* the room is BLACK — a whisper of CRT scanline + a SUBTLE engineering grid
-     (founder 2026-07-10: "add grid at background, in all pages, subtle") */
+  /* the room is BLACK — no gradients, no grid, no texture; a whisper of CRT
+     scanline and nothing else. LOCKED (founder 2026-07-10): every background
+     pattern tried (grid / blueprint marks / circuit traces) made pages read
+     busy — content sits on clean black, full stop. */
   background-color: var(--ng-bg);
-  background-image:
-    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0) 0 2px, rgba(0, 255, 0, 0.018) 2px 3px),
-    linear-gradient(0deg, rgba(0, 255, 0, 0.022) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 255, 0, 0.022) 1px, transparent 1px);
-  background-size: auto, 44px 44px, 44px 44px;
+  background-image: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0) 0 2px, rgba(0, 255, 0, 0.018) 2px 3px);
   background-attachment: fixed;
   color: var(--ng-ink);
   font-family: var(--font-geist-mono), ui-monospace, monospace;
