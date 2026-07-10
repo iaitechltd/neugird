@@ -102,7 +102,7 @@ function Scene({
   const subDelay = BASE + titleLines.reduce((s, l) => s + span(l), 0) + 140;
 
   return (
-    <section ref={ref} id={id} className="relative flex h-screen min-h-[620px] w-full items-center overflow-hidden">
+    <section ref={ref} id={id} className="relative flex h-screen min-h-[620px] w-full items-end overflow-hidden">
       {/* background render — video when provided (poster = the still, instant paint) */}
       {video ? (
         <video
@@ -129,7 +129,7 @@ function Scene({
       <div className={`absolute inset-0 bg-gradient-to-t ${video ? "from-black/35 via-transparent to-black/20" : "from-black/75 via-transparent to-black/40"}`} />
 
       {/* content */}
-      <div className="relative z-10 mx-auto w-full max-w-7xl px-6 sm:px-10">
+      <div className="relative z-10 mx-auto w-full max-w-7xl px-6 pb-20 sm:px-10 sm:pb-24 lg:pb-28">
         <div className="max-w-none">
           {kicker && <div className={`ng-label mb-5 text-neon/70 transition-opacity duration-700 ${started ? "opacity-100" : "opacity-0"}`}>{kicker}</div>}
           <h1 className="ng-title text-[26px] font-bold leading-[1.12] tracking-tight sm:text-4xl lg:text-[46px]">
