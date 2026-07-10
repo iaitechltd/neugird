@@ -46,6 +46,18 @@ export function findByWallet(wallet: string): UserProfile | undefined {
 export function upsertByWallet(wallet: string, referred_by?: string): UserProfile {
   const existing = findByWallet(wallet);
   if (existing) return existing;
+  // Founder binding: the env-named wallet signs in AS the founder account
+  // (usr_neo) instead of minting a fresh identity — needed once demo mode is
+  // off and the identity-switch backdoor is closed. The address is appended,
+  // so every later SIWS resolves via findByWallet before reaching this branch.
+  const founder = process.env.NEUGRID_FOUNDER_WALLET;
+  if (founder && wallet === founder) {
+    const neo = db.users.find((u) => u.id === "usr_neo");
+    if (neo) {
+      neo.wallet_addresses.push(wallet);
+      return neo;
+    }
+  }
   const user: UserProfile = {
     id: `usr_${wallet.slice(0, 12).toLowerCase()}`,
     wallet_addresses: [wallet],
