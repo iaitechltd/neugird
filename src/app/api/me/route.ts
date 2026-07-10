@@ -7,7 +7,7 @@
 
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getCurrentUser, SESSION_COOKIE, userExists } from "@/lib/session";
+import { demoMode, getCurrentUser, SESSION_COOKIE, userExists } from "@/lib/session";
 import { Wallets, Rewards, Pulse, Social, Onboarding } from "@/lib/modules";
 
 export const dynamic = "force-dynamic";
@@ -42,6 +42,11 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  // Demo-only backdoor: pick any seeded identity. Staging/launch posture
+  // (NEUGRID_DEMO=off) disables it — SIWS via /api/auth is the only door.
+  if (!demoMode()) {
+    return NextResponse.json({ error: "demo_only" }, { status: 403 });
+  }
   const body = await request.json().catch(() => ({}));
   const id: unknown = body?.user_id;
   if (typeof id === "string") {

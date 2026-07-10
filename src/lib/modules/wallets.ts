@@ -10,8 +10,11 @@
 import { db } from "../store";
 import type { Wallet } from "../types";
 
-const DEFAULT_USDC = 100_000; // dev faucet
+const DEFAULT_USDC = 100_000; // dev faucet — DEMO MODE ONLY (staging/launch wallets start at 0)
 const DEFAULT_GRID = 50_000;
+// Mirrors session.ts demoMode(); read env directly — modules must stay
+// next-free so the scratchpad harnesses can import them outside Next.
+const demoFaucet = () => process.env.NEUGRID_DEMO !== "off";
 export const TREASURY = "neugrid:treasury"; // protocol fee sink (starts empty)
 export const INSURANCE = "neugrid:insurance"; // perp insurance fund — liquidation remainders in, bad debt out (can read negative = underwater)
 export const ORDER_ESCROW = "neugrid:order-escrow"; // resting-order reservations (audit F7) — USDC held while limit orders rest
@@ -22,10 +25,12 @@ function store(): Wallet[] {
 
 /** Fetch (or lazily create) a wallet. Protocol sinks ("neugrid:*") start empty. */
 export function get(user_id: string): Wallet {
+  // Guests (empty session id) read a transient zero wallet — never persisted.
+  if (!user_id) return { user_id: "", usdc: 0, grid: 0 };
   let w = store().find((x) => x.user_id === user_id);
   if (!w) {
-    const sink = user_id.startsWith("neugrid:");
-    w = { user_id, usdc: sink ? 0 : DEFAULT_USDC, grid: sink ? 0 : DEFAULT_GRID };
+    const seeded = demoFaucet() && !user_id.startsWith("neugrid:");
+    w = { user_id, usdc: seeded ? DEFAULT_USDC : 0, grid: seeded ? DEFAULT_GRID : 0 };
     store().push(w);
   }
   return w;
