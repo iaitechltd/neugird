@@ -131,6 +131,21 @@ finish this.
   on-chain (fixes F6 structurally). Platform keeps limit orders + UX as a
   crank over the pool. Alpha and Spot both ride it — same program, stage is
   platform metadata.
+  **✅ T1 v1 SHIPPED 2026-07-10 (mirror posture):** `contracts/programs/market_amm`
+  (create_pool/seed/swap/sweep_fees/set_halt/withdraw; fee-outside-the-curve
+  into a fee vault; k'≥k by ceil-division; 10/10 local suites) — devnet
+  `7GduaGprJYDvhziiVLNzAWAsG95kECc942CsnodFX6VL`, devnet-smoked with 1% fee
+  exact-math. Platform rail: `src/lib/chain/ammSolana.ts` + the `Amm` seam —
+  launch = real 6dp SPL mint + pool + REAL seeded vaults (F3 closed at the
+  mirror layer), EVERY curve movement (market orders + limit fills, both via
+  executeSwap) mirrors as an on-chain swap, fraud quorum halts the pool
+  on-chain. Mirror parity = fee-0 pool receiving net amounts (vaults track
+  ledger reserves 1:1; the program's fee machinery activates at the
+  wallet-adapter phase). Adapter e2e vs live devnet: reserves byte-exact,
+  halt enforced (`scratchpad/amm-adapter-test.ts`). `Market.onchain` jsonb +
+  migration `db/migrations/2026-07-10-market-onchain.sql`. Still v1-open:
+  user self-custody (wallet-adapter signing) + on-chain fee split + the
+  professional audit before mainnet.
 - **T2 — Perps with a real counterparty.** Margin vault program (the
   mandate-wallet pattern: the vault balance IS the margin — overspend
   structurally impossible) + an explicit counterparty: the clean fit for an

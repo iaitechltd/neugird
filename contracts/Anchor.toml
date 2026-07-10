@@ -10,9 +10,11 @@ grid_staking = "3K6UCstVDp3yJazAs28b47Gftbqr28pZpPKX29G32d2m"
 grid_governance = "AmXRjxWNpzQs3Ca3AX1h2wdK61ytY2ZvPymiNDieWDYu"
 revenue_splitter = "HFuFMdRJPR1BG3vQqjxtvxybeu4mF3FMrLWU2noVHy4N"
 mandate_wallet = "FetAKDK1vVQU44r52WuocFqYCMEoiPaT5KEwLbZ6ku3b"
+market_amm = "7GduaGprJYDvhziiVLNzAWAsG95kECc942CsnodFX6VL"
 
 [programs.localnet]
 milestone_vault = "DEnN1EEMFERLNmEkXnPMDPyj93SGEHXWuNjGWesALC4N"
+market_amm = "7GduaGprJYDvhziiVLNzAWAsG95kECc942CsnodFX6VL"
 
 [provider]
 cluster = "localnet"

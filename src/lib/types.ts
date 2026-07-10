@@ -824,6 +824,9 @@ export interface Market {
   /** Verifier fraud reports — the market halts + stakes slash only at quorum
    *  (Params.fraud_flag_quorum), not on a single accusation. */
   fraud_flags?: { reviewer_id: ID; reason: string; at: ISODate }[];
+  /** T1 AMM mirror — the market's REAL on-chain pool (chain/ammSolana.ts):
+   *  real SPL mint + seeded vaults; every curve movement mirrors as a swap. */
+  onchain?: { pool: string; base_mint: string; program: string; cluster: string; txs?: string[] };
   created_at: ISODate;
 }
 

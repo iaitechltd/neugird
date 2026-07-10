@@ -20,6 +20,7 @@ import * as governanceSolana from "./governanceSolana";
 import * as splitsSolana from "./splitsSolana";
 import * as proofsSolana from "./proofsSolana";
 import * as mandateSolana from "./mandateSolana";
+import * as ammSolana from "./ammSolana";
 import * as icpHosting from "./icpHosting";
 
 /* -------------------------------- SAS seam ------------------------------------ */
@@ -219,6 +220,22 @@ export const MandateChain = {
   spend: (mandate_id: string, amountUsd: number) =>
     guard("mandate.spend", () => mandateSolana.mirrorSpend(mandate_id, amountUsd)),
   kill: (mandate_id: string) => guard("mandate.kill", () => mandateSolana.mirrorKill(mandate_id)),
+};
+
+/* --------------------------------- Market AMM ---------------------------------- */
+// T1 — TradeX pools mirrored onto the real market_amm program: launch = real
+// mint + seeded vaults (audit F3), every curve movement = an on-chain swap.
+// Guarded fire-and-forget from markets.ts executeSwap/launchToken/flagFraud.
+
+import type { Market as MarketT } from "../types";
+
+export const Amm = {
+  configured: (): boolean => !!ammSolana.ammConfig(),
+  launch: (m: MarketT, poolBase: number, quoteSeed: number) =>
+    guard("amm.launch", () => ammSolana.mirrorLaunch(m, poolBase, quoteSeed)),
+  swap: (m: MarketT, side: "buy" | "sell", amount: number) =>
+    guard("amm.swap", () => ammSolana.mirrorSwap(m, side, amount)),
+  halt: (m: MarketT, halted: boolean) => guard("amm.halt", () => ammSolana.mirrorHalt(m, halted)),
 };
 
 /* -------------------------------- ICP hosting ---------------------------------- */

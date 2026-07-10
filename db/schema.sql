@@ -364,6 +364,7 @@ create table if not exists markets (
   status        text        not null default 'pending',
   stage_changed_at timestamptz, -- last graduation moment (holder notifications)
   fraud_flags   jsonb,      -- Verifier fraud reports; halt+slash at quorum
+  onchain       jsonb,      -- T1 AMM mirror: {pool, base_mint, program, cluster, txs[]}
   created_at    timestamptz not null default now()
 );
 

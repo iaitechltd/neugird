@@ -1,0 +1,1544 @@
+{
+  "address": "7GduaGprJYDvhziiVLNzAWAsG95kECc942CsnodFX6VL",
+  "metadata": {
+    "name": "market_amm",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "NeuGrid TradeX spot settlement: per-market constant-product pools with real SPL vaults"
+  },
+  "instructions": [
+    {
+      "name": "create_pool",
+      "docs": [
+        "Open a pool for a market. `market_id` = the platform's stable u64 hash."
+      ],
+      "discriminator": [
+        233,
+        146,
+        209,
+        142,
+        207,
+        104,
+        64,
+        188
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "market_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "base_mint"
+        },
+        {
+          "name": "quote_mint"
+        },
+        {
+          "name": "base_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "base_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "quote_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "quote_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "fee_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "market_id",
+          "type": "u64"
+        },
+        {
+          "name": "fee_bps",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "seed",
+      "docs": [
+        "Deposit launch liquidity (both sides) from the authority's accounts.",
+        "Callable again for top-ups; reserves are always the vault balances."
+      ],
+      "discriminator": [
+        255,
+        178,
+        140,
+        239,
+        113,
+        22,
+        214,
+        231
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.authority",
+                "account": "AmmPool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.market_id",
+                "account": "AmmPool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority_base",
+          "writable": true
+        },
+        {
+          "name": "authority_quote",
+          "writable": true
+        },
+        {
+          "name": "base_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.base_mint",
+                "account": "AmmPool"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "quote_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.quote_mint",
+                "account": "AmmPool"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "base_amount",
+          "type": "u64"
+        },
+        {
+          "name": "quote_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "set_halt",
+      "docs": [
+        "Fraud halt mirror (Markets.flagFraud): blocks seed + swap, reversible."
+      ],
+      "discriminator": [
+        212,
+        192,
+        179,
+        66,
+        23,
+        73,
+        197,
+        15
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.authority",
+                "account": "AmmPool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.market_id",
+                "account": "AmmPool"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "halted",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "swap",
+      "docs": [
+        "Execute a swap against the pool. `direction`: 0 = buy (quote in, base",
+        "out), 1 = sell (base in, quote out). Fee is charged in quote, outside",
+        "the curve, into the fee vault. `min_out` = slippage guard on the net."
+      ],
+      "discriminator": [
+        248,
+        198,
+        158,
+        145,
+        225,
+        117,
+        135,
+        200
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.authority",
+                "account": "AmmPool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.market_id",
+                "account": "AmmPool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "base_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.base_mint",
+                "account": "AmmPool"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "quote_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.quote_mint",
+                "account": "AmmPool"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "fee_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_base",
+          "docs": [
+            "trader-side base account (out on buy, in on sell)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "user_quote",
+          "docs": [
+            "trader-side quote account (in on buy, out on sell)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "direction",
+          "type": "u8"
+        },
+        {
+          "name": "amount_in",
+          "type": "u64"
+        },
+        {
+          "name": "min_out",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "sweep_fees",
+      "docs": [
+        "Move accrued quote fees out for distribution (stakers/treasury split is",
+        "platform-routed). `amount` 0 = sweep everything."
+      ],
+      "discriminator": [
+        175,
+        225,
+        98,
+        71,
+        118,
+        66,
+        34,
+        148
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.authority",
+                "account": "AmmPool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.market_id",
+                "account": "AmmPool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "fee_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "to_quote",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "withdraw",
+      "docs": [
+        "Authority escape hatch (migration / emergency). Loud by design — every",
+        "withdrawal is an on-chain event anyone can audit."
+      ],
+      "discriminator": [
+        183,
+        18,
+        70,
+        156,
+        148,
+        109,
+        161,
+        34
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.authority",
+                "account": "AmmPool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.market_id",
+                "account": "AmmPool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "base_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.base_mint",
+                "account": "AmmPool"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "quote_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.quote_mint",
+                "account": "AmmPool"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "to_base",
+          "writable": true
+        },
+        {
+          "name": "to_quote",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "base_amount",
+          "type": "u64"
+        },
+        {
+          "name": "quote_amount",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "AmmPool",
+      "discriminator": [
+        54,
+        82,
+        185,
+        138,
+        179,
+        191,
+        211,
+        169
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "FeesSwept",
+      "discriminator": [
+        96,
+        218,
+        115,
+        136,
+        74,
+        170,
+        202,
+        172
+      ]
+    },
+    {
+      "name": "HaltSet",
+      "discriminator": [
+        72,
+        72,
+        136,
+        23,
+        166,
+        26,
+        205,
+        223
+      ]
+    },
+    {
+      "name": "PoolCreated",
+      "discriminator": [
+        202,
+        44,
+        41,
+        88,
+        104,
+        220,
+        157,
+        82
+      ]
+    },
+    {
+      "name": "Seeded",
+      "discriminator": [
+        95,
+        55,
+        75,
+        113,
+        178,
+        157,
+        251,
+        224
+      ]
+    },
+    {
+      "name": "Swapped",
+      "discriminator": [
+        217,
+        52,
+        52,
+        83,
+        147,
+        135,
+        96,
+        109
+      ]
+    },
+    {
+      "name": "Withdrawn",
+      "discriminator": [
+        20,
+        89,
+        223,
+        198,
+        194,
+        124,
+        219,
+        13
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "BadInput",
+      "msg": "bad input"
+    },
+    {
+      "code": 6001,
+      "name": "Overflow",
+      "msg": "arithmetic overflow"
+    },
+    {
+      "code": 6002,
+      "name": "EmptyPool",
+      "msg": "pool has no liquidity"
+    },
+    {
+      "code": 6003,
+      "name": "Slippage",
+      "msg": "output below min_out"
+    },
+    {
+      "code": 6004,
+      "name": "PoolHalted",
+      "msg": "pool is halted"
+    },
+    {
+      "code": 6005,
+      "name": "WrongMint",
+      "msg": "wrong token mint"
+    },
+    {
+      "code": 6006,
+      "name": "NotAuthority",
+      "msg": "only the pool authority may do this"
+    }
+  ],
+  "types": [
+    {
+      "name": "AmmPool",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "market_id",
+            "type": "u64"
+          },
+          {
+            "name": "base_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "quote_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "fees_accrued",
+            "type": "u64"
+          },
+          {
+            "name": "halted",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "FeesSwept",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "HaltSet",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "halted",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoolCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "market_id",
+            "type": "u64"
+          },
+          {
+            "name": "base_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "quote_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_bps",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Seeded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "base_amount",
+            "type": "u64"
+          },
+          {
+            "name": "quote_amount",
+            "type": "u64"
+          },
+          {
+            "name": "base_reserve",
+            "type": "u64"
+          },
+          {
+            "name": "quote_reserve",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Swapped",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "direction",
+            "type": "u8"
+          },
+          {
+            "name": "amount_in",
+            "type": "u64"
+          },
+          {
+            "name": "amount_out",
+            "type": "u64"
+          },
+          {
+            "name": "fee",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Withdrawn",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "base_amount",
+            "type": "u64"
+          },
+          {
+            "name": "quote_amount",
+            "type": "u64"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -17,6 +17,7 @@ import * as Staking from "./staking";
 import * as Perps from "./perps";
 import * as Params from "./params";
 import * as GridMarket from "./gridMarket";
+import { Amm as ChainAmm } from "../chain";
 import type { Audit, Backing, LimitOrder, Market, MarketStage, Token, Vesting } from "../types";
 
 const INITIAL_SUPPLY = 1_000_000;
@@ -202,6 +203,9 @@ export function launchToken(grid_id: string, user_id: string, symbol?: string): 
   db.markets.push(market);
   grid.lifecycle_stage = "alpha";
   grid.token_id = token.token_id;
+  // T1 mirror: real SPL mint + on-chain pool, vaults seeded with the SAME
+  // amounts the ledger opens with (audit F3 — reserves get real backing)
+  void ChainAmm.launch(market, poolBase, SEED_LIQUIDITY);
   Pulse.recordEvent({ target_type: "grid", target_id: grid_id, action_type: "campaign_completed", weight: 40, reason: `Launched ${sym} on Alpha`, verification_source: "auto" });
   return { market, token };
 }
@@ -302,6 +306,7 @@ function executeSwap(m: Market, user_id: string, side: "buy" | "sell", amount: n
     m.holders = recountHolders(m.market_id);
     m.liquidity_usd = 2 * m.quote_reserve;
     db.trades.unshift({ market_id: m.market_id, user_id, side, base: baseOut, quote: amount, price: m.price, at: nowISO() });
+    void ChainAmm.swap(m, "buy", net); // T1 mirror: the net curve movement hits the real vaults
     return { filled: baseOut, fee: gridFee ? 0 : feeUsdc, fee_in: gridFee ? "grid" : "usdc", fee_grid: gridFee?.grid, fee_saved: gridFee?.saved };
   }
 
@@ -322,6 +327,7 @@ function executeSwap(m: Market, user_id: string, side: "buy" | "sell", amount: n
   m.holders = recountHolders(m.market_id);
   m.liquidity_usd = 2 * m.quote_reserve;
   db.trades.unshift({ market_id: m.market_id, user_id, side, base: amount, quote: quoteOut, price: m.price, at: nowISO() });
+  void ChainAmm.swap(m, "sell", amount); // T1 mirror: the base into the real vaults, quote out
   return { filled: net, fee: gridFee ? 0 : feeUsdc, fee_in: gridFee ? "grid" : "usdc", fee_grid: gridFee?.grid, fee_saved: gridFee?.saved };
 }
 
@@ -427,6 +433,7 @@ export function flagFraud(market_id: string, reviewer_id: string, reason?: strin
 
   const slash = Staking.slashStakes(m.grid_id, why);
   m.status = "paused";
+  void ChainAmm.halt(m, true); // T1 mirror: freeze the on-chain pool too
   if (grid) {
     grid.lifecycle_stage = "failed";
     Pulse.recordEvent({ target_type: "grid", target_id: grid.grid_id, action_type: "spam_penalty", weight: -60, reason: `Fraud quorum reached (${flags.length} Verifiers) — ${slash.count} listing stake(s) slashed (${slash.slashed.toLocaleString()} GRID forfeited)`, verification_source: `reviewer:${reviewer_id}` });
