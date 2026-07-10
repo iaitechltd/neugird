@@ -199,6 +199,7 @@ export default function Landing() {
       {/* ── SCENE 2 — the how ── */}
       <Scene
         img="/landing/scene-2.jpg"
+        video="/landing/scene-2.mp4"
         id="scene-two"
         titleLines={[{ t: "Where communities" }, { t: "become economies.", accent: true }]}
         subtitle="Powered by Solana and ICP, NeuGrid lets communities form, coordinate, earn Pulse, launch SubGrids, activate talent, and evolve into on-chain economies."
