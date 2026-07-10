@@ -52,6 +52,14 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
     credentials,
     // V6 — reputation is alive: the latest Pulse movement, gains and fades alike.
     rep_events: Pulse.forTarget("user", id).slice(0, 8).map((e) => ({ action: e.action_type, weight: e.weight, reason: e.reason, at: e.timestamp })),
+    // cumulative reputation over time (oldest → now) — chartable, same shape as /api/me
+    rep_series: (() => {
+      const evs = Pulse.forTarget("user", id).slice().reverse();
+      let run = 0;
+      const s = evs.map((e) => Math.max(0, (run += e.weight)));
+      while (s.length < 2) s.unshift(0);
+      return s;
+    })(),
     is_me: me === id,
   });
 }

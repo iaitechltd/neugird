@@ -19,19 +19,22 @@ import {
 } from "@/components/app/ui";
 import { Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
+import { PanelChart } from "@/components/app/terminal";
+import { Radar, Waffle, StepArea, Pie, SERIES, VIOLET } from "@/components/app/charts";
 
 type Profile = { id: string; username: string; wallet: string; bio: string; skills: string[]; pulse: number; reputation: number; by_dimension: Record<string, number>; grids: number; created_at: string; earned_usdc?: number; follows?: { followers: number; following: number }; is_following?: boolean };
 type JobRow = { job_id: string; title: string; reward: number; status: string; skills: string[] };
 type BuildRow = { build_id: string; title: string; kind: string; proof?: string; stack: string[]; status: string };
 type PropRow = { proposal_id: string; title: string; status: string; ask: number; category: string };
 type AgentRow = { agent_id: string; name: string; rating: number; capabilities: string[] };
-type Cred = { attestation_id: string; schema: string; title: string; fields: Record<string, string | number>; proof_ref?: string; status: string; subject_wallet?: string };
+type Cred = { attestation_id: string; schema: string; title: string; fields: Record<string, string | number>; proof_ref?: string; status: string; subject_wallet?: string; issued_at?: string };
 type RepEvent = { action: string; weight: number; reason: string; at: string };
 type View = {
   profile: Profile;
   track_record: { jobs_done: number; jobs: JobRow[]; builds: BuildRow[]; proposals: PropRow[]; agents: AgentRow[] };
   credentials: Cred[];
   rep_events?: RepEvent[];
+  rep_series?: number[];
   is_me: boolean;
 };
 
@@ -50,6 +53,7 @@ export default function TalentProfile() {
   const [following, setFollowing] = useState<boolean | null>(null);
   const [followers, setFollowers] = useState<number | null>(null);
   const [followBusy, setFollowBusy] = useState(false);
+  const [allCreds, setAllCreds] = useState(false);
 
   async function toggleFollow() {
     if (followBusy || !view) return;
@@ -99,6 +103,32 @@ export default function TalentProfile() {
   const dimMax = Math.max(1, ...dims.map(([, v]) => v));
   const shipped = tr.builds.length + tr.proposals.length + tr.agents.length + tr.jobs_done;
 
+  // rail-chart data — all real, from this page's own payload
+  const contribMix = [
+    { label: "builds", value: tr.builds.length },
+    { label: "jobs", value: tr.jobs_done },
+    { label: "raises", value: tr.proposals.length },
+    { label: "agents", value: tr.agents.length },
+  ].filter((d) => d.value > 0);
+  const credByType = Object.entries(
+    view.credentials.reduce((m, c) => { m[c.schema] = (m[c.schema] ?? 0) + 1; return m; }, {} as Record<string, number>),
+  ).sort((a, b) => b[1] - a[1]);
+  const repSeries = view.rep_series ?? [];
+  // credentials earned per month, oldest → now (a real, labeled timeline)
+  const credMonths: { key: string; n: number }[] = (() => {
+    const dated = view.credentials.filter((c) => c.issued_at);
+    if (!dated.length) return [];
+    const m = new Map<string, number>();
+    const stamps = dated.map((c) => new Date(c.issued_at!)).sort((a, b) => +a - +b);
+    for (const d of stamps) {
+      const key = d.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
+      m.set(key, (m.get(key) ?? 0) + 1);
+    }
+    return [...m.entries()].slice(-12).map(([key, n]) => ({ key, n }));
+  })();
+  const credMonthMax = Math.max(1, ...credMonths.map((b) => b.n));
+  const visibleCreds = allCreds ? view.credentials : view.credentials.slice(0, 12);
+
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
       <NeuHeader title="Talent" collapsed={!lOpen && !rOpen} onToggleCollapse={() => { const v = lOpen || rOpen; setLOpen(!v); setROpen(!v); }} />
@@ -130,6 +160,25 @@ export default function TalentProfile() {
             )}
             <Link href={`/passport/${p.id}`} className="ng-btn ng-btn--block ng-btn--sm mt-2"><IconShield className="h-3.5 w-3.5" /> Reputation passport ↗</Link>
           </div>
+
+          <PanelChart title="REPUTATION · SHAPE" read={`${p.reputation} total`}>
+            {dims.length >= 3
+              ? <Radar axes={dims.slice(0, 6).map(([d]) => titlecase(d))} values={dims.slice(0, 6).map(([, v]) => v)} size={132} color={VIOLET} />
+              : <p className="text-[10px] text-ink-faint">Earns shape after work lands in 3+ dimensions.</p>}
+          </PanelChart>
+
+          <PanelChart title="CONTRIBUTIONS · MIX" read={`${shipped} verified`}>
+            {contribMix.length > 0 ? (
+              <div>
+                <Waffle data={contribMix.map((d, i) => ({ value: d.value, color: SERIES[i % SERIES.length] }))} side={8} cell={9} gap={2} />
+                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[9.5px] text-ink-dim">
+                  {contribMix.map((d, i) => (
+                    <span key={d.label} className="flex items-center gap-1"><span className="inline-block h-2 w-2" style={{ background: SERIES[i % SERIES.length] }} />{d.label} {d.value}</span>
+                  ))}
+                </div>
+              </div>
+            ) : <p className="text-[10px] text-ink-faint">No verified contributions yet.</p>}
+          </PanelChart>
 
           {p.skills.length > 0 && (
             <div className="ng-card p-3.5">
@@ -173,23 +222,49 @@ export default function TalentProfile() {
           <section>
             <div className="ng-label mb-1 flex items-center gap-2 !text-base !tracking-normal !text-neon"><IconShield className="h-4 w-4" />Soulbound Credentials · {view.credentials.length}</div>
             <p className="mb-3 text-[11px] text-ink-faint">Earned achievements, ready to mint as Solana SAS attestations (Token-2022 soulbound) — non-transferable, cannot be faked or sold.</p>
+            {credMonths.length >= 2 && (
+              <div className="ng-card mb-3 p-3.5">
+                <div className="mb-2 flex items-center justify-between text-[10px]">
+                  <span className="ng-label !text-ink-dim">EARNED OVER TIME</span>
+                  <span className="text-ink-faint">{view.credentials.length} total · every one from verified work</span>
+                </div>
+                <div className="flex items-end gap-4">
+                  {credMonths.map((b) => (
+                    <div key={b.key} className="flex w-12 flex-col items-center gap-1">
+                      <span className="text-[10px] font-bold text-neon tnum">{b.n}</span>
+                      <div className="w-5 bg-neon/80" style={{ height: `${Math.max(4, Math.round((b.n / credMonthMax) * 46))}px` }} />
+                      <span className="text-[9px] text-ink-faint">{b.key}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {view.credentials.length === 0 ? <p className="text-[11px] text-ink-faint">No credentials yet — ship a build, deliver a job, or raise on Fund.</p> : (
-              <div className="grid grid-cols-1 gap-2 @2xl:grid-cols-2">
-                {view.credentials.map((c) => {
+              <div className="grid grid-cols-2 gap-2 @2xl:grid-cols-3 @4xl:grid-cols-4">
+                {visibleCreds.map((c) => {
                   const Ico = CRED_ICON[c.schema] ?? IconShield;
                   const meta = Object.values(c.fields).map((v) => String(v)).filter(Boolean).slice(0, 2).join(" · ");
                   return (
-                    <div key={c.attestation_id} className="ng-card flex items-center gap-3 p-3">
-                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded bg-neon/10 text-neon"><Ico className="h-4 w-4" /></span>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-[12px] text-ink">{c.title}</div>
-                        <div className="truncate text-[10px] text-ink-faint">{CRED_NAME[c.schema] ?? c.schema}{meta ? ` · ${meta}` : ""}</div>
+                    <div key={c.attestation_id} className="ng-card flex flex-col p-3" title={`${c.title}${meta ? ` — ${meta}` : ""}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="grid h-7 w-7 shrink-0 place-items-center bg-neon/10 text-neon"><Ico className="h-3.5 w-3.5" /></span>
+                        <Mark plain accent="neon" className="!text-[8.5px] shrink-0"><IconShield className="h-2.5 w-2.5" />soulbound</Mark>
                       </div>
-                      <Mark plain accent="neon" className="!text-[9px] shrink-0"><IconShield className="h-2.5 w-2.5" />soulbound</Mark>
+                      <div className="mt-2 truncate text-[11.5px] font-semibold text-ink">{c.title}</div>
+                      <div className="truncate text-[9.5px] text-ink-dim">{CRED_NAME[c.schema] ?? titlecase(c.schema)}</div>
+                      <div className="mt-auto flex items-center justify-between gap-2 border-t border-line pt-1.5 text-[9px] text-ink-faint">
+                        <span className="truncate">{meta || "verified"}</span>
+                        {c.issued_at && <span className="shrink-0">{new Date(c.issued_at).toLocaleDateString()}</span>}
+                      </div>
                     </div>
                   );
                 })}
               </div>
+            )}
+            {view.credentials.length > 12 && (
+              <button onClick={() => setAllCreds((v) => !v)} className="ng-btn ng-btn--sm mt-2.5">
+                {allCreds ? "Show fewer" : `Show all ${view.credentials.length}`}
+              </button>
             )}
             <p className="mt-2 text-[10px] text-ink-faint">Stage 1 — in-platform mirror. <Tag className="!text-[9px]">SAS mint pending</Tag></p>
           </section>
@@ -267,6 +342,29 @@ export default function TalentProfile() {
 
         {/* RIGHT */}
         <OrbPanel label="Signal" open={rOpen} onToggle={setROpen} widthClass="lg:w-[300px] xl:w-[320px]" className="space-y-3 lg:overflow-y-auto">
+          <PanelChart title="REPUTATION · CUMULATIVE" read={`${p.reputation} now`}>
+            {repSeries.length >= 2
+              ? <StepArea data={repSeries} gid={`tprep-${p.id}`} w={260} h={48} />
+              : <p className="text-[10px] text-ink-faint">The curve draws once reputation moves.</p>}
+          </PanelChart>
+
+          <PanelChart title="CREDENTIALS · BY TYPE" read={`${view.credentials.length} soulbound`}>
+            {credByType.length > 0 ? (
+              <div className="flex items-center gap-3">
+                <Pie data={credByType.map(([, n]) => ({ value: n }))} size={92} colors={SERIES} />
+                <div className="min-w-0 space-y-1 text-[9.5px] text-ink-dim">
+                  {credByType.slice(0, 5).map(([schema, n], i) => (
+                    <div key={schema} className="flex items-center gap-1.5">
+                      <span className="inline-block h-2 w-2 shrink-0" style={{ background: SERIES[i % SERIES.length] }} />
+                      <span className="truncate">{CRED_NAME[schema] ?? titlecase(schema)}</span>
+                      <span className="shrink-0 text-neon tnum">{n}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : <p className="text-[10px] text-ink-faint">No credentials minted yet.</p>}
+          </PanelChart>
+
           <div className="ng-card p-3.5">
             <div className="ng-label mb-2 flex items-center gap-2 !text-ink-dim"><span className="text-neon"><IconActivity className="h-4 w-4" /></span>Reputation Breakdown</div>
             {dims.length === 0 ? <p className="text-[11px] text-ink-dim">No dimensional reputation yet.</p> : (
