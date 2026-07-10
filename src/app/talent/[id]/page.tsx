@@ -163,7 +163,7 @@ export default function TalentProfile() {
 
           <PanelChart title="REPUTATION · SHAPE" read={`${p.reputation} total`}>
             {dims.length >= 3
-              ? <Radar axes={dims.slice(0, 6).map(([d]) => titlecase(d))} values={dims.slice(0, 6).map(([, v]) => v)} size={132} color={VIOLET} />
+              ? <div className="flex justify-center py-1"><Radar axes={dims.slice(0, 6).map(([d]) => titlecase(d))} values={dims.slice(0, 6).map(([, v]) => v)} size={164} color={VIOLET} /></div>
               : <p className="text-[10px] text-ink-faint">Earns shape after work lands in 3+ dimensions.</p>}
           </PanelChart>
 
