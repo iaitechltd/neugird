@@ -195,6 +195,20 @@ describe("market_amm", () => {
     assert.isTrue(BigInt(p.feesAccrued.toString()) >= feeBal, "lifetime counter covers the sweep");
   });
 
+  it("T3: the TWAP accumulator advances with held price × elapsed time", async () => {
+    const twapPda = PublicKey.findProgramAddressSync([Buffer.from("twap"), pool.toBuffer()], program.programId)[0];
+    const t1: any = await (program.account as any).twapState.fetch(twapPda);
+    assert.isTrue(t1.lastPriceMicro.toNumber() > 0, "holding price recorded");
+    await new Promise((r) => setTimeout(r, 2500));
+    await swap(0, U(1), new BN(0)); // any touch accrues price × elapsed
+    const t2: any = await (program.account as any).twapState.fetch(twapPda);
+    const grew = BigInt(t2.priceCumulative.toString()) - BigInt(t1.priceCumulative.toString());
+    const heldSecs = t2.lastTs.toNumber() - t1.lastTs.toNumber();
+    assert.isTrue(heldSecs >= 2, "clock advanced between touches");
+    const expectedMin = BigInt(t1.lastPriceMicro.toString()) * BigInt(heldSecs);
+    assert.isTrue(grew >= expectedMin, `cumulative grew ${grew}, expected ≥ ${expectedMin}`);
+  });
+
   it("withdraw drains the vaults (loud escape hatch), then swaps hit EmptyPool", async () => {
     const baseR = await bal(baseVault);
     const quoteR = await bal(quoteVault);

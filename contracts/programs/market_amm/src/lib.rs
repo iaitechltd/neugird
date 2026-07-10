@@ -15,6 +15,12 @@
 //! Rounding: output is floored via ceil-division on the new reserve, so the
 //! invariant k' >= k holds on every swap; the trader never receives dust the
 //! pool doesn't have.
+//!
+//! T3: every pool carries a TwapState — a UniV2-style cumulative price
+//! accumulator touched BEFORE each seed/swap moves the reserves (the price
+//! that HELD since the last touch accrues × elapsed seconds). Consumers (the
+//! perp_vault mark oracle) read two snapshots and divide: an on-chain TWAP no
+//! platform report can falsify.
 
 use anchor_lang::prelude::*;
 use anchor_spl::associated_token::AssociatedToken;
@@ -44,6 +50,12 @@ pub mod market_amm {
         p.fees_accrued = 0;
         p.halted = false;
         p.bump = ctx.bumps.pool;
+        let t = &mut ctx.accounts.twap_state;
+        t.pool = p.key();
+        t.price_cumulative = 0;
+        t.last_price_micro = 0;
+        t.last_ts = Clock::get()?.unix_timestamp;
+        t.bump = ctx.bumps.twap_state;
         emit!(PoolCreated {
             pool: p.key(),
             market_id,
@@ -59,6 +71,12 @@ pub mod market_amm {
     pub fn seed(ctx: Context<Seed>, base_amount: u64, quote_amount: u64) -> Result<()> {
         require!(base_amount > 0 && quote_amount > 0, AmmError::BadInput);
         require!(!ctx.accounts.pool.halted, AmmError::PoolHalted);
+        touch_twap(
+            &mut ctx.accounts.twap_state,
+            ctx.accounts.base_vault.amount,
+            ctx.accounts.quote_vault.amount,
+            Clock::get()?.unix_timestamp,
+        );
         token::transfer(
             CpiContext::new(
                 ctx.accounts.token_program.key(),
@@ -102,6 +120,12 @@ pub mod market_amm {
         let base_r = ctx.accounts.base_vault.amount as u128;
         let quote_r = ctx.accounts.quote_vault.amount as u128;
         require!(base_r > 0 && quote_r > 0, AmmError::EmptyPool);
+        touch_twap(
+            &mut ctx.accounts.twap_state,
+            ctx.accounts.base_vault.amount,
+            ctx.accounts.quote_vault.amount,
+            Clock::get()?.unix_timestamp,
+        );
         let k = base_r.checked_mul(quote_r).ok_or(AmmError::Overflow)?;
         let fee_bps = ctx.accounts.pool.fee_bps as u128;
 
@@ -308,7 +332,33 @@ pub mod market_amm {
     }
 }
 
+/* --------------------------------- internals ---------------------------------- */
+
+/// Accrue the price that HELD since the last touch (call BEFORE reserves move).
+fn touch_twap(t: &mut Account<TwapState>, base_r: u64, quote_r: u64, now: i64) {
+    if base_r > 0 {
+        let price = (quote_r as u128).saturating_mul(1_000_000) / (base_r as u128);
+        if t.last_ts > 0 && now > t.last_ts {
+            t.price_cumulative = t
+                .price_cumulative
+                .saturating_add(price.saturating_mul((now - t.last_ts) as u128));
+        }
+        t.last_price_micro = price as u64;
+    }
+    t.last_ts = now;
+}
+
 /* ---------------------------------- state ------------------------------------ */
+
+#[account]
+#[derive(InitSpace)]
+pub struct TwapState {
+    pub pool: Pubkey,
+    pub price_cumulative: u128, // Σ price_micro × elapsed_seconds
+    pub last_price_micro: u64,  // the price holding since last_ts
+    pub last_ts: i64,
+    pub bump: u8,
+}
 
 #[account]
 #[derive(InitSpace)]
@@ -347,6 +397,11 @@ pub struct CreatePool<'info> {
         seeds = [b"fees", pool.key().as_ref()], bump
     )]
     pub fee_vault: Box<Account<'info, TokenAccount>>,
+    #[account(
+        init, payer = authority, space = 8 + TwapState::INIT_SPACE,
+        seeds = [b"twap", pool.key().as_ref()], bump
+    )]
+    pub twap_state: Account<'info, TwapState>,
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
@@ -368,6 +423,8 @@ pub struct Seed<'info> {
     pub base_vault: Box<Account<'info, TokenAccount>>,
     #[account(mut, associated_token::mint = pool.quote_mint, associated_token::authority = pool)]
     pub quote_vault: Box<Account<'info, TokenAccount>>,
+    #[account(mut, seeds = [b"twap", pool.key().as_ref()], bump = twap_state.bump)]
+    pub twap_state: Account<'info, TwapState>,
     pub token_program: Program<'info, Token>,
 }
 
@@ -386,6 +443,8 @@ pub struct Swap<'info> {
     pub quote_vault: Box<Account<'info, TokenAccount>>,
     #[account(mut, token::mint = pool.quote_mint, token::authority = pool, seeds = [b"fees", pool.key().as_ref()], bump)]
     pub fee_vault: Box<Account<'info, TokenAccount>>,
+    #[account(mut, seeds = [b"twap", pool.key().as_ref()], bump = twap_state.bump)]
+    pub twap_state: Account<'info, TwapState>,
     /// trader-side base account (out on buy, in on sell)
     #[account(mut, constraint = user_base.mint == pool.base_mint @ AmmError::WrongMint)]
     pub user_base: Box<Account<'info, TokenAccount>>,

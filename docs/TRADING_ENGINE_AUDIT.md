@@ -146,6 +146,28 @@ finish this.
   migration `db/migrations/2026-07-10-market-onchain.sql`. Still v1-open:
   user self-custody (wallet-adapter signing) + on-chain fee split + the
   professional audit before mainnet.
+  **✅ T2 v1 SHIPPED 2026-07-10:** `contracts/programs/perp_vault` (global
+  Engine + segregated lp/insurance/collateral vaults; opens bounded by REAL LP
+  depth; close settles the platform-reported split with conservation enforced
+  on-chain; closes work while halted). Devnet
+  `7ptefj73hfStHPNTB272MaG4AnuR98YgGMdqj48HGYWN`, 10/10 suites + devnet smoke
+  + adapter e2e (LP paid profits, insurance took remainders, exact). Platform
+  rail `chain/perpsSolana.ts` + PerpChain seam; hooks on openPosition +
+  closeAt + the liquidation branch; `Position.onchain` + migration.
+  **✅ T3 SHIPPED 2026-07-10:** market_amm pools carry a TwapState cumulative
+  accumulator (touched before every seed/swap — an on-chain TWAP no report can
+  falsify); perp_vault gained a PERMISSIONLESS `crank_mark` (reads the AMM's
+  TwapState cross-program) + ORACLE-VALIDATED closes — exit must sit within
+  ±2% of the cranked on-chain TWAP, oracle ≤15 min fresh, LP outflow bounded
+  by the banded price (+5% funding tolerance). Both programs upgraded on
+  devnet; 34/34 local suites; live e2e: an out-of-band close and an
+  LP-draining payout were REJECTED BY THE CHAIN. Keeper =
+  `POST /api/cron/mark-crank` (5-min Cloud Scheduler + ICP-canister-ready).
+  Funding is now TWO-SIDED platform-side: the crowded side pays the thin side
+  pro-rata (treasury only as the no-counterparty backstop) — 6/6 conservation
+  harness. Remaining before mainnet: wallet-adapter self-custody, on-chain fee
+  split, professional audit (the standing gate).
+
 - **T2 — Perps with a real counterparty.** Margin vault program (the
   mandate-wallet pattern: the vault balance IS the margin — overspend
   structurally impossible) + an explicit counterparty: the clean fit for an

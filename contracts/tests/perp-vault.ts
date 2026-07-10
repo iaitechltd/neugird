@@ -47,9 +47,11 @@ describe("perp_vault", () => {
     col = vaultPda("collateral", engine);
   });
 
-  const open = (id: BN, collateral: BN, notional: BN, signer = authority) =>
+  const NO_ORACLE_MKT = new BN(999); // no AMM pool → closes take the legacy path
+
+  const open = (id: BN, collateral: BN, notional: BN, signer = authority, mkt: BN = NO_ORACLE_MKT, entry: BN = U(0.5)) =>
     program.methods
-      .openPosition(id, 0, collateral, notional, U(0.5))
+      .openPosition(id, mkt, 0, collateral, notional, entry)
       .accounts({
         authority: signer.publicKey, engine, position: posPda(engine, id),
         authorityQuote: myQuote, lpVault: lp, collateralVault: col,
@@ -57,12 +59,12 @@ describe("perp_vault", () => {
       .signers([signer])
       .rpc();
 
-  const close = (id: BN, toTrader: BN, toInsurance: BN, insuranceToLp: BN) =>
+  const close = (id: BN, toTrader: BN, toInsurance: BN, insuranceToLp: BN, exit: BN = U(0.5), oracle: PublicKey | null = null) =>
     program.methods
-      .closePosition(toTrader, toInsurance, insuranceToLp)
+      .closePosition(exit, toTrader, toInsurance, insuranceToLp)
       .accounts({
         authority: authority.publicKey, engine, position: posPda(engine, id),
-        lpVault: lp, insuranceVault: ins, collateralVault: col, traderQuote: myQuote,
+        markOracle: oracle, lpVault: lp, insuranceVault: ins, collateralVault: col, traderQuote: myQuote,
       })
       .signers([authority])
       .rpc();
@@ -155,6 +157,56 @@ describe("perp_vault", () => {
     await program.methods.setHalt(true).accounts({ authority: authority.publicKey, engine }).signers([authority]).rpc();
     await close(new BN(8), U(10), new BN(0), new BN(0)); // closes work while halted — exits are sacred
     await program.methods.setHalt(false).accounts({ authority: authority.publicKey, engine }).signers([authority]).rpc();
+  });
+
+  it("T3: crank reads the AMM's on-chain TWAP; closes are band-validated", async () => {
+    // a REAL amm pool feeds the oracle — same authority, market 777
+    const amm = anchor.workspace.MarketAmm as Program;
+    const MKT = new BN(777);
+    const base = await createMint(conn, authority, authority.publicKey, null, 6);
+    const myBase = (await getOrCreateAssociatedTokenAccount(conn, authority, base, authority.publicKey)).address;
+    await mintTo(conn, authority, base, myBase, authority, 10_000_000_000n);
+    const [ammPool] = PublicKey.findProgramAddressSync(
+      [Buffer.from("pool"), authority.publicKey.toBuffer(), MKT.toArrayLike(Buffer, "le", 8)], amm.programId);
+    const [twapState] = PublicKey.findProgramAddressSync([Buffer.from("twap"), ammPool.toBuffer()], amm.programId);
+    const { getAssociatedTokenAddressSync } = await import("@solana/spl-token");
+    const aBase = getAssociatedTokenAddressSync(base, ammPool, true);
+    const aQuote = getAssociatedTokenAddressSync(quote, ammPool, true);
+    await amm.methods.createPool(MKT, 0).accounts({ authority: authority.publicKey, baseMint: base, quoteMint: quote }).signers([authority]).rpc();
+    await amm.methods.seed(U(1000), U(100)).accounts({
+      authority: authority.publicKey, pool: ammPool, authorityBase: myBase, authorityQuote: myQuote,
+      baseVault: aBase, quoteVault: aQuote,
+    }).signers([authority]).rpc(); // price 0.1 holds from here
+    await new Promise((r) => setTimeout(r, 2000));
+    const [feeVault] = PublicKey.findProgramAddressSync([Buffer.from("fees"), ammPool.toBuffer()], amm.programId);
+    await amm.methods.swap(0, U(0.5), new BN(0)).accounts({
+      authority: authority.publicKey, pool: ammPool, baseVault: aBase, quoteVault: aQuote, feeVault,
+      userBase: myBase, userQuote: myQuote,
+    }).signers([authority]).rpc(); // touch → 0.1 held × elapsed accrues
+
+    const [oracle] = PublicKey.findProgramAddressSync(
+      [Buffer.from("mark"), engine.toBuffer(), MKT.toArrayLike(Buffer, "le", 8)], program.programId);
+    await program.methods.crankMark(MKT).accounts({
+      cranker: authority.publicKey, engine, ammPool, twapState, markOracle: oracle,
+    }).signers([authority]).rpc();
+    const o: any = await (program.account as any).markOracle.fetch(oracle);
+    assert.approximately(o.twapMicro.toNumber(), 100_000, 2_000, "on-chain TWAP ≈ 0.1");
+
+    // in-band verified close passes (exit 0.1, flat pnl)
+    await open(new BN(20), U(100), U(1000), authority, MKT, U(0.1));
+    await close(new BN(20), U(100), new BN(0), new BN(0), U(0.1), oracle);
+
+    // out-of-band exit price rejected
+    await open(new BN(21), U(100), U(1000), authority, MKT, U(0.1));
+    let banded = false;
+    try { await close(new BN(21), U(100), new BN(0), new BN(0), U(0.15), oracle); } catch { banded = true; }
+    assert.isTrue(banded, "exit 50% off the TWAP must reject");
+
+    // in-band exit but an over-payout (LP drain attempt) rejected
+    let capped = false;
+    try { await close(new BN(21), U(200), new BN(0), new BN(0), U(0.1), oracle); } catch { capped = true; }
+    assert.isTrue(capped, "payout beyond the banded price must reject");
+    await close(new BN(21), U(100), new BN(0), new BN(0), U(0.1), oracle); // legal unwind
   });
 
   it("lp_withdraw returns treasury capital (loud escape hatch)", async () => {

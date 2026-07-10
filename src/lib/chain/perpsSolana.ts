@@ -18,6 +18,7 @@
 
 import { createHash } from "node:crypto";
 import idlJson from "./perp-idl.json";
+import { poolIdOf } from "./ammSolana"; // the SAME id links pool ↔ oracle ↔ position
 import type { Position } from "../types";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -72,8 +73,16 @@ async function client(cfg: PerpConfig): Promise<any> {
       program.programId,
     )[0];
   };
+  const markPda = (marketId: bigint) => {
+    const buf = Buffer.alloc(8);
+    buf.writeBigUInt64LE(marketId);
+    return web3.PublicKey.findProgramAddressSync(
+      [Buffer.from("mark"), engine.toBuffer(), buf],
+      program.programId,
+    )[0];
+  };
 
-  return { spl, web3, BN, payer, connection, program, quoteMint, engine, vault, posPda };
+  return { spl, web3, BN, payer, connection, program, quoteMint, engine, vault, posPda, markPda };
 }
 
 /** Devnet nicety (same as the AMM adapter): mint-authority payers top up quote. */
@@ -121,6 +130,7 @@ export async function mirrorOpen(p: Position): Promise<void> {
   const tx = await c.program.methods
     .openPosition(
       new c.BN(posIdOf(p.position_id).toString()),
+      new c.BN(poolIdOf(p.market_id).toString()),
       p.side === "long" ? 0 : 1,
       new c.BN(units(p.margin).toString()),
       new c.BN(units(notional).toString()),
@@ -138,10 +148,12 @@ export async function mirrorOpen(p: Position): Promise<void> {
   p.onchain = { position: c.posPda(posIdOf(p.position_id)).toBase58(), program: cfg.programId, cluster: cfg.cluster, txs: [tx] };
 }
 
-/** Close mirror with the platform-computed settlement split. `toInsurance` =
- *  the liquidation remainder; `insuranceToLp` = bad debt to absorb (capped at
- *  the fund's real on-chain balance — it can never go negative on-chain). */
-export async function mirrorClose(p: Position, toTrader: number, toInsurance: number, insuranceToLp: number): Promise<void> {
+/** Close mirror with the platform-computed settlement split at `exitPrice`.
+ *  T3: when the market's oracle has been cranked, the program VALIDATES the
+ *  close — exit within ±band of the on-chain TWAP, fresh oracle, LP outflow
+ *  bounded. `toInsurance` = the liquidation remainder; `insuranceToLp` = bad
+ *  debt to absorb (capped at the fund's real balance — never negative). */
+export async function mirrorClose(p: Position, toTrader: number, toInsurance: number, insuranceToLp: number, exitPrice: number): Promise<void> {
   const cfg = perpConfig();
   if (!cfg || !p.onchain?.position) return;
   const c = await client(cfg);
@@ -152,8 +164,11 @@ export async function mirrorClose(p: Position, toTrader: number, toInsurance: nu
     const available = ins ? BigInt(ins.value.amount) : BigInt(0);
     if (insLp > available) insLp = available; // platform tracks the underwater gap
   }
+  const oracle = c.markPda(poolIdOf(p.market_id));
+  const oracleExists = !!(await c.connection.getAccountInfo(oracle));
   const tx = await c.program.methods
     .closePosition(
+      new c.BN(units(exitPrice).toString()),
       new c.BN(units(toTrader).toString()),
       new c.BN(units(toInsurance).toString()),
       new c.BN(insLp.toString()),
@@ -162,6 +177,7 @@ export async function mirrorClose(p: Position, toTrader: number, toInsurance: nu
       authority: c.payer.publicKey,
       engine: c.engine,
       position: new c.web3.PublicKey(p.onchain.position),
+      markOracle: oracleExists ? oracle : null,
       lpVault: c.vault("lp"),
       insuranceVault: c.vault("insurance"),
       collateralVault: c.vault("collateral"),
@@ -169,4 +185,34 @@ export async function mirrorClose(p: Position, toTrader: number, toInsurance: nu
     })
     .rpc();
   p.onchain.txs = [...(p.onchain.txs ?? []), tx].slice(-10);
+}
+
+/** Permissionless keeper: refresh a market's mark oracle from the AMM's
+ *  on-chain TwapState (the T3 crank — scheduler-driven, anyone may call). */
+export async function crankMark(market_id: string): Promise<void> {
+  const cfg = perpConfig();
+  const ammProgram = process.env.NEUGRID_AMM_PROGRAM_ID;
+  if (!cfg || !ammProgram) return;
+  const c = await client(cfg);
+  const id = poolIdOf(market_id);
+  const buf = Buffer.alloc(8);
+  buf.writeBigUInt64LE(id);
+  const ammPid = new c.web3.PublicKey(ammProgram);
+  const ammPool = c.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("pool"), c.payer.publicKey.toBuffer(), buf],
+    ammPid,
+  )[0];
+  if (!(await c.connection.getAccountInfo(ammPool))) return; // market has no on-chain pool
+  const twapState = c.web3.PublicKey.findProgramAddressSync([Buffer.from("twap"), ammPool.toBuffer()], ammPid)[0];
+  if (!(await c.connection.getAccountInfo(twapState))) return; // pre-T3 pool — no accumulator
+  await c.program.methods
+    .crankMark(new c.BN(id.toString()))
+    .accounts({
+      cranker: c.payer.publicKey,
+      engine: c.engine,
+      ammPool,
+      twapState,
+      markOracle: c.markPda(id),
+    })
+    .rpc();
 }

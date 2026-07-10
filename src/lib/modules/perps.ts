@@ -114,7 +114,10 @@ export function funding(market_id: string) {
 }
 
 /** Accrue funding owed since this position last settled — only the crowded side
- *  pays, carry → treasury, capped at remaining margin (which can hit 0 → liquidation). */
+ *  pays, capped at remaining margin (which can hit 0 → liquidation).
+ *  TWO-SIDED (T3): the carry pays the THIN side pro-rata by notional — the
+ *  industry-standard incentive to balance open interest. Only when no
+ *  counterparty exists does the treasury keep it (the pre-T3 backstop). */
 function accrueFunding(p: Position, mark: number, rate: number, now: number): void {
   // First touch (e.g. a position that predates funding): start the clock now —
   // never back-charge funding for time before it was first settled.
@@ -128,7 +131,17 @@ function accrueFunding(p: Position, mark: number, rate: number, now: number): vo
   if (!(fee > 0)) return;
   p.margin -= fee;
   p.funding_paid = (p.funding_paid ?? 0) + fee;
-  Wallets.creditUsdc(Wallets.TREASURY, fee);
+  const receivers = store().filter((x) => x.status === "open" && x.market_id === p.market_id && x.side !== p.side);
+  const totalNotional = receivers.reduce((s, x) => s + x.size * mark, 0);
+  if (totalNotional > 1e-9) {
+    for (const r of receivers) {
+      const share = fee * ((r.size * mark) / totalNotional);
+      r.margin += share;
+      r.funding_paid = (r.funding_paid ?? 0) - share; // negative = net received
+    }
+  } else {
+    Wallets.creditUsdc(Wallets.TREASURY, fee);
+  }
 }
 
 /** Settle a position to USDC at `mark` (margin already net of funding). Returns PnL. */
@@ -140,8 +153,9 @@ function closeAt(p: Position, mark: number, reason: NonNullable<Position["close_
   p.pnl = pnl;
   p.close_reason = reason;
   p.closed_at = nowISO();
-  // T2 mirror: profit is PAID by the real LP pool / loss flows into it
-  void PerpChain.close(p, payout, 0, 0);
+  // T2/T3 mirror: profit is PAID by the real LP pool / loss flows into it —
+  // validated on-chain against the market's cranked TWAP oracle
+  void PerpChain.close(p, payout, 0, 0, mark);
   return pnl;
 }
 
@@ -234,8 +248,8 @@ export function settle(market_id: string): void {
       const remainder = p.margin + pnlOf(p, mark);
       Wallets.get(Wallets.INSURANCE).usdc += remainder;
       p.status = "liquidated"; p.pnl = -p.margin; p.close_reason = "liquidation"; p.closed_at = nowISO();
-      // T2 mirror: remainder → the real insurance vault; a gapped loss draws it down
-      void PerpChain.close(p, 0, Math.max(0, remainder), Math.max(0, -remainder));
+      // T2/T3 mirror: remainder → the real insurance vault; a gapped loss draws it down
+      void PerpChain.close(p, 0, Math.max(0, remainder), Math.max(0, -remainder), mark);
       continue;
     }
     const tpHit = p.take_profit != null && (p.side === "long" ? mark >= p.take_profit : mark <= p.take_profit);

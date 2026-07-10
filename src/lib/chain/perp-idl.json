@@ -16,7 +16,10 @@
         "trader loss    → LP pool",
         "liq remainder  → insurance (`to_insurance`)",
         "bad debt       → insurance pays the pool (`insurance_to_lp`)",
-        "Closes work even while halted — exits are sacred."
+        "T3: when the market's mark oracle has been cranked, the close is",
+        "VALIDATED against it — the exit price must sit within ±band of the",
+        "on-chain TWAP, the oracle must be fresh, and the payout may not exceed",
+        "what the banded price allows. Closes work even while halted."
       ],
       "discriminator": [
         123,
@@ -56,6 +59,35 @@
                 "kind": "account",
                 "path": "engine.authority",
                 "account": "Engine"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mark_oracle",
+          "docs": [
+            "the market's mark oracle — validation engages once it has been cranked"
+          ],
+          "optional": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "engine"
+              },
+              {
+                "kind": "account",
+                "path": "position.market_id",
+                "account": "PerpPosition"
               }
             ]
           }
@@ -171,6 +203,10 @@
       ],
       "args": [
         {
+          "name": "exit_price_micro",
+          "type": "u64"
+        },
+        {
           "name": "to_trader",
           "type": "u64"
         },
@@ -180,6 +216,105 @@
         },
         {
           "name": "insurance_to_lp",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "crank_mark",
+      "docs": [
+        "Permissionless keeper crank: refresh a market's mark oracle FROM the",
+        "AMM's on-chain TwapState. Anyone may crank — the truth comes from the",
+        "accumulator, not the caller. First crank bootstraps from the holding",
+        "price; later cranks store the exact inter-touch TWAP."
+      ],
+      "discriminator": [
+        12,
+        85,
+        227,
+        235,
+        32,
+        230,
+        117,
+        121
+      ],
+      "accounts": [
+        {
+          "name": "cranker",
+          "docs": [
+            "permissionless — anyone may pay to refresh the oracle"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "engine",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  110,
+                  103,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "engine.authority",
+                "account": "Engine"
+              }
+            ]
+          }
+        },
+        {
+          "name": "amm_pool",
+          "docs": [
+            "the market's AMM pool — owner-checked against the market_amm program"
+          ]
+        },
+        {
+          "name": "twap_state",
+          "docs": [
+            "its cumulative-price accumulator (same owner check)"
+          ]
+        },
+        {
+          "name": "mark_oracle",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "engine"
+              },
+              {
+                "kind": "arg",
+                "path": "market_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "market_id",
           "type": "u64"
         }
       ]
@@ -487,7 +622,8 @@
       "name": "open_position",
       "docs": [
         "Open: real margin moves into the segregated collateral vault; total OI",
-        "is bounded by the LP pool's REAL depth."
+        "is bounded by the LP pool's REAL depth. `market_id` = the market's AMM",
+        "pool id (links the position to its on-chain price oracle)."
       ],
       "discriminator": [
         135,
@@ -618,6 +754,10 @@
       "args": [
         {
           "name": "position_id",
+          "type": "u64"
+        },
+        {
+          "name": "market_id",
           "type": "u64"
         },
         {
@@ -764,6 +904,19 @@
       ]
     },
     {
+      "name": "MarkOracle",
+      "discriminator": [
+        28,
+        235,
+        48,
+        85,
+        165,
+        49,
+        176,
+        87
+      ]
+    },
+    {
       "name": "PerpPosition",
       "discriminator": [
         49,
@@ -828,6 +981,19 @@
         238,
         51,
         153
+      ]
+    },
+    {
+      "name": "MarkCranked",
+      "discriminator": [
+        203,
+        232,
+        11,
+        91,
+        89,
+        199,
+        148,
+        157
       ]
     },
     {
@@ -915,9 +1081,69 @@
       "code": 6008,
       "name": "NotAuthority",
       "msg": "only the engine authority may do this"
+    },
+    {
+      "code": 6009,
+      "name": "WrongOracle",
+      "msg": "oracle does not match this market"
+    },
+    {
+      "code": 6010,
+      "name": "OracleStale",
+      "msg": "mark oracle is stale — crank it first"
+    },
+    {
+      "code": 6011,
+      "name": "PriceOutOfBand",
+      "msg": "exit price outside the on-chain TWAP band"
+    },
+    {
+      "code": 6012,
+      "name": "PayoutExceedsBand",
+      "msg": "payout exceeds what the banded price allows"
     }
   ],
   "types": [
+    {
+      "name": "AmmPool",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "market_id",
+            "type": "u64"
+          },
+          {
+            "name": "base_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "quote_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "fees_accrued",
+            "type": "u64"
+          },
+          {
+            "name": "halted",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
     {
       "name": "Engine",
       "type": {
@@ -1023,6 +1249,62 @@
       }
     },
     {
+      "name": "MarkCranked",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "engine",
+            "type": "pubkey"
+          },
+          {
+            "name": "market_id",
+            "type": "u64"
+          },
+          {
+            "name": "twap_micro",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarkOracle",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "engine",
+            "type": "pubkey"
+          },
+          {
+            "name": "market_id",
+            "type": "u64"
+          },
+          {
+            "name": "twap_micro",
+            "type": "u64"
+          },
+          {
+            "name": "last_cumulative",
+            "type": "u128"
+          },
+          {
+            "name": "last_ts",
+            "type": "i64"
+          },
+          {
+            "name": "updated_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "OiCapSet",
       "type": {
         "kind": "struct",
@@ -1049,6 +1331,10 @@
           },
           {
             "name": "position_id",
+            "type": "u64"
+          },
+          {
+            "name": "market_id",
             "type": "u64"
           },
           {
@@ -1090,6 +1376,14 @@
           {
             "name": "position_id",
             "type": "u64"
+          },
+          {
+            "name": "exit_price_micro",
+            "type": "u64"
+          },
+          {
+            "name": "verified",
+            "type": "bool"
           },
           {
             "name": "to_trader",
@@ -1146,6 +1440,34 @@
           {
             "name": "total_oi",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TwapState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "price_cumulative",
+            "type": "u128"
+          },
+          {
+            "name": "last_price_micro",
+            "type": "u64"
+          },
+          {
+            "name": "last_ts",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }

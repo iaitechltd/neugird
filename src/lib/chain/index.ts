@@ -249,8 +249,9 @@ import type { Position as PositionT } from "../types";
 export const PerpChain = {
   configured: (): boolean => !!perpsSolana.perpConfig(),
   open: (p: PositionT) => guard("perp.open", () => perpsSolana.mirrorOpen(p)),
-  close: (p: PositionT, toTrader: number, toInsurance: number, insuranceToLp: number) =>
-    guard("perp.close", () => perpsSolana.mirrorClose(p, toTrader, toInsurance, insuranceToLp)),
+  close: (p: PositionT, toTrader: number, toInsurance: number, insuranceToLp: number, exitPrice: number) =>
+    guard("perp.close", () => perpsSolana.mirrorClose(p, toTrader, toInsurance, insuranceToLp, exitPrice)),
+  crank: (market_id: string) => guard("perp.crank", () => perpsSolana.crankMark(market_id)),
 };
 
 /* -------------------------------- ICP hosting ---------------------------------- */

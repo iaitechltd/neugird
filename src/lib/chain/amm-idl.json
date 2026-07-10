@@ -261,6 +261,27 @@
           }
         },
         {
+          "name": "twap_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  119,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
@@ -522,6 +543,27 @@
                 89
               ]
             }
+          }
+        },
+        {
+          "name": "twap_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  119,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
           }
         },
         {
@@ -844,6 +886,27 @@
                   101,
                   101,
                   115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "twap_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  119,
+                  97,
+                  112
                 ]
               },
               {
@@ -1244,6 +1307,19 @@
         211,
         169
       ]
+    },
+    {
+      "name": "TwapState",
+      "discriminator": [
+        19,
+        109,
+        64,
+        219,
+        46,
+        31,
+        239,
+        237
+      ]
     }
   ],
   "events": [
@@ -1516,6 +1592,34 @@
           {
             "name": "fee",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TwapState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "price_cumulative",
+            "type": "u128"
+          },
+          {
+            "name": "last_price_micro",
+            "type": "u64"
+          },
+          {
+            "name": "last_ts",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }
