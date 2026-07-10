@@ -232,6 +232,7 @@ export default function Landing() {
       {/* ── SCENE 5 — compose: programmable, verifiable, owned ── */}
       <Scene
         img="/landing/scene-5.jpg"
+        video="/landing/scene-5.mp4"
         id="scene-five"
         titleLines={[{ t: "Composable. Verifiable." }, { t: "Yours.", accent: true }]}
         subtitle="Grids, credentials, markets, and agents interlock as programmable building blocks — settled on Solana and ICP, owned by the people who build them."
