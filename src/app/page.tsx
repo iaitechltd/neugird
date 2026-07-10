@@ -70,20 +70,35 @@ const TITLE_LINES: TitleLine[] = [
 ];
 
 function Scene({
-  img, video, id, kicker, titleLines, subtitle, cta, cue,
+  img, video, id, kicker, titleLines, subtitle, cta, cue, eager,
 }: {
   img: string; video?: string; id: string; kicker?: string; titleLines: TitleLine[]; subtitle: string;
-  cta?: React.ReactNode; cue?: boolean;
+  cta?: React.ReactNode; cue?: boolean; eager?: boolean;
 }) {
   const ref = useRef<HTMLElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [started, setStarted] = useState(false);
-  // respect reduced motion: hold the poster frame instead of playing
+  // lazy video: below-the-fold scenes only fetch their mp4 when scrolled within
+  // one viewport (poster paints instantly regardless); scene-1 is eager
+  const [near, setNear] = useState(false);
+  const loadVideo = Boolean(video) && (eager || near);
   useEffect(() => {
-    if (video && videoRef.current && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      videoRef.current.pause();
-    }
-  }, [video]);
+    const el = ref.current;
+    if (!el || !video || eager) return;
+    const io = new IntersectionObserver(
+      ([e]) => { if (e.isIntersecting) { setNear(true); io.disconnect(); } },
+      { rootMargin: "50% 0px", threshold: 0 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [video, eager]);
+  // respect reduced motion (hold the poster); nudge playback once the src attaches
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!video || !v) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { v.pause(); return; }
+    if (loadVideo && v.paused) v.play().catch(() => {});
+  }, [video, loadVideo]);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -108,8 +123,9 @@ function Scene({
         <video
           ref={videoRef}
           className="absolute inset-0 h-full w-full scale-[1.04] object-cover [object-position:76%_center] lg:[object-position:right_center]"
-          src={video}
+          src={loadVideo ? video : undefined}
           poster={img}
+          preload={loadVideo ? "auto" : "none"}
           autoPlay
           muted
           loop
@@ -190,6 +206,7 @@ export default function Landing() {
       <Scene
         img="/landing/scene-1.jpg"
         video="/landing/scene-1.mp4"
+        eager
         id="scene-one"
         titleLines={TITLE_LINES}
         subtitle="From idea to community, talent, campaigns, funding, agents, and tokenized launch, NeuGrid gives anyone the full path to build, grow, and scale their own digital economy."
