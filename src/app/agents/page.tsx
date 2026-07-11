@@ -7,13 +7,14 @@ import StartNewButton from "@/components/app/StartNewButton";
 import {
   Panel, Mark, Tag, Bracket,
   IconChevronDown, IconCheck, IconBot, IconGrid, IconStar, IconBolt,
-  IconNetwork, IconRocket, IconUser, IconCoins, IconShield, IconLayers,
+  IconNetwork, IconUser, IconCoins, IconShield, IconLayers,
   kpiColor,
 } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
+import Meter from "@/components/app/Meter";
 import OrbPanel from "@/components/app/OrbPanel";
-import { PanelChart, TMeter } from "@/components/app/terminal";
+import { PanelChart, TMeter, barStr } from "@/components/app/terminal";
 import { Beeswarm, PolarArea, Honeycomb, StackBars } from "@/components/app/charts";
 import type { Agent, Job } from "@/lib/types";
 
@@ -54,7 +55,6 @@ export default function AgentsPage() {
   const [allAgents, setAllAgents] = useState<Agent[]>([]);
   const [openJobs, setOpenJobs] = useState<Job[]>([]);
   const [meId, setMeId] = useState("");
-  const [newName, setNewName] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [extName, setExtName] = useState("");
   const [extFw, setExtFw] = useState("");
@@ -78,16 +78,6 @@ export default function AgentsPage() {
   }
   useEffect(() => { void refresh(); }, []);
 
-  async function createAgent() {
-    const name = newName.trim();
-    if (!name || busy) return;
-    setBusy("create");
-    try {
-      await fetch("/api/agents", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, capabilities: ["research", "analytics"] }) });
-      setNewName(""); notify(`Agent "${name}" created`); await refresh();
-    } catch { notify("Create failed"); }
-    setBusy(null);
-  }
   async function deployAgent(agentId: string) {
     if (busy) return;
     const job = openJobs[0];
@@ -130,6 +120,8 @@ export default function AgentsPage() {
   const earnMax = Math.max(1, ...allAgents.map((a) => a.earnings ?? 0));
   const repMax = Math.max(1, ...allAgents.map((a) => a.reputation?.total ?? 0)); // card-meter scale
   const hive = allAgents.map((a) => ({ v: (a.earnings ?? 0) / earnMax, color: tierColor(a.trust_tier) }));
+  const openRewardMax = Math.max(1, ...openJobs.map((j) => j.reward_amount ?? 0)); // right-rail job-meter scale
+  const tierN = (t: string) => allAgents.filter((a) => (a.trust_tier ?? "trusted") === t).length; // live-tier meters
   const stackData = ["probation", "trusted", "suspended"].map((t) => ({ values: [
     allAgents.filter((a) => (a.trust_tier ?? "trusted") === t && (a.origin ?? "native") === "native").length,
     allAgents.filter((a) => (a.trust_tier ?? "trusted") === t && a.origin === "external").length,
@@ -166,7 +158,10 @@ export default function AgentsPage() {
                   <span className="w-4 text-xs font-bold text-neon/50">#{i + 1}</span>
                   <MatrixAvatar seed={a.agent_id} size={30} />
                   <div className="min-w-0 flex-1"><div className="truncate text-xs text-ink">{a.name}</div><div className="flex items-center gap-1.5 text-[10px] text-ink-dim"><Tag>{a.origin ?? "native"}</Tag><Mark plain accent={tierAccent(a.trust_tier)} className="!text-[9px]">{a.trust_tier ?? "trusted"}</Mark></div></div>
-                  <Mark plain accent="cyan" className="text-[11px]">{Math.round(a.reputation?.total ?? 0)}</Mark>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <Mark plain accent="cyan" className="text-[11px]">{Math.round(a.reputation?.total ?? 0)}</Mark>
+                    <Meter value={Math.round(a.reputation?.total ?? 0)} max={repMax} w={44} />
+                  </div>
                 </div>
               )) : <p className="text-[11px] text-ink-dim">No agents yet.</p>}
             </div>
@@ -174,7 +169,11 @@ export default function AgentsPage() {
             <Section icon={<IconBolt className="h-3.5 w-3.5" />}>How agents earn</Section>
             <ol className="space-y-1.5 text-[12px] text-ink-dim">
               {["Create or connect an agent", "It claims a Job from the marketplace", "Executes + submits proof of work", "Client verifies → agent earns reputation + a rating", "Reward splits: agent wallet + your revenue cut"].map((s, i) => (
-                <li key={s} className="flex gap-2"><span className="text-neon">{i + 1}.</span>{s}</li>
+                <li key={s} className="flex items-baseline gap-2">
+                  <span className="text-neon">{i + 1}.</span>
+                  <span className="min-w-0 flex-1">{s}</span>
+                  <span className="shrink-0 font-mono text-[10px] tracking-tighter text-neon/60" title={`step ${i + 1} of 5`}>{barStr(((i + 1) / 5) * 100, 5)}</span>
+                </li>
               ))}
             </ol>
           </Panel>
@@ -210,12 +209,16 @@ export default function AgentsPage() {
             <div className="ng-label flex items-center gap-2 !text-neon"><IconBot className="h-4 w-4" />My Agents <Mark plain accent="cyan" className="text-[11px]">{myAgents.length}</Mark></div>
             {openJobs.length > 0 && <span className="text-[10px] text-ink-faint">{openJobs.length} open job{openJobs.length > 1 ? "s" : ""} to deploy on</span>}
           </div>
+          {/* one creation path — the FULL wizard (persona · goals · style · capabilities);
+              the old name-only quick-create shipped hollow agents (founder trap, 2026-07-11) */}
           <div className="ng-card p-3.5">
-            <div className="flex items-center gap-2">
-              <input value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") createAgent(); }} placeholder="Name a native agent (e.g. Scout)…" className="flex-1 border-b border-line bg-transparent py-1.5 text-[13px] text-ink placeholder:text-ink-faint focus:outline-none" />
-              <button onClick={createAgent} disabled={!newName.trim() || busy === "create"} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-40">{busy === "create" ? "Creating…" : <><IconRocket className="h-3.5 w-3.5" /> Create Agent</>}</button>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[13px] text-ink">Build a full agent — persona, goals, capabilities</div>
+                <p className="mt-1 text-[10px] text-ink-faint">It works the marketplace in character: claims jobs, learns skills, answers DMs, settles offers under your policy. You take a revenue split.</p>
+              </div>
+              <StartNewButton only="agent" label="create agent" />
             </div>
-            <p className="mt-1.5 text-[10px] text-ink-faint">Deploy agents on Jobs to earn reputation + a rating; you take a revenue split.</p>
           </div>
           {myAgents.length ? (
             <div className="grid grid-cols-1 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 2 + closed } as React.CSSProperties}>
@@ -329,7 +332,11 @@ export default function AgentsPage() {
                   <div className="flex items-center gap-2.5">
                     <span className="text-[11px] font-bold text-neon/50">#{i + 1}</span>
                     <MatrixAvatar seed={a.agent_id} size={30} />
-                    <div className="min-w-0 flex-1"><div className="truncate text-xs text-ink">{a.name}</div><div className="text-[10px] text-ink-dim">{(a.earnings ?? 0).toLocaleString()} Pulse earned</div></div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs text-ink">{a.name}</div>
+                      <div className="text-[10px] text-ink-dim">{(a.earnings ?? 0).toLocaleString()} Pulse earned</div>
+                      <Meter value={a.earnings ?? 0} max={earnMax} w={96} className="mt-1" />
+                    </div>
                     <span className="flex items-center gap-1 text-[11px] text-neon"><IconStar className="h-3 w-3" />{(a.rating ?? 0).toFixed(1)}</span>
                   </div>
                 </div>
@@ -342,6 +349,10 @@ export default function AgentsPage() {
                 {openJobs.slice(0, 5).map((j) => (
                   <div key={j.job_id} className="ng-card p-3">
                     <div className="flex items-center justify-between gap-2"><span className="truncate text-[13px] text-ink">{j.title}</span><Mark plain className="!text-[11px]">{j.reward_amount}</Mark></div>
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      <Meter value={j.reward_amount ?? 0} max={openRewardMax} w={100} />
+                      <span className="tnum text-[9px] text-ink-faint">reward vs top {openRewardMax.toLocaleString()}</span>
+                    </div>
                     <div className="mt-1 flex flex-wrap gap-1.5">{j.required_skills.slice(0, 3).map((s) => <Tag key={s}>{s}</Tag>)}</div>
                   </div>
                 ))}
@@ -356,6 +367,14 @@ export default function AgentsPage() {
                 <div className="ng-row !py-1.5"><span className="ng-row__k flex items-center gap-2"><Mark plain accent="neon" className="!text-[9px]">trusted</Mark></span><span className="ng-row__v font-normal text-ink-dim">3 jobs or bond</span></div>
               </div>
               <p className="mt-2">Rejected work slashes the bond and demotes the agent.</p>
+              {allAgents.length > 0 && (
+                <div className="mt-2 border-t border-line pt-2">
+                  <div className="ng-label mb-1 !text-[9px] !text-ink-dim">Live tiers · {allAgents.length} agents</div>
+                  <TMeter label="trusted" pct={(tierN("trusted") / allAgents.length) * 100} value={tierN("trusted")} w={10} />
+                  <TMeter label="probation" pct={(tierN("probation") / allAgents.length) * 100} value={tierN("probation")} w={10} color="#ffb020" />
+                  <TMeter label="suspended" pct={(tierN("suspended") / allAgents.length) * 100} value={tierN("suspended")} w={10} color="#ff4d5e" />
+                </div>
+              )}
             </div>
           </Panel>
         </OrbPanel>

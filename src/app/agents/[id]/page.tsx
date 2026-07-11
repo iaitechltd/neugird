@@ -11,10 +11,11 @@ import {
   IconPlay, IconLayers, IconTarget, IconRefresh, IconClose,
 } from "@/components/app/ui";
 import { Decrypt, CountUp } from "@/components/app/typefx";
-import { MatrixAvatar } from "@/components/app/MatrixAvatar";
+import { MatrixAvatar, MatrixCover } from "@/components/app/MatrixAvatar";
 import OrbPanel from "@/components/app/OrbPanel";
-import { PanelChart } from "@/components/app/terminal";
-import { Gauge, Spark, StackBars, Stream, SERIES } from "@/components/app/charts";
+import { PanelChart, TMeter } from "@/components/app/terminal";
+import { Gauge, Spark, StackBars, Stream, Radar, Donut, SegBar, SERIES } from "@/components/app/charts";
+import Meter from "@/components/app/Meter";
 import type { Agent, AgentPersona, AgentWorkSession, Job, LearnedSkill } from "@/lib/types";
 
 type WorkView = { persona: AgentPersona | null; work: AgentWorkSession | null; skills: LearnedSkill[]; earnings: number; cap: number; offer_policy?: { auto_resolve: boolean; min_amount: number; skills?: string[] } | null };
@@ -37,6 +38,8 @@ function Sec({ icon, title, children, action }: { icon: React.ReactNode; title: 
     </section>
   );
 }
+
+const CAP_DOMAINS = ["research", "growth", "content", "support", "analytics", "moderation"];
 
 export default function AgentDetail() {
   const params = useParams();
@@ -68,6 +71,7 @@ export default function AgentDetail() {
   const [pForm, setPForm] = useState({ role: "", bio: "", personality: "", goals: "", style: "", knowledge: "" });
   const [armForm, setArmForm] = useState({ skills: "", max_jobs: 5, max_reward: 0 });
   const [policyForm, setPolicyForm] = useState({ auto_resolve: false, min_amount: "", skills: "" });
+  const [allowPost, setAllowPost] = useState(false);
   const [busy, setBusy] = useState(false);
   // skills marketplace — this owner's published listings (by source skill_id)
   const [listings, setListings] = useState<{ published_id: string; skill_id: string; installs: number; price_grid: number }[]>([]);
@@ -90,6 +94,10 @@ export default function AgentDetail() {
     }).catch(() => {});
   }, [id]);
   useEffect(() => { if (view && view.agent.origin !== "external") { refreshWork(); refreshMarket(); } }, [view, refreshWork, refreshMarket]);
+  // the Auto-post switch mirrors the loaded agent (tracked without cascading renders)
+  const agentAllowPost = view ? !!(view.agent as { allow_posting?: boolean }).allow_posting : false;
+  const [postTouched, setPostTouched] = useState(false);
+  const allowPostShown = postTouched ? allowPost : agentAllowPost;
 
   async function publishSkill(skill_id: string, price: number) {
     setBusy(true);
@@ -212,6 +220,9 @@ export default function AgentDetail() {
     return [...m.entries()].slice(-12).map(([key, v]) => ({ key, ...v }));
   })();
   const earnMax = Math.max(1, ...earnMonths.map((b) => b.sum));
+  // inline-bar scales — the biggest reward in the history + the most-reused skill
+  const maxJobReward = Math.max(1, ...jobs.map((j) => j.reward_amount));
+  const maxSkillUses = Math.max(1, ...(work?.skills ?? []).map((s) => s.uses));
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
@@ -238,9 +249,8 @@ export default function AgentDetail() {
           </Bracket>
 
           <PanelChart title="RATING · VERIFIED WORK" read={`${rating.toFixed(1)} / 5 · ${verified} verified`}>
-            {rating > 0
-              ? <div className="flex justify-center py-1"><Gauge percent={Math.round((rating / 5) * 100)} value={rating.toFixed(1)} w={116} /></div>
-              : <p className="text-[10px] text-ink-faint">Unrated — the dial fills as verified deliveries land.</p>}
+            <div className="flex justify-center py-1"><Gauge percent={Math.round((rating / 5) * 100)} value={rating.toFixed(1)} w={116} /></div>
+            {rating === 0 && <p className="text-center text-[9px] text-ink-faint">dial at zero — fills as verified deliveries land</p>}
           </PanelChart>
 
           <PanelChart title="JOBS · MONTHLY × OUTCOME" read={`${jobs.length} all-time`}>
@@ -260,21 +270,43 @@ export default function AgentDetail() {
           </PanelChart>
 
           <Sec icon={<IconBolt className="h-3.5 w-3.5" />} title="Capabilities">
-            {a.capabilities.length ? <div className="flex flex-wrap gap-2">{a.capabilities.map((c) => <Tag key={c}>{c}</Tag>)}</div> : <p className="text-[11px] text-ink-dim">None declared.</p>}
+            {a.capabilities.length ? (
+              <>
+                <div className="flex justify-center py-1">
+                  <Radar
+                    axes={CAP_DOMAINS}
+                    values={CAP_DOMAINS.map((d) => (a.capabilities.some((c) => c.toLowerCase() === d) ? 100 : 0))}
+                    size={132}
+                    color="#b388ff"
+                  />
+                </div>
+                <div className="flex flex-wrap justify-center gap-2">{a.capabilities.map((c) => <Tag key={c}>{c}</Tag>)}</div>
+              </>
+            ) : <p className="text-[11px] text-ink-dim">None declared.</p>}
           </Sec>
 
           <Sec icon={<IconCoins className="h-3.5 w-3.5" />} title="Economics">
+            <div className="mb-2 flex items-center justify-center gap-4">
+              <Donut data={[Math.round((a.owner_split_bps ?? 0) / 100), 100 - Math.round((a.owner_split_bps ?? 0) / 100)]} size={84} thickness={12} colors={["#00ff00", "#48f5ff"]} center={`${Math.round((a.owner_split_bps ?? 0) / 100)}/${100 - Math.round((a.owner_split_bps ?? 0) / 100)}`} />
+              <div className="text-[9.5px] leading-relaxed text-ink-dim"><span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 bg-neon" />owner {Math.round((a.owner_split_bps ?? 0) / 100)}%</span><span className="mt-1 flex items-center gap-1.5"><span className="inline-block h-2 w-2 bg-cyan" />agent {100 - Math.round((a.owner_split_bps ?? 0) / 100)}%</span></div>
+            </div>
             <div className="divide-y divide-line text-[11px]">
-              <div className="ng-row !py-2"><span className="ng-row__k">Owner revenue split</span><Mark plain className="!text-[11px]">{Math.round((a.owner_split_bps ?? 0) / 100)}%</Mark></div>
+              <div className="ng-row !py-2"><span className="ng-row__k">Owner revenue split</span><span className="flex items-center gap-2" title={`${Math.round((a.owner_split_bps ?? 0) / 100)}% of every reward goes to the owner`}><Meter value={Math.round((a.owner_split_bps ?? 0) / 100)} max={100} w={44} /><Mark plain className="!text-[11px]">{Math.round((a.owner_split_bps ?? 0) / 100)}%</Mark></span></div>
               <div className="ng-row !py-2"><span className="ng-row__k">Agent wallet</span><Mark plain className="!text-[11px]">{(a.earnings ?? 0).toLocaleString()} Pulse</Mark></div>
-              {isExternal && <div className="ng-row !py-2"><span className="ng-row__k">Bond</span><Mark plain className="!text-[11px]">{(a.bond_amount ?? 0).toLocaleString()}</Mark></div>}
+              {isExternal && <div className="ng-row !py-2"><span className="ng-row__k">Bond</span><span className="flex items-center gap-2" title="posted bond vs the 1,000 probation-waiver threshold"><Meter value={a.bond_amount ?? 0} max={1000} w={44} color="#ffb020" /><Mark plain className="!text-[11px]">{(a.bond_amount ?? 0).toLocaleString()}</Mark></span></div>}
             </div>
           </Sec>
         </OrbPanel>
 
         {/* CENTER — overview + job history */}
         <main className="@container order-1 space-y-4 lg:order-2 lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
-          <Bracket className="ng-panel p-5">
+          <Bracket className="ng-panel overflow-hidden !p-0">
+            {/* identity banner — this agent's deterministic art */}
+            <div className="relative h-14">
+              <MatrixCover seed={a.agent_id} />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
+            </div>
+            <div className="p-5 pt-3">
             <div className="flex items-start justify-between gap-2">
               <div>
                 <div className="flex items-center gap-2 text-[12px] text-neon"><IconBot className="h-4 w-4" /><Decrypt text={isExternal ? "External agent · via MCP" : "Native agent"} /></div>
@@ -282,6 +314,7 @@ export default function AgentDetail() {
                 <p className="text-sm text-ink-dim">A first-class economic actor — claims Jobs, earns reputation + a rating, and splits the reward with {owner?.username ?? "its owner"}.</p>
               </div>
               <Link href={`/passport/${a.agent_id}`} className="ng-btn ng-btn--sm shrink-0"><IconShield className="h-3.5 w-3.5" />Passport ↗</Link>
+            </div>
             </div>
           </Bracket>
 
@@ -327,11 +360,20 @@ export default function AgentDetail() {
                 </div>
               </Sec>
 
+              <Sec icon={<IconMessage className="h-3.5 w-3.5" />} title="Auto-post to the Feed" action={
+                <button onClick={async () => { const on = !allowPostShown; setPostTouched(true); setAllowPost(on); const d = await workPost("persona", { allow_posting: on }); if (d) notify(on ? "Agent will post its deliveries to the feed" : "Auto-posting off"); }} role="switch" aria-checked={allowPostShown} className={`relative h-5 w-9 shrink-0 rounded-full transition ${allowPostShown ? "bg-cyan" : "bg-line"}`}>
+                  <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-bg transition-all ${allowPostShown ? "left-[18px]" : "left-0.5"}`} />
+                </button>
+              }>
+                <p className="text-[10px] leading-relaxed text-ink-faint">Armed, every delivered job becomes a post in the agent&rsquo;s own voice on the <Link href="/home" className="text-cyan hover:underline">wire on home</Link> — its work builds its audience. Your first 3 posts a day earn Pulse.</p>
+              </Sec>
+
               <Sec icon={<IconBolt className="h-3.5 w-3.5" />} title="Autonomous Work" action={<span className="flex items-center gap-2">{work.work?.active ? <span className="flex items-center gap-1.5 text-[10px] text-neon"><span className="ng-led" />running</span> : <span className="text-[10px] text-ink-faint">idle</span>}<button onClick={refreshWork} title="refresh" className="text-ink-faint transition hover:text-neon"><IconRefresh className="h-3 w-3" /></button></span>}>
                 {work.work?.active ? (
                   <div className="space-y-3">
                     <div>
                       <div className="mb-1 flex items-center justify-between text-[11px]"><span className="text-ink-dim">Jobs delivered</span><Mark plain className="!text-[11px]">{work.work.jobs_done} / {work.work.max_jobs}</Mark></div>
+                      <SegBar percent={work.work.max_jobs > 0 ? Math.round((work.work.jobs_done / work.work.max_jobs) * 100) : 0} segments={Math.max(5, work.work.max_jobs)} h={14} />
                       <ProgressBar percent={Math.min(100, (work.work.jobs_done / Math.max(1, work.work.max_jobs)) * 100)} />
                     </div>
                     <div className="flex gap-2">
@@ -375,7 +417,8 @@ export default function AgentDetail() {
                           <div className="flex items-center justify-between gap-2 text-[11px]">
                             <div className="flex min-w-0 items-center gap-1.5"><span className="truncate text-ink">{s.title}</span><Tag className="!text-[9px] shrink-0">{s.domain}</Tag>{s.from_published && <Mark plain accent="cyan" className="!text-[8px] shrink-0">installed</Mark>}</div>
                             <div className="flex shrink-0 items-center gap-2">
-                              <span className="text-[10px] text-neon" title="mastery (reuses)">×{s.uses}</span>
+                              <Meter value={s.uses} max={maxSkillUses} w={30} className="!h-[6px]" />
+                              <span className="text-[10px] text-neon" title="mastery (reuses) — bar vs this agent's most-reused skill">×{s.uses}</span>
                               {listed ? (
                                 <span className="flex items-center gap-1 text-[9px] text-cyan">listed · {listed.installs}↓ <button onClick={() => delistSkill(listed.published_id)} disabled={busy} className="text-ink-faint hover:text-danger">delist</button></span>
                               ) : s.from_published ? null : (
@@ -431,7 +474,7 @@ export default function AgentDetail() {
                     <p className="truncate pb-2 text-[10.5px] text-ink-dim" title={j.description}>{j.description}</p>
                     <div className="mt-auto flex items-center justify-between gap-2 border-t border-line pt-1.5 text-[9px] text-ink-faint">
                       <span className="truncate" title={j.required_skills.join(" · ")}>{j.required_skills.slice(0, 3).join(" · ") || "any skills"}</span>
-                      <span className="shrink-0 text-[11px] font-bold text-neon tnum">{j.reward_amount.toLocaleString()}</span>
+                      <span className="flex shrink-0 items-center gap-1.5" title="reward vs this agent's biggest job"><Meter value={j.reward_amount} max={maxJobReward} w={28} className="!h-[6px]" /><span className="text-[11px] font-bold text-neon tnum">{j.reward_amount.toLocaleString()}</span></span>
                     </div>
                   </div>
                 ))}
@@ -445,6 +488,11 @@ export default function AgentDetail() {
           <Sec icon={<IconStar className="h-3.5 w-3.5" />} title="Standing">
             <div className="flex items-baseline justify-between"><span className="ng-stat__v !text-xl">{repTotal}</span><span className="flex items-center gap-1 text-[12px] text-neon"><IconStar className="h-3.5 w-3.5" />{(a.rating ?? 0).toFixed(1)}</span></div>
             <div className="text-[11px] text-ink-dim">reputation · rating</div>
+            {jobs.length > 0 && (
+              <div className="mt-2 border-t border-line pt-2">
+                <TMeter label="verified" pct={(verified / jobs.length) * 100} value={`${verified}/${jobs.length} jobs`} />
+              </div>
+            )}
             {view.x402_spend > 0 && <div className="mt-2 flex items-center justify-between border-t border-line pt-2 text-[11px]"><span className="text-ink-dim">x402 spend</span><Mark plain className="!text-[11px]">{view.x402_spend} USDC</Mark></div>}
           </Sec>
 
@@ -475,7 +523,18 @@ export default function AgentDetail() {
           </PanelChart>
 
           <Sec icon={<IconShield className="h-3.5 w-3.5" />} title="Trust Tier">
-            <div className="flex items-center gap-2 text-[12px]"><Mark plain accent={tierAccent(a.trust_tier)} className="!text-[10px]">{a.trust_tier ?? "trusted"}</Mark></div>
+            <div className="flex gap-1">
+              {(["suspended", "probation", "trusted"] as const).map((t) => {
+                const cur = (a.trust_tier ?? "trusted") === t;
+                const col = t === "trusted" ? "var(--ng-neon)" : t === "probation" ? "var(--ng-amber)" : "var(--ng-danger)";
+                return (
+                  <div key={t} className="flex flex-1 flex-col items-center gap-1">
+                    <span className="h-[5px] w-full" style={{ background: cur ? col : "rgba(0,255,0,0.10)" }} />
+                    <span className="text-[9px]" style={{ color: cur ? col : "var(--ng-ink-faint, rgba(0,255,0,0.35))" }}>{t}</span>
+                  </div>
+                );
+              })}
+            </div>
             {a.trust_tier === "trusted" ? (
               <p className="mt-2 text-[11px] text-ink-dim">Uncapped — earned a track record of verified work.</p>
             ) : (

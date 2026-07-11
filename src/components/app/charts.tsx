@@ -1,9 +1,21 @@
+"use client";
+
 /** Neon SVG chart primitives for the NeuGrid HUD.
  *  Full accent palette (2026-07-03 founder call: "too green") — green stays the
  *  brand anchor, but series/charts rotate cyan/violet/amber/magenta so data
  *  surfaces read colorful. Candles keep the green/red trading convention.
  *  All scale to their container (width 100%) unless a fixed w is given.
+ *
+ *  Draw-in (2026-07-11): the core primitives plot themselves like instruments —
+ *  lines trace, arcs sweep to value, bars grow, heat cells cascade. Line-family
+ *  traces are keyed to the data so they re-plot when real values land; value
+ *  arcs animate toward updates instead (smooth morph, no remount flicker).
+ *  Reduced motion renders the final frame.
  */
+
+import { motion, useReducedMotion } from "motion/react";
+
+const DRAW = { duration: 0.7, ease: "easeOut" as const };
 
 const NEON = "#00ff00";
 const CYAN = "#48f5ff";
@@ -20,8 +32,11 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 /* -------------------------------- Spark -------------------------------- */
 
 export function Spark({ data, up = true, gid, w = 120, h = 38 }: { data: number[]; up?: boolean; gid: string; w?: number; h?: number }) {
-  const max = Math.max(...data);
-  const min = Math.min(...data);
+  const reduce = useReducedMotion();
+  let max = Math.max(...data);
+  let min = Math.min(...data);
+  // flat series → pad the scale so the line sits mid-chart, not on the edge
+  if (max - min < Math.abs(max) * 0.0005) { const mid = (max + min) / 2 || 1; max = mid * 1.01; min = mid * 0.99; }
   const range = max - min || 1;
   const pts = data.map((d, i) => [(i / (data.length - 1)) * w, h - ((d - min) / range) * (h - 4) - 2]);
   const line = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" ");
@@ -35,8 +50,8 @@ export function Spark({ data, up = true, gid, w = 120, h = 38 }: { data: number[
           <stop offset="1" stopColor={color} stopOpacity="0" />
         </linearGradient>
       </defs>
-      <path d={area} fill={`url(#spk-${gid})`} />
-      <path d={line} fill="none" stroke={color} strokeWidth="1.5" />
+      <motion.path key={`f${line}`} d={area} fill={`url(#spk-${gid})`} initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.45, delay: 0.3 }} />
+      <motion.path key={line} d={line} fill="none" stroke={color} strokeWidth="1.5" initial={reduce ? false : { pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.6, ease: "easeOut" }} />
     </svg>
   );
 }
@@ -44,6 +59,7 @@ export function Spark({ data, up = true, gid, w = 120, h = 38 }: { data: number[
 /* ---------------------------- Area (line + grid) ----------------------- */
 
 export function Area({ data, gid, color = NEON, w = 320, h = 120, labels }: { data: number[]; gid: string; color?: string; w?: number; h?: number; labels?: string[] }) {
+  const reduce = useReducedMotion();
   const pad = 6;
   const max = Math.max(...data);
   const min = Math.min(...data);
@@ -64,9 +80,9 @@ export function Area({ data, gid, color = NEON, w = 320, h = 120, labels }: { da
       {[0, 0.25, 0.5, 0.75, 1].map((g) => (
         <line key={g} x1={pad} x2={w - pad} y1={pad + g * (h - pad * 2 - 12)} y2={pad + g * (h - pad * 2 - 12)} stroke="rgba(0,255,0,0.08)" strokeWidth="1" />
       ))}
-      <path d={area} fill={`url(#ar-${gid})`} />
-      <path d={line} fill="none" stroke={color} strokeWidth="1.6" />
-      {pts.map((p, i) => (i === pts.length - 1 ? <circle key={i} cx={p[0]} cy={p[1]} r="2.4" fill={color} /> : null))}
+      <motion.path key={`f${area}`} d={area} fill={`url(#ar-${gid})`} initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, delay: 0.35 }} />
+      <motion.path key={line} d={line} fill="none" stroke={color} strokeWidth="1.6" initial={reduce ? false : { pathLength: 0 }} animate={{ pathLength: 1 }} transition={DRAW} />
+      {pts.map((p, i) => (i === pts.length - 1 ? <motion.circle key={`${i}-${line}`} cx={p[0]} cy={p[1]} r="2.4" fill={color} initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25, delay: 0.6 }} /> : null))}
       {labels && labels.map((l, i) => (
         <text key={l} x={X(Math.round((i / (labels.length - 1)) * (data.length - 1)))} y={h - 2} textAnchor="middle" fill="rgba(0,255,0,0.4)" style={{ fontSize: 8, fontFamily: "monospace" }}>{l}</text>
       ))}
@@ -77,6 +93,7 @@ export function Area({ data, gid, color = NEON, w = 320, h = 120, labels }: { da
 /* ------------------------- LineMulti (compare series) ------------------- */
 
 export function LineMulti({ series, gid, w = 320, h = 120, colors }: { series: number[][]; gid: string; w?: number; h?: number; colors?: string[] }) {
+  const reduce = useReducedMotion();
   const pad = 6;
   const all = series.flat();
   const max = Math.max(...all);
@@ -92,7 +109,7 @@ export function LineMulti({ series, gid, w = 320, h = 120, colors }: { series: n
       {series.map((s, si) => {
         const color = colors?.[si] ?? SERIES[si % SERIES.length];
         const line = s.map((d, i) => `${i ? "L" : "M"}${X(i, s.length).toFixed(1)} ${Y(d).toFixed(1)}`).join(" ");
-        return <path key={si} d={line} fill="none" stroke={color} strokeWidth="1.5" />;
+        return <motion.path key={`${si}-${line}`} d={line} fill="none" stroke={color} strokeWidth="1.5" initial={reduce ? false : { pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ ...DRAW, delay: si * 0.15 }} />;
       })}
     </svg>
   );
@@ -101,25 +118,28 @@ export function LineMulti({ series, gid, w = 320, h = 120, colors }: { series: n
 /* -------------------------------- Gauge -------------------------------- */
 
 export function Gauge({ percent, value, w = 134, color = NEON }: { percent: number; value?: string; w?: number; color?: string }) {
+  const reduce = useReducedMotion();
   const r = 52;
   const cx = 65;
   const cy = 58;
   const sw = 5;
   const p = Math.max(0, Math.min(100, percent));
-  const ang = Math.PI - (p / 100) * Math.PI;
-  const ex = cx + r * Math.cos(ang);
-  const ey = cy - r * Math.sin(ang);
+  const full = `M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`;
   return (
     <svg width={w} height={w * 0.56} viewBox="0 0 130 72">
-      <path d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`} fill="none" stroke="rgba(0,255,0,0.12)" strokeWidth={sw} strokeLinecap="round" />
-      <path
-        d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${ex.toFixed(2)} ${ey.toFixed(2)}`}
-        fill="none"
-        stroke={color}
-        strokeWidth={sw}
-        strokeLinecap="round"
-       
-      />
+      <path d={full} fill="none" stroke="rgba(0,255,0,0.12)" strokeWidth={sw} strokeLinecap="round" />
+      {p > 0 && (
+        <motion.path
+          d={full}
+          fill="none"
+          stroke={color}
+          strokeWidth={sw}
+          strokeLinecap="round"
+          initial={reduce ? false : { pathLength: 0 }}
+          animate={{ pathLength: p / 100 }}
+          transition={{ duration: 0.8, ease: "easeOut" }}
+        />
+      )}
       <text x={cx} y={cy - 6} textAnchor="middle" fill={color} style={{ fontSize: 19, fontWeight: 700 }}>
         {value ?? `${p}%`}
       </text>
@@ -130,6 +150,7 @@ export function Gauge({ percent, value, w = 134, color = NEON }: { percent: numb
 /* ------------------------------ Ring (donut) --------------------------- */
 
 export function Ring({ percent, label, value, size = 96, stroke = 8, color = NEON }: { percent: number; label?: string; value?: string; size?: number; stroke?: number; color?: string }) {
+  const reduce = useReducedMotion();
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const p = Math.max(0, Math.min(100, percent || 0)); // guard NaN/undefined → 0
@@ -137,7 +158,7 @@ export function Ring({ percent, label, value, size = 96, stroke = 8, color = NEO
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(0,255,0,0.1)" strokeWidth={stroke} />
-      <circle
+      <motion.circle
         cx={size / 2}
         cy={size / 2}
         r={r}
@@ -146,9 +167,10 @@ export function Ring({ percent, label, value, size = 96, stroke = 8, color = NEO
         strokeWidth={stroke}
         strokeLinecap="round"
         strokeDasharray={c}
-        strokeDashoffset={off}
         transform={`rotate(-90 ${size / 2} ${size / 2})`}
-       
+        initial={reduce ? false : { strokeDashoffset: c }}
+        animate={{ strokeDashoffset: off }}
+        transition={{ duration: 0.8, ease: "easeOut" }}
       />
       <text x="50%" y={label ? "46%" : "52%"} textAnchor="middle" fill={color} style={{ fontSize: size * 0.2, fontWeight: 700 }}>{value ?? `${p}%`}</text>
       {label && <text x="50%" y="62%" textAnchor="middle" fill="rgba(0,255,0,0.45)" style={{ fontSize: size * 0.1, letterSpacing: 1, textTransform: "uppercase" }}>{label}</text>}
@@ -185,6 +207,7 @@ export function Pie({ data, size = 96, colors, gap = 1.5 }: { data: { value: num
 /* -------------------------------- Bars --------------------------------- */
 
 export function Bars({ data, w = 280, h = 70, color = NEON }: { data: number[]; w?: number; h?: number; color?: string }) {
+  const reduce = useReducedMotion();
   const max = Math.max(...data) || 1;
   const bw = w / data.length;
   return (
@@ -193,7 +216,19 @@ export function Bars({ data, w = 280, h = 70, color = NEON }: { data: number[]; 
         // non-zero values keep a small floor so skewed data still reads as bars,
         // not one solid block; true zeros stay invisible.
         const bh = d > 0 ? Math.max(2.5, (d / max) * (h - 4)) : 0;
-        return <rect key={i} x={i * bw + 1} y={h - bh} width={Math.max(1, bw - 2)} height={bh} rx="1" fill={color} opacity={0.45 + (d / max) * 0.55} />;
+        return (
+          <motion.rect
+            key={i}
+            x={i * bw + 1}
+            width={Math.max(1, bw - 2)}
+            rx="1"
+            fill={color}
+            opacity={0.45 + (d / max) * 0.55}
+            initial={reduce ? false : { height: 0, y: h }}
+            animate={{ height: bh, y: h - bh }}
+            transition={{ duration: 0.45, delay: i * 0.025, ease: "easeOut" }}
+          />
+        );
       })}
     </svg>
   );
@@ -202,6 +237,7 @@ export function Bars({ data, w = 280, h = 70, color = NEON }: { data: number[]; 
 /* ------------------------------- Radar --------------------------------- */
 
 export function Radar({ axes, values, size = 150, color = NEON }: { axes: string[]; values: number[]; size?: number; color?: string }) {
+  const reduce = useReducedMotion();
   const cx = size / 2;
   const cy = size / 2;
   const r = size / 2 - 22;
@@ -217,8 +253,8 @@ export function Radar({ axes, values, size = 150, color = NEON }: { axes: string
         <polygon key={g} points={axes.map((_, i) => pt(i, g).join(",")).join(" ")} fill="none" stroke="rgba(0,255,0,0.1)" strokeWidth="1" />
       ))}
       {axes.map((_, i) => { const [x, y] = pt(i, 1); return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="rgba(0,255,0,0.1)" strokeWidth="1" />; })}
-      <polygon points={poly} fill={`${color}22`} stroke={color} strokeWidth="1.5" />
-      {values.map((v, i) => { const [x, y] = pt(i, Math.max(0, Math.min(1, v / 100))); return <circle key={i} cx={x} cy={y} r="2" fill={color} />; })}
+      <motion.polygon key={poly} points={poly} fill={`${color}22`} stroke={color} strokeWidth="1.5" initial={reduce ? false : { pathLength: 0, fillOpacity: 0 }} animate={{ pathLength: 1, fillOpacity: 1 }} transition={{ pathLength: DRAW, fillOpacity: { duration: 0.5, delay: 0.45 } }} />
+      {values.map((v, i) => { const [x, y] = pt(i, Math.max(0, Math.min(1, v / 100))); return <motion.circle key={`${i}-${poly}`} cx={x} cy={y} r="2" fill={color} initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, delay: 0.5 + i * 0.05 }} />; })}
       {axes.map((a, i) => { const [x, y] = pt(i, 1.18); return <text key={a} x={x} y={y} textAnchor="middle" dominantBaseline="middle" fill="rgba(0,255,0,0.5)" style={{ fontSize: 7.5, fontFamily: "monospace", textTransform: "uppercase" }}>{a}</text>; })}
     </svg>
   );
@@ -227,6 +263,7 @@ export function Radar({ axes, values, size = 150, color = NEON }: { axes: string
 /* ------------------------------ Heatmap -------------------------------- */
 
 export function Heatmap({ rows = 7, cols = 16, data, cell = 11, gap = 3 }: { rows?: number; cols?: number; data?: number[]; cell?: number; gap?: number }) {
+  const reduce = useReducedMotion();
   const grid = data ?? Array.from({ length: rows * cols }, (_, i) => ((i * 37) % 100) / 100);
   const w = cols * (cell + gap);
   const h = rows * (cell + gap);
@@ -235,7 +272,20 @@ export function Heatmap({ rows = 7, cols = 16, data, cell = 11, gap = 3 }: { row
       {grid.map((v, i) => {
         const c = i % cols;
         const r = Math.floor(i / cols);
-        return <rect key={i} x={c * (cell + gap)} y={r * (cell + gap)} width={cell} height={cell} rx="1.5" fill={NEON} opacity={0.08 + v * 0.85} />;
+        return (
+          <motion.rect
+            key={i}
+            x={c * (cell + gap)}
+            y={r * (cell + gap)}
+            width={cell}
+            height={cell}
+            rx="1.5"
+            fill={NEON}
+            initial={reduce ? false : { opacity: 0 }}
+            animate={{ opacity: 0.08 + v * 0.85 }}
+            transition={{ duration: 0.3, delay: (r + c) * 0.02 }}
+          />
+        );
       })}
     </svg>
   );
@@ -788,6 +838,7 @@ export function RadialProgress({ percent, size = 104, thickness = 12, color = NE
 /* --------------------------- LabeledBars ------------------------------- */
 
 export function LabeledBars({ data, w = 300, rowH = 15, gap = 6, color = NEON }: { data: { label: string; value: number; color?: string }[]; w?: number; rowH?: number; gap?: number; color?: string }) {
+  const reduce = useReducedMotion();
   const max = Math.max(1, ...data.map((d) => d.value));
   const h = Math.max(1, data.length) * (rowH + gap);
   const labelW = 70;
@@ -802,8 +853,8 @@ export function LabeledBars({ data, w = 300, rowH = 15, gap = 6, color = NEON }:
         return (
           <g key={i}>
             <text x="0" y={r2(y + rowH * 0.74)} fill="rgba(0,255,0,0.6)" style={{ fontSize: 9, fontFamily: "monospace" }}>{lbl}</text>
-            <rect x={labelW} y={r2(y)} width={r2(bw)} height={rowH} rx="1" fill={col} fillOpacity={0.7} />
-            <text x={r2(labelW + bw + 4)} y={r2(y + rowH * 0.74)} fill="rgba(0,255,0,0.7)" style={{ fontSize: 8.5, fontFamily: "monospace" }}>{val}</text>
+            <motion.rect x={labelW} y={r2(y)} height={rowH} rx="1" fill={col} fillOpacity={0.7} initial={reduce ? false : { width: 0 }} animate={{ width: r2(bw) }} transition={{ duration: 0.6, delay: i * 0.06, ease: "easeOut" }} />
+            <motion.text x={r2(labelW + bw + 4)} y={r2(y + rowH * 0.74)} fill="rgba(0,255,0,0.7)" style={{ fontSize: 8.5, fontFamily: "monospace" }} initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, delay: 0.4 + i * 0.06 }}>{val}</motion.text>
           </g>
         );
       })}
@@ -818,8 +869,15 @@ export interface Candle { o: number; h: number; l: number; c: number; }
 export function Candles({ data, w = 640, h = 260 }: { data: Candle[]; w?: number; h?: number }) {
   if (!data.length) return null;
   const pad = 8;
-  const max = Math.max(...data.map((d) => d.h));
-  const min = Math.min(...data.map((d) => d.l));
+  let max = Math.max(...data.map((d) => d.h));
+  let min = Math.min(...data.map((d) => d.l));
+  // quiet market: all candles flat → pad the scale ±1% so the price line sits
+  // mid-chart instead of collapsing invisibly onto the bottom edge
+  if (max - min < Math.abs(max) * 0.0005) {
+    const mid = (max + min) / 2 || 1;
+    max = mid * 1.01;
+    min = mid * 0.99;
+  }
   const range = max - min || 1;
   const Y = (v: number) => r2(pad + (1 - (v - min) / range) * (h - pad * 2));
   const cw = (w - pad * 2) / data.length;

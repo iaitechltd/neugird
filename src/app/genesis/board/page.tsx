@@ -13,7 +13,8 @@ import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, Tag, Mark, DataRow, IconRocket, IconActivity, IconBolt, IconCheck, IconArrowRight , kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import GenesisProposeWizard from "@/components/app/GenesisProposeWizard";
-import { PanelChart } from "@/components/app/terminal";
+import { PanelChart, barStr } from "@/components/app/terminal";
+import Meter from "@/components/app/Meter";
 import { Waterfall, Bullet, Funnel, Marimekko } from "@/components/app/charts";
 import type { Milestone, Proposal } from "@/lib/types";
 
@@ -70,6 +71,7 @@ export default function GenesisBoard() {
     { value: completeC, color: "#7cf57c" },
   ];
   const mekko = list.slice(0, 8).map((v) => ({ weight: v.proposal.ask_amount || 1, fill: v.proposal.ask_amount ? v.raised / v.proposal.ask_amount : 0, color: v.proposal.status === "funded" ? "#00ff00" : "#48f5ff" }));
+  const capMax = Math.max(1, totals.raised, totals.ask);
 
   async function act(url: string, body?: object, msg?: string) {
     if (busy) return; setBusy(true);
@@ -87,8 +89,8 @@ export default function GenesisBoard() {
           <Panel scroll title="GENESIS" icon={<IconRocket className="h-4 w-4" />} bodyClass="p-3.5">
             <div className="divide-y divide-line">
               <DataRow k="Open Rounds" v={totals.open} accent="neon" />
-              <DataRow k="Total Raised" v={`${totals.raised}`} />
-              <DataRow k="Open Ask" v={`${totals.ask}`} />
+              <DataRow k="Total Raised" v={<span className="flex items-center gap-2"><Meter value={totals.raised} max={capMax} w={36} />{`$${Math.round(totals.raised).toLocaleString()}`}</span>} />
+              <DataRow k="Open Ask" v={<span className="flex items-center gap-2"><Meter value={totals.ask} max={capMax} w={36} color="#48f5ff" />{`$${Math.round(totals.ask).toLocaleString()}`}</span>} />
             </div>
             {hasRaised ? (
               <PanelChart title="Capital · flow" read={`$${Math.round(totals.raised).toLocaleString()}`}>
@@ -106,6 +108,11 @@ export default function GenesisBoard() {
             <div className="ng-card mt-4 p-3">
               <div className="text-[11px] text-ink-dim">Your reputation</div>
               <div className="ng-stat__v !text-lg text-neon">{me?.reputation ?? 0}</div>
+              <div className="mt-1.5 flex items-center gap-2 font-mono text-[9px]">
+                <span className="shrink-0 text-ink-faint">propose</span>
+                <span className="text-neon">{barStr(Math.round(((me?.reputation ?? 0) / Math.max(1, me?.min ?? 100)) * 100), 14)}</span>
+                <span className="ml-auto shrink-0 text-ink-faint tnum">{me?.reputation ?? 0}/{me?.min ?? 100}</span>
+              </div>
               <div className="mt-1 text-[10px] text-ink-faint">{me?.can_propose ? "✓ Eligible to propose" : `Ship a build + earn ${me?.min ?? 100}+ rep to propose`}</div>
             </div>
           </Panel>
@@ -203,6 +210,7 @@ export default function GenesisBoard() {
                           <div key={m.milestone_id} className="flex items-center justify-between gap-2 text-[11px]">
                             <span className="min-w-0 truncate text-ink" title={`${m.title} · $${m.amount}`}>{m.title}</span>
                             <span className="flex shrink-0 items-center gap-2">
+                              <Meter value={m.amount ?? 0} max={Math.max(1, ...v.milestones.map((x) => x.amount ?? 0))} w={28} color={m.status === "released" || m.status === "approved" ? "#00ff00" : m.status === "rejected" ? "#ffb020" : "#48f5ff"} />
                               <span className="tnum text-[10px] text-ink-faint">${m.amount}</span>
                               <Mark plain accent={M_ACCENT[m.status] ?? "amber"} className="!text-[9px]">{m.status}</Mark>
                               {isAuthor && (m.status === "pending" || m.status === "rejected") && <button disabled={busy} onClick={() => act(`/api/milestones/${m.milestone_id}/submit`, {}, "Submitted for approval")} className="ng-btn ng-btn--sm disabled:opacity-50">Submit</button>}

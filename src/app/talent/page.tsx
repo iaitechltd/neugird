@@ -15,6 +15,7 @@ import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import { Panel, Tag, Mark, DataRow, IconActivity, IconBriefcase, IconUser, IconSparkle , kpiColor } from "@/components/app/ui";
 import { Area, Radar, Spark, Beeswarm, Donut, RadialBars, Lollipop } from "@/components/app/charts";
 import { PanelChart, TMeter } from "@/components/app/terminal";
+import Meter from "@/components/app/Meter";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 
 type Talent = {
@@ -104,6 +105,9 @@ export default function TalentDirectory() {
   const earnLollipop = rankedByEarn.map((t) => ({ value: t.earned ?? 0, label: t.username }));
   const avgEarn = list.length ? Math.round(list.reduce((s, t) => s + (t.earned ?? 0), 0) / list.length) : 0;
   const earnOk = earnLollipop.some((d) => d.value > 0);
+  // inline-bar scales — each section's bars read against that section's max (all real)
+  const maxEarned = Math.max(1, ...list.map((t) => t.earned ?? 0));
+  const maxJobsDone = Math.max(1, ...list.map((t) => t.jobs_done ?? 0));
 
   const kpis: [string, number, string?][] = [
     ["Talents", list.length],
@@ -133,6 +137,8 @@ export default function TalentDirectory() {
   const me = data?.me;
   const trend = data ? data.trending[trendTab] : [];
   const dimMax = Math.max(1, ...(me?.dims.map((d) => d.score) ?? [1]));
+  const maxTrendReward = Math.max(1, ...trend.map((t) => t.reward));
+  const marketMax = Math.max(1, list.length, verifiedCount, data?.open_roles ?? 0);
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
@@ -143,9 +149,9 @@ export default function TalentDirectory() {
         <OrbPanel side="left" label="Talent" open={lOpen} onToggle={setLOpen} widthClass="lg:w-[300px] xl:w-[320px]">
           <Panel scroll title="TALENT MARKET" icon={<IconUser className="h-4 w-4" />} bodyClass="p-3.5">
             <div className="divide-y divide-line">
-              <DataRow k="People" v={list.length} accent="neon" />
-              <DataRow k="Verified" v={verifiedCount} accent="cyan" />
-              <DataRow k="Open roles" v={data?.open_roles ?? 0} />
+              <DataRow k="People" v={<span className="inline-flex items-center gap-2"><Meter value={list.length} max={marketMax} w={40} />{list.length}</span>} accent="neon" />
+              <DataRow k="Verified" v={<span className="inline-flex items-center gap-2"><Meter value={verifiedCount} max={marketMax} w={40} color="#48f5ff" />{verifiedCount}</span>} accent="cyan" />
+              <DataRow k="Open roles" v={<span className="inline-flex items-center gap-2"><Meter value={data?.open_roles ?? 0} max={marketMax} w={40} />{data?.open_roles ?? 0}</span>} />
             </div>
 
             {/* the whole field's reputation spread — dot = talent, size = earnings, cyan = verified */}
@@ -186,6 +192,7 @@ export default function TalentDirectory() {
                   </span>
                   <span className="flex shrink-0 items-center gap-2 text-[10px]">
                     <span className="text-ink-dim">{t.count} post{t.count === 1 ? "" : "s"}</span>
+                    <Meter value={t.reward} max={maxTrendReward} w={34} color="#48f5ff" />
                     <span className="text-cyan">${t.reward.toLocaleString()}</span>
                   </span>
                 </div>
@@ -202,7 +209,11 @@ export default function TalentDirectory() {
             <div className="space-y-1">
               {([["All", list.length] as [string, number], ...skills]).map(([s, n]) => (
                 <button key={s} onClick={() => setSkill(s)} className={`flex w-full items-center justify-between rounded px-2.5 py-2 text-[13px] transition ${skill === s ? "bg-neon/10 text-neon" : "text-ink-dim hover:bg-neon/[0.06] hover:text-neon"}`}>
-                  <span className="truncate">{s}</span><Mark plain className="!text-[10px]">{n}</Mark>
+                  <span className="truncate">{s}</span>
+                  <span className="flex shrink-0 items-center gap-2" title={`${n} of ${list.length} talent`}>
+                    <Meter value={n} max={Math.max(1, list.length)} w={34} />
+                    <Mark plain className="!text-[10px]">{n}</Mark>
+                  </span>
                 </button>
               ))}
             </div>
@@ -323,8 +334,8 @@ export default function TalentDirectory() {
 
                   {/* the record — clean rows, trade-card style */}
                   <div className="mt-3 divide-y divide-line border-t border-line text-[11px]">
-                    <div className="ng-row !py-1.5"><span className="ng-row__k">Earned</span><span className="ng-row__v text-cyan">${t.earned.toLocaleString()}</span></div>
-                    <div className="ng-row !py-1.5"><span className="ng-row__k">Jobs done</span><span className="ng-row__v font-normal text-ink-dim tnum">{t.jobs_done}</span></div>
+                    <div className="ng-row !py-1.5"><span className="ng-row__k">Earned</span><span className="ng-row__v inline-flex items-center gap-2 text-cyan"><Meter value={t.earned} max={maxEarned} w={34} color="#48f5ff" />${t.earned.toLocaleString()}</span></div>
+                    <div className="ng-row !py-1.5"><span className="ng-row__k">Jobs done</span><span className="ng-row__v inline-flex items-center gap-2 font-normal text-ink-dim tnum"><Meter value={t.jobs_done} max={maxJobsDone} w={34} />{t.jobs_done}</span></div>
                     <div className="ng-row !py-1.5"><span className="ng-row__k">Rate</span>{t.rate_usdc ? <span className="ng-row__v text-cyan">${t.rate_usdc}<span className="font-normal text-ink-faint"> / job</span></span> : <span className="ng-row__v font-normal text-ink-faint">on request</span>}</div>
                   </div>
 
@@ -380,6 +391,7 @@ export default function TalentDirectory() {
                         <span className="font-bold uppercase tracking-wider text-amber-300">{g.dim}</span>
                         <span className="text-ink-faint">{g.score} rep</span>
                       </div>
+                      <div title={`${g.score} of ${dimMax} — your strongest dimension`}><Meter value={g.score} max={dimMax} w={140} color="#fcd34d" className="mt-1.5" /></div>
                       <p className="mt-1 text-[10.5px] leading-relaxed text-ink-dim">{g.action}</p>
                     </div>
                   ))}

@@ -13,6 +13,8 @@ import OrbPanel from "@/components/app/OrbPanel";
 import StartNewButton from "@/components/app/StartNewButton";
 import { Panel, Tag, Mark, DataRow, IconActivity, IconArrowRight, IconNetwork, IconBot , kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
+import Meter from "@/components/app/Meter";
+import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import { PanelChart, barStr } from "@/components/app/terminal";
 import { PolarArea, Heatmap, Bullet, SegBar } from "@/components/app/charts";
 import type { Grid } from "@/lib/types";
@@ -93,6 +95,11 @@ export default function GridsExplorePage() {
   // RIGHT-2 · SegBar — share of grids running subgrids
   const withSub = list.filter((g) => (g.subgrid_count ?? 0) > 0).length;
   const subShare = list.length ? Math.round((withSub / list.length) * 100) : 0;
+  // RIGHT-3 · Lifecycle — real count of grids sitting at each pipeline stage
+  const stageCounts = STAGES.map((s) => list.filter((g) => g.lifecycle_stage === s).length);
+  const maxStage = Math.max(1, ...stageCounts);
+  // LEFT · category filter rows — each category's real share of all grids
+  const catMax = Math.max(1, list.length);
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
@@ -123,7 +130,11 @@ export default function GridsExplorePage() {
                   onClick={() => setCat(c)}
                   className={`flex w-full items-center justify-between rounded px-2.5 py-2 text-[13px] transition ${cat === c ? "bg-neon/10 text-neon" : "text-ink-dim hover:bg-neon/[0.06] hover:text-neon"}`}
                 >
-                  <span className="truncate">{c}</span><Mark plain className="!text-[10px]">{n}</Mark>
+                  <span className="truncate">{c}</span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <Meter value={n} max={catMax} w={40} />
+                    <Mark plain className="!text-[10px]">{n}</Mark>
+                  </span>
                 </button>
               ))}
             </div>
@@ -210,14 +221,26 @@ export default function GridsExplorePage() {
               {topByPulse.map((g, i) => (
                 <Link key={g.grid_id} href={`/grid/${g.slug}`} className="ng-card flex items-center gap-2.5 p-2.5">
                   <span className="text-xs font-bold text-neon">{i + 1}</span>
+                  <MatrixAvatar seed={g.grid_id} size={22} shape="square" />
                   <span className="min-w-0 flex-1 truncate text-xs text-ink">{g.name}</span>
+                  <Meter value={g.pulse_score ?? 0} max={maxPulse} w={36} />
                   <Mark plain accent="cyan" className="!text-[10px]">{g.pulse_score}</Mark>
                 </Link>
               ))}
             </div>
-            <div className="ng-label mb-2 mt-5 !text-ink-dim">Lifecycle</div>
+            <div className="mb-2 mt-5 flex items-baseline justify-between gap-2">
+              <div className="ng-label !text-ink-dim">Lifecycle</div>
+              <span className="tnum text-[9.5px] text-ink-faint">grids per stage</span>
+            </div>
             <div className="space-y-1.5 text-[11px] text-ink-dim">
-              {STAGES.map((s) => <div key={s} className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-neon" />{s}</div>)}
+              {STAGES.map((s, i) => (
+                <div key={s} className="flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-neon" />
+                  <span className="min-w-0 flex-1 truncate">{s}</span>
+                  <Meter value={stageCounts[i]} max={maxStage} w={40} />
+                  <span className="tnum w-4 shrink-0 text-right text-[10px] text-ink-faint">{stageCounts[i]}</span>
+                </div>
+              ))}
             </div>
           </Panel>
         </OrbPanel>

@@ -12,7 +12,8 @@ import NeuHeader from "@/components/app/NeuHeader";
 import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, Mark, DataRow, ProgressBar, IconShield, IconActivity, IconLock, IconWallet, IconBolt, IconCheck, IconCoins , kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
-import { PanelChart } from "@/components/app/terminal";
+import { PanelChart, TProc } from "@/components/app/terminal";
+import Meter from "@/components/app/Meter";
 import { Tornado, Lollipop, Waffle, Dumbbell } from "@/components/app/charts";
 import type { GovProposal, GovProposalKind } from "@/lib/types";
 
@@ -217,11 +218,12 @@ export default function GovernancePage() {
         {/* LEFT */}
         <OrbPanel side="left" label="Protocol" open={lOpen} onToggle={setLOpen} widthClass="lg:w-[300px] xl:w-[320px]">
           <Panel scroll title="GOVERNANCE" icon={<IconShield className="h-4 w-4" />} bodyClass="p-3.5">
+            {/* per-row bars: proposal counts vs all proposals; your GRID vs the propose threshold */}
             <div className="divide-y divide-line">
-              <DataRow k="Open Proposals" v={stats.open} accent="neon" />
-              <DataRow k="Passed" v={stats.passed} />
+              <DataRow k="Open Proposals" v={<span className="flex items-center gap-1.5"><Meter value={stats.open} max={list.length} w={36} /><span>{stats.open}</span></span>} accent="neon" />
+              <DataRow k="Passed" v={<span className="flex items-center gap-1.5"><Meter value={stats.passed} max={list.length} w={36} /><span>{stats.passed}</span></span>} />
               <DataRow k="GRID Locked (open)" v={grid(stats.locked)} />
-              <DataRow k="Your GRID" v={me ? grid(me.grid) : "—"} accent="cyan" />
+              <DataRow k="Your GRID" v={me ? <span className="flex items-center gap-1.5" title={`propose at ${grid(me.propose_min)} GRID`}><Meter value={me.grid} max={me.propose_min} w={36} color="#48f5ff" /><span>{grid(me.grid)}</span></span> : "—"} accent="cyan" />
             </div>
 
             {/* FOR (right, green) vs AGAINST (left, red) GRID weight per proposal */}
@@ -245,12 +247,15 @@ export default function GovernancePage() {
 
             <div className="ng-label mb-2 mt-4 !text-ink-dim">Type</div>
             <div className="space-y-1">
-              {KINDS.map((k) => (
-                <button key={k} onClick={() => setKind(k)} className={`flex w-full items-center justify-between rounded px-2.5 py-2 text-[13px] capitalize transition ${kind === k ? "bg-neon/10 text-neon" : "text-ink-dim hover:bg-neon/[0.06] hover:text-neon"}`}>
-                  <span>{k === "all" ? "All" : KIND_LABEL[k]}</span>
-                  <Mark plain className="!text-[10px]">{k === "all" ? list.length : list.filter((p) => p.kind === k).length}</Mark>
-                </button>
-              ))}
+              {KINDS.map((k) => {
+                const n = k === "all" ? list.length : list.filter((p) => p.kind === k).length;
+                return (
+                  <button key={k} onClick={() => setKind(k)} className={`flex w-full items-center justify-between rounded px-2.5 py-2 text-[13px] capitalize transition ${kind === k ? "bg-neon/10 text-neon" : "text-ink-dim hover:bg-neon/[0.06] hover:text-neon"}`}>
+                    <span>{k === "all" ? "All" : KIND_LABEL[k]}</span>
+                    <span className="flex items-center gap-1.5"><Meter value={n} max={list.length} w={32} /><Mark plain className="!text-[10px]">{n}</Mark></span>
+                  </button>
+                );
+              })}
             </div>
             <p className="mt-4 text-[10px] leading-relaxed text-ink-faint">Lock GRID to vote. Weight = GRID locked; your lock returns when the proposal resolves, win or lose.</p>
 
@@ -261,6 +266,8 @@ export default function GovernancePage() {
                 <div key={pm.key} className="flex items-center justify-between py-1.5 text-[11px]">
                   <span className="text-ink-dim">{pm.label}</span>
                   <span className="flex items-center gap-1.5">
+                    {/* bar = current value vs its default (full bar at the larger of the two) */}
+                    <span title={`current vs default ${fmtParam(pm.unit, pm.default)}`}><Meter value={pm.value} max={Math.max(pm.value, pm.default) || 1} w={26} color={pm.overridden ? "#ffb020" : "#00ff00"} /></span>
                     <Mark plain accent={pm.overridden ? "amber" : "neon"} className="!text-[10px] tnum">{fmtParam(pm.unit, pm.value)}</Mark>
                     {pm.overridden && <span className="text-[8px] uppercase tracking-wide text-amber" title={`default ${fmtParam(pm.unit, pm.default)}`}>gov</span>}
                   </span>
@@ -366,12 +373,12 @@ export default function GovernancePage() {
               <li className="flex gap-2"><IconCoins className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neon" /><span><b className="text-ink">Fee discounts</b> — pay Trade fees in GRID at a discount.</span></li>
             </ul>
             <div className="ng-label mb-2 mt-5 !text-ink-dim">Lock-to-vote</div>
-            <ol className="space-y-1.5 text-[10px] leading-relaxed text-ink-faint">
-              <li>1 · Lock GRID FOR or AGAINST a proposal.</li>
-              <li>2 · Vote weight = GRID locked (conviction).</li>
-              <li>3 · Passes at quorum &amp; a FOR majority.</li>
-              <li>4 · Your lock returns on resolve — win or lose.</li>
-            </ol>
+            <div className="text-[10px] leading-relaxed text-ink-faint">
+              <TProc live name="Lock GRID FOR or AGAINST a proposal" meta="1/4" className="!text-[10.5px]" />
+              <TProc live name="Vote weight = GRID locked (conviction)" meta="2/4" className="!text-[10.5px]" />
+              <TProc live name="Passes at quorum & a FOR majority" meta="3/4" className="!text-[10.5px]" />
+              <TProc live name="Your lock returns on resolve — win or lose" meta="4/4" className="!text-[10.5px]" />
+            </div>
           </Panel>
         </OrbPanel>
       </div>

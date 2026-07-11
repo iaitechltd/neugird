@@ -17,6 +17,8 @@ import {
 } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
+import Meter from "@/components/app/Meter";
+import LivePreview from "@/components/app/LivePreview";
 import OrbPanel from "@/components/app/OrbPanel";
 import { PanelChart } from "@/components/app/terminal";
 import { RadialBars, ConcentricRings, Bubble, Bars, Ring } from "@/components/app/charts";
@@ -54,6 +56,8 @@ function ProductCard({ product: p, onOpen, trendMax }: { product: P; onOpen: (p:
         <span className="shrink-0 text-[11px] font-bold">{(p.price_usdc ?? 0) > 0 ? <span className="text-cyan">${p.price_usdc}</span> : <span className="text-neon">FREE</span>}</span>
       </div>
       {p.description && <p className="mt-2 truncate text-[11px] text-ink-dim" title={p.description}>{p.description}</p>}
+      {/* live window — the actual product, rendered small (only when hosted) */}
+      {live && <LivePreview src={live} height={110} scale={0.32} className="mt-3" />}
       {/* hero — traction ring (share of the #1 product) + revenue headline */}
       <div className="mt-3 flex items-center gap-4">
         <Ring percent={trendPct} value={`${trendPct}%`} size={54} stroke={5} />
@@ -144,6 +148,8 @@ export default function GridXPage() {
   // Card rings compare each product to the catalogue's trend leader (whole store, not the filter).
   const trendMax = Math.max(1, ...products.map(trendScore));
   const topProducts = [...products].sort((a, b) => (b.onchain_revenue ?? 0) - (a.onchain_revenue ?? 0)).slice(0, 5);
+  // Rail meters — each product's real revenue vs the store's revenue leader.
+  const maxRevenue = Math.max(1, ...products.map((p) => p.onchain_revenue ?? 0));
 
   /* catalogue metrics — single-value arcs that read well at ANY product count
      (Bars/Area degenerate to a flat block when the catalogue is tiny). */
@@ -171,6 +177,7 @@ export default function GridXPage() {
   const techTop = Object.entries(techCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
   const techBubbles = techTop.map(([t, n], i) => ({ value: n, label: t.slice(0, 4), color: ["#00ff00", "#48f5ff", "#ffb020", "#7cf57c"][i % 4] }));
   const pipelineBars = [builds.length, products.length, unlisted.length];
+  const pipelineMax = Math.max(1, ...pipelineBars);
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
@@ -205,8 +212,9 @@ export default function GridXPage() {
               <div className="space-y-2">
                 {mine.map((p) => (
                   <Link key={p.product_id} href={`/gridx/${p.product_id}`} className="ng-card block p-3">
-                    <div className="flex items-center justify-between gap-2"><span className="truncate text-xs text-ink">{p.name}</span><span className="text-[10px] font-bold">{(p.price_usdc ?? 0) > 0 ? <span className="text-cyan">${p.price_usdc}</span> : <span className="text-neon">FREE</span>}</span></div>
+                    <div className="flex items-center gap-2"><MatrixAvatar seed={p.product_id} size={22} shape="square" /><span className="min-w-0 flex-1 truncate text-xs text-ink">{p.name}</span><span className="shrink-0 text-[10px] font-bold">{(p.price_usdc ?? 0) > 0 ? <span className="text-cyan">${p.price_usdc}</span> : <span className="text-neon">FREE</span>}</span></div>
                     <div className="mt-1 flex justify-between text-[10px] text-ink-dim"><span>Sales <span className="text-ink">{p.purchases ?? 0}</span></span><span>Rev <Mark plain className="!text-[10px]">${(p.onchain_revenue ?? 0).toLocaleString()}</Mark></span></div>
+                    <div className="mt-1.5 flex items-center gap-2 text-[9px] uppercase tracking-wide text-ink-faint"><span className="shrink-0">Rev vs leader</span><Meter value={p.onchain_revenue ?? 0} max={maxRevenue} w={64} className="ml-auto" /></div>
                   </Link>
                 ))}
               </div>
@@ -217,8 +225,13 @@ export default function GridXPage() {
               <div className="space-y-2">
                 {unlisted.slice(0, 5).map((b) => (
                   <div key={b.build_id} className="ng-card p-3">
-                    <div className="truncate text-xs text-ink">{b.title}</div>
-                    <div className="truncate text-[10px] text-ink-dim">{b.stack.join(" · ")}</div>
+                    <div className="flex items-center gap-2">
+                      <MatrixAvatar seed={b.build_id} size={22} shape="square" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs text-ink">{b.title}</div>
+                        <div className="truncate text-[10px] text-ink-dim">{b.stack.join(" · ")}</div>
+                      </div>
+                    </div>
                     <Link href="/echo" className="ng-btn ng-btn--sm ng-btn--block mt-2">List on GridX →</Link>
                   </div>
                 ))}
@@ -293,7 +306,12 @@ export default function GridXPage() {
                 {topProducts.map((p, i) => (
                   <Link key={p.product_id} href={`/gridx/${p.product_id}`} className="ng-card flex items-center gap-3 p-3">
                     <span className="text-[11px] font-bold text-neon/50">#{i + 1}</span>
-                    <div className="min-w-0 flex-1"><div className="truncate text-xs text-ink">{p.name}</div><div className="text-[10px] text-ink-dim">{p.category} · {p.purchases ?? 0} sales</div></div>
+                    <MatrixAvatar seed={p.product_id} size={24} shape="square" />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs text-ink">{p.name}</div>
+                      <div className="truncate text-[10px] text-ink-dim">{p.category} · {p.purchases ?? 0} sales</div>
+                      <Meter value={p.onchain_revenue ?? 0} max={maxRevenue} w={72} className="mt-1" />
+                    </div>
                     <Mark plain accent="cyan" className="text-[11px]">${(p.onchain_revenue ?? 0).toLocaleString()}</Mark>
                   </Link>
                 ))}
@@ -302,17 +320,21 @@ export default function GridXPage() {
 
             <Section icon={<IconGrid className="h-3.5 w-3.5" />}>Categories</Section>
             {categories.length ? (
-              <div className="flex flex-wrap gap-2">{categories.map(([c, n]) => (
-                <button key={c} onClick={() => setCategory(category === c ? "All" : c)}><Tag className={category === c ? "!text-neon" : ""}>{c} · {n}</Tag></button>
+              <div className="space-y-1">{categories.map(([c, n]) => (
+                <button key={c} onClick={() => setCategory(category === c ? "All" : c)} className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-[11px] transition ${category === c ? "bg-neon/10 text-neon" : "text-ink-dim hover:bg-neon/[0.06] hover:text-neon"}`}>
+                  <span className="min-w-0 flex-1 truncate text-left">{c}</span>
+                  <Meter value={n} max={Math.max(1, products.length)} w={48} />
+                  <Tag className={`!text-[9px] ${category === c ? "!text-neon" : ""}`}>{n}</Tag>
+                </button>
               ))}</div>
             ) : <p className="text-[11px] text-ink-dim">—</p>}
 
             <Section icon={<IconRocket className="h-3.5 w-3.5" />}>Build Pipeline</Section>
             <div className="ng-card p-3.5">
               <div className="divide-y divide-line text-[12px]">
-                <div className="ng-row !py-2"><span className="ng-row__k flex items-center gap-2 text-ink"><IconRocket className="h-3.5 w-3.5 text-neon/70" />Builds</span><Mark plain>{builds.length}</Mark></div>
-                <div className="ng-row !py-2"><span className="ng-row__k flex items-center gap-2 text-ink"><IconStore className="h-3.5 w-3.5 text-neon/70" />Listed</span><Mark plain>{products.length}</Mark></div>
-                <Link href="/echo" className="ng-row flex items-center !py-2 transition hover:text-neon"><span className="ng-row__k flex items-center gap-2 text-ink"><IconArrowRight className="h-3.5 w-3.5 text-neon/70" />Ready to list</span><Mark plain accent="amber">{unlisted.length}</Mark></Link>
+                <div className="ng-row !py-2"><span className="ng-row__k flex items-center gap-2 text-ink"><IconRocket className="h-3.5 w-3.5 text-neon/70" />Builds</span><span className="flex items-center gap-2"><Meter value={builds.length} max={pipelineMax} w={48} /><Mark plain>{builds.length}</Mark></span></div>
+                <div className="ng-row !py-2"><span className="ng-row__k flex items-center gap-2 text-ink"><IconStore className="h-3.5 w-3.5 text-neon/70" />Listed</span><span className="flex items-center gap-2"><Meter value={products.length} max={pipelineMax} w={48} color="#48f5ff" /><Mark plain>{products.length}</Mark></span></div>
+                <Link href="/echo" className="ng-row flex items-center !py-2 transition hover:text-neon"><span className="ng-row__k flex items-center gap-2 text-ink"><IconArrowRight className="h-3.5 w-3.5 text-neon/70" />Ready to list</span><span className="flex items-center gap-2"><Meter value={unlisted.length} max={pipelineMax} w={48} color="#ffb020" /><Mark plain accent="amber">{unlisted.length}</Mark></span></Link>
               </div>
             </div>
             <p className="mt-3 text-[10px] leading-relaxed text-ink-faint">Every number here is derived from settled receipts and real opens — products can&#39;t self-report success.</p>

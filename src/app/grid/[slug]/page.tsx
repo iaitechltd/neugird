@@ -16,7 +16,7 @@ import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, Stat, DataRow, Mark, Tag, ProgressBar, IconActivity, IconNetwork, IconLayers, IconUser, IconBot, IconPlus, IconExternal, IconFlag, IconCheck, IconMessage, IconHeart, IconBriefcase, IconTarget, IconLock, IconCoins } from "@/components/app/ui";
 import { Area } from "@/components/app/charts";
 import { Decrypt } from "@/components/app/typefx";
-import { MatrixAvatar } from "@/components/app/MatrixAvatar";
+import { MatrixAvatar, MatrixCover } from "@/components/app/MatrixAvatar";
 import type { GridSummary, SubGrid } from "@/lib/types";
 
 type Me = { id: string; joined_grids: string[] } | null;
@@ -382,7 +382,13 @@ export default function GridDetailPage() {
 
           {g && summary && (
             <>
-              <div className="ng-panel p-5">
+              <div className="ng-panel overflow-hidden">
+                {/* identity banner — deterministic art, unique to this grid */}
+                <div className="relative h-16">
+                  <MatrixCover seed={g.slug ?? g.name} />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
+                </div>
+                <div className="p-5 pt-3">
                 <div className="flex items-start gap-4">
                   <span className="grid h-14 w-14 shrink-0 place-items-center rounded-xl text-2xl" style={{ color: g.visual_theme?.accent ?? "var(--ng-neon)", background: "rgba(0,255,0,0.07)" }}>{g.visual_theme?.glyph ?? "▦"}</span>
                   <div className="min-w-0 flex-1">
@@ -405,6 +411,7 @@ export default function GridDetailPage() {
                   <Stat label="Members" value={g.member_count} />
                   <Stat label="SubGrids" value={summary.subgrids} />
                   <Stat label="Active Campaigns" value={summary.active_campaigns} />
+                </div>
                 </div>
               </div>
 

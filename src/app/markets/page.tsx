@@ -12,7 +12,9 @@ import NeuHeader from "@/components/app/NeuHeader";
 import OrbPanel from "@/components/app/OrbPanel";
 import MarketTicker from "@/components/app/MarketTicker";
 import { Panel, Mark, DataRow, IconChart, IconActivity , kpiColor } from "@/components/app/ui";
-import { PanelChart } from "@/components/app/terminal";
+import { PanelChart, TMeter } from "@/components/app/terminal";
+import Meter from "@/components/app/Meter";
+import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import { Area, Gauge, DivergingBars, Depth, Bubble, Candles, type Candle } from "@/components/app/charts";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import type { Market, MarketStage } from "@/lib/types";
@@ -39,7 +41,7 @@ function EarnMarketCard() {
 /* A tokenized market card — identity, ROI, price spark, and the Ascension Arc
  * (real progress toward the next stage's market-cap target). The spark + ROI are
  * the market's REAL 30D candle closes (flat line when it has no trade history). */
-function MarketCard({ m }: { m: Mkt }) {
+function MarketCard({ m, mx }: { m: Mkt; mx: { cap: number; liq: number; vol24: number; volT: number; holders: number } }) {
   const s = m.series && m.series.length > 1 ? m.series : [m.price ?? 0, m.price ?? 0];
   const roi = s[0] ? ((s[s.length - 1] - s[0]) / s[0]) * 100 : 0;
   const up = roi >= 0;
@@ -59,6 +61,7 @@ function MarketCard({ m }: { m: Mkt }) {
           No "audited" badge: every launched market passed the gate; funded is the differentiator. */}
       {m.credibility?.founder && (
         <div className="mt-2 flex items-center gap-1.5 rounded border border-line bg-neon/[0.03] px-2 py-1.5 text-[10px]">
+          <MatrixAvatar seed={m.credibility.founder.username} size={16} />
           <span className="max-w-[45%] shrink-0 truncate font-bold text-ink">{m.credibility.founder.username}</span>
           <span className="min-w-0 flex-1 truncate text-right">
             <span className="text-neon tnum">{m.credibility.founder.reputation.toLocaleString()} rep</span>
@@ -72,13 +75,14 @@ function MarketCard({ m }: { m: Mkt }) {
       <div className="flex items-center justify-between text-[9px] uppercase tracking-wide text-ink-faint"><span>ROI</span><span>30D</span></div>
       <div className="mt-1.5"><Area data={s} gid={m.market_id} color={color} h={50} /></div>
       {/* stats */}
+      {/* per-row bars scale each stat against the top market on the page */}
       <div className="mt-2 divide-y divide-line text-[11px]">
-        <div className="ng-row !py-1"><span className="ng-row__k">Market cap</span><Mark plain className="!text-[11px]">{money(m.marketcap ?? 0)}</Mark></div>
-        <div className="ng-row !py-1"><span className="ng-row__k">Liquidity</span><Mark plain className="!text-[11px]">{money(m.liquidity_usd ?? 0)}</Mark></div>
+        <div className="ng-row !py-1"><span className="ng-row__k">Market cap</span><span className="flex items-center gap-1.5" title="vs top market"><Meter value={m.marketcap ?? 0} max={mx.cap} w={36} /><Mark plain className="!text-[11px]">{money(m.marketcap ?? 0)}</Mark></span></div>
+        <div className="ng-row !py-1"><span className="ng-row__k">Liquidity</span><span className="flex items-center gap-1.5" title="vs top market"><Meter value={m.liquidity_usd ?? 0} max={mx.liq} w={36} /><Mark plain className="!text-[11px]">{money(m.liquidity_usd ?? 0)}</Mark></span></div>
         {(m.vol24h ?? 0) > 0 || !(m.volTotal ?? 0)
-          ? <div className="ng-row !py-1"><span className="ng-row__k">24h Vol</span><Mark plain className="!text-[11px]">{money(m.vol24h ?? 0)}</Mark></div>
-          : <div className="ng-row !py-1"><span className="ng-row__k">Total Vol</span><Mark plain className="!text-[11px]">{money(m.volTotal ?? 0)}</Mark></div>}
-        <div className="ng-row !py-1"><span className="ng-row__k">Holders</span><Mark plain className="!text-[11px]">{(m.holders ?? 0).toLocaleString()}</Mark></div>
+          ? <div className="ng-row !py-1"><span className="ng-row__k">24h Vol</span><span className="flex items-center gap-1.5" title="vs top market"><Meter value={m.vol24h ?? 0} max={mx.vol24} w={36} /><Mark plain className="!text-[11px]">{money(m.vol24h ?? 0)}</Mark></span></div>
+          : <div className="ng-row !py-1"><span className="ng-row__k">Total Vol</span><span className="flex items-center gap-1.5" title="vs top market"><Meter value={m.volTotal ?? 0} max={mx.volT} w={36} /><Mark plain className="!text-[11px]">{money(m.volTotal ?? 0)}</Mark></span></div>}
+        <div className="ng-row !py-1"><span className="ng-row__k">Holders</span><span className="flex items-center gap-1.5" title="vs top market"><Meter value={m.holders ?? 0} max={mx.holders} w={36} /><Mark plain className="!text-[11px]">{(m.holders ?? 0).toLocaleString()}</Mark></span></div>
       </div>
       {/* Ascension Arc → progress toward the next stage's market-cap target */}
       <div className="mt-3 flex flex-col items-center">
@@ -110,6 +114,14 @@ export default function MarketsPage() {
   const list = useMemo(() => markets ?? [], [markets]);
   const filtered = stage === "all" ? list : list.filter((m) => m.stage === stage);
   const totals = useMemo(() => ({ markets: list.length, liq: list.reduce((s, m) => s + (m.liquidity_usd ?? 0), 0), holders: list.reduce((s, m) => s + (m.holders ?? 0), 0) }), [list]);
+  // fleet maxima — each card's stat bars scale against the page's top market (real values)
+  const mx = useMemo(() => ({
+    cap: Math.max(...list.map((m) => m.marketcap ?? 0), 1),
+    liq: Math.max(...list.map((m) => m.liquidity_usd ?? 0), 1),
+    vol24: Math.max(...list.map((m) => m.vol24h ?? 0), 1),
+    volT: Math.max(...list.map((m) => m.volTotal ?? 0), 1),
+    holders: Math.max(...list.map((m) => m.holders ?? 0), 1),
+  }), [list]);
   const kpis: [string, number, string?][] = [
     ["Live Markets", totals.markets],
     ["Liquidity", Math.round(totals.liq), "$"],
@@ -155,6 +167,15 @@ export default function MarketsPage() {
               <DataRow k="Total Liquidity" v={`$${Math.round(totals.liq)}`} />
               <DataRow k="Holders" v={totals.holders} />
             </div>
+            {/* stage mix — how the live markets split across the lifecycle (real counts) */}
+            {list.length > 0 && (
+              <div className="mt-2">
+                {(["alpha", "spot", "futures"] as const).map((st) => {
+                  const n = list.filter((m) => m.stage === st).length;
+                  return <TMeter key={st} label={st} pct={Math.round((n / list.length) * 100)} value={n} color={stageColor(st)} />;
+                })}
+              </div>
+            )}
 
             <PanelChart title="Movers · 24h ROI" read={`${list.length} mkts`}>
               {hasMovers
@@ -170,11 +191,14 @@ export default function MarketsPage() {
 
             <div className="ng-label mb-2 mt-4 !text-ink-dim">Stage</div>
             <div className="space-y-1">
-              {STAGES.map((s) => (
-                <button key={s} onClick={() => setStage(s)} className={`flex w-full items-center justify-between rounded px-2.5 py-2 text-[13px] capitalize transition ${stage === s ? "bg-neon/10 text-neon" : "text-ink-dim hover:bg-neon/[0.06] hover:text-neon"}`}>
-                  <span>{s}</span><Mark plain className="!text-[10px]">{s === "all" ? list.length : list.filter((m) => m.stage === s).length}</Mark>
-                </button>
-              ))}
+              {STAGES.map((s) => {
+                const n = s === "all" ? list.length : list.filter((m) => m.stage === s).length;
+                return (
+                  <button key={s} onClick={() => setStage(s)} className={`flex w-full items-center justify-between rounded px-2.5 py-2 text-[13px] capitalize transition ${stage === s ? "bg-neon/10 text-neon" : "text-ink-dim hover:bg-neon/[0.06] hover:text-neon"}`}>
+                    <span>{s}</span><span className="flex items-center gap-1.5"><Meter value={n} max={list.length} w={32} /><Mark plain className="!text-[10px]">{n}</Mark></span>
+                  </button>
+                );
+              })}
             </div>
           </Panel>
         </OrbPanel>
@@ -218,7 +242,7 @@ export default function MarketsPage() {
             // grid, not masonry: exact per-row counts (3 → 4 → 5 as panels close); multicol
             // balancing leaves columns empty with few markets, stretching cards to 2-up
             <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
-              {filtered.map((m) => <MarketCard key={m.market_id} m={m} />)}
+              {filtered.map((m) => <MarketCard key={m.market_id} m={m} mx={mx} />)}
               <EarnMarketCard />
             </div>
           )}
@@ -227,10 +251,18 @@ export default function MarketsPage() {
         {/* RIGHT */}
         <OrbPanel side="right" label="Graduation" open={rOpen} onToggle={setROpen}>
           <Panel scroll title="GRADUATION" icon={<IconActivity className="h-4 w-4" />} bodyClass="p-3.5">
+            {/* each rung shows its REAL live-market count vs all markets */}
             <ol className="space-y-2 text-[11px] text-ink-dim">
-              <li className="flex gap-2"><Mark plain accent="amber" className="!text-[9px]">alpha</Mark> gated first liquidity — graduates only</li>
-              <li className="flex gap-2"><Mark plain accent="neon" className="!text-[9px]">spot</Mark> unlocked by real traction (holders)</li>
-              <li className="flex gap-2"><Mark plain accent="cyan" className="!text-[9px]">futures</Mark> deep liquidity + licensing, last</li>
+              {([["alpha", "amber", "gated first liquidity — graduates only"], ["spot", "neon", "unlocked by real traction (holders)"], ["futures", "cyan", "deep liquidity + licensing, last"]] as const).map(([st, accent, desc]) => {
+                const n = list.filter((m) => m.stage === st).length;
+                return (
+                  <li key={st} className="flex items-center gap-2">
+                    <Mark plain accent={accent} className="!text-[9px]">{st}</Mark>
+                    <span className="min-w-0 flex-1 truncate">{desc}</span>
+                    <span className="flex shrink-0 items-center gap-1.5" title={`${n} live market${n === 1 ? "" : "s"}`}><Meter value={n} max={list.length || 1} w={28} color={stageColor(st)} /><span className="tnum text-ink-faint">{n}</span></span>
+                  </li>
+                );
+              })}
             </ol>
 
             <PanelChart title={`Price · ${lead?.base_symbol ?? "leader"}`} read={lead ? money(lead.marketcap ?? 0) : "—"}>

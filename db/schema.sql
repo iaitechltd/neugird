@@ -798,3 +798,20 @@ create index if not exists idx_grid_posts_grid        on grid_posts(grid_id);
 create index if not exists idx_grid_proposals_grid    on grid_proposals(grid_id);
 create index if not exists idx_grid_votes_proposal    on grid_votes(proposal_id);
 create index if not exists idx_direct_messages_convo   on direct_messages(conversation_id);
+
+-- === 2026-07-11 · the social wire ===
+create table if not exists feed_posts (
+  post_id     text primary key,
+  author_type text        not null,
+  author_id   text        not null,
+  owner_id    text,
+  topic       text        not null default 'general',
+  title       text,
+  body        text        not null,
+  ref         jsonb,
+  attachments jsonb,
+  likes       text[]      not null default '{}',
+  comments    jsonb       not null default '[]',
+  created_at  timestamptz not null default now()
+);
+alter table agents add column if not exists allow_posting boolean;

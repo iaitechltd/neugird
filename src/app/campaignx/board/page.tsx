@@ -16,6 +16,8 @@ import { Panel, Tag, Mark, DataRow, IconSparkle, IconActivity, IconUser , kpiCol
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import { PanelChart } from "@/components/app/terminal";
 import { Bars, Ring, Pie, Heatmap, Bullet } from "@/components/app/charts";
+import Meter from "@/components/app/Meter";
+import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import type { Job } from "@/lib/types";
 
 type J = Job & { project_name: string; project_slug: string; applicant_count: number; applied: boolean; assignee_name: string | null };
@@ -103,6 +105,15 @@ export default function CampaignXBoard() {
     for (const s of skills) for (const j of camps) data.push((j.required_skills ?? []).includes(s) ? 0.25 + 0.75 * ((j.reward_amount ?? 0) / maxR) : 0);
     return { rows: skills.length, cols: camps.length, data };
   }, [list]);
+  // LEFT · View rows — real per-view counts, bar-scaled vs the largest view
+  const viewCounts: Record<View, number> = {
+    open: totals.open,
+    as_project: list.filter((j) => j.created_by === meId).length,
+    all: totalCount,
+  };
+  const viewMax = Math.max(1, viewCounts.open, viewCounts.as_project, viewCounts.all);
+  // RIGHT · suggested grids — audience bars scaled vs the biggest community
+  const maxMembers = Math.max(1, ...suggested.map((g) => g.members));
 
   function addChip(role: string) {
     const cur = skills.split(",").map((s) => s.trim()).filter(Boolean);
@@ -205,6 +216,10 @@ export default function CampaignXBoard() {
               {([["open", "Open postings"], ["as_project", "My project’s posts"], ["all", "All"]] as [View, string][]).map(([v, label]) => (
                 <button key={v} onClick={() => setView(v)} className={`flex w-full items-center justify-between rounded px-2.5 py-2 text-[13px] transition ${view === v ? "bg-neon/10 text-neon" : "text-ink-dim hover:bg-neon/[0.06] hover:text-neon"}`}>
                   <span>{label}</span>
+                  <span className="flex shrink-0 items-center gap-2" title={`${viewCounts[v]} campaign(s) in this view`}>
+                    <Meter value={viewCounts[v]} max={viewMax} w={36} />
+                    <span className="tnum text-[11px]">{viewCounts[v]}</span>
+                  </span>
                 </button>
               ))}
             </div>
@@ -338,7 +353,7 @@ export default function CampaignXBoard() {
                           <div key={a.application_id} className="rounded border border-line p-2.5">
                             <div className="flex items-center justify-between gap-2">
                               <div className="flex min-w-0 items-center gap-1.5">
-                                <IconUser className="h-3 w-3 shrink-0 text-ink-dim" />
+                                <MatrixAvatar seed={a.applicant_id} size={18} shape="square" />
                                 <span className="truncate text-[12px] font-semibold text-ink">{a.applicant_name}</span>
                                 <Tag className="!text-[9px]">{a.applicant_type === "agent" ? "agent" : "human"}</Tag>
                               </div>
@@ -350,6 +365,7 @@ export default function CampaignXBoard() {
                             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                               <span className="text-[10px] text-cyan">rep {a.reputation}</span>
                               <span className="text-[10px] text-ink-faint">· matches {a.match_count}/{(j.required_skills ?? []).length}</span>
+                              <Meter value={a.match_count} max={Math.max(1, (j.required_skills ?? []).length)} w={32} color="#48f5ff" className="!h-[6px]" />
                               {a.matched.map((s) => <span key={s} className="ng-tag !text-neon">{s}</span>)}
                             </div>
                           </div>
@@ -418,8 +434,14 @@ export default function CampaignXBoard() {
               {suggested.map((g, i) => (
                 <div key={g.grid_id} className="ng-card flex items-center gap-2.5 p-2.5">
                   <span className="text-xs font-bold text-neon">{i + 1}</span>
-                  <span className="min-w-0 flex-1 truncate text-xs text-ink">{g.name}</span>
-                  <span className="flex items-center gap-1 text-[10px] text-ink-dim"><IconUser className="h-3 w-3" />{g.members}</span>
+                  <MatrixAvatar seed={g.grid_id} size={22} shape="square" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-xs text-ink">{g.name}</div>
+                    <div className="mt-0.5 flex items-center gap-1.5" title={`${g.members} members vs the largest suggested community`}>
+                      <Meter value={g.members} max={maxMembers} w={64} />
+                      <span className="flex shrink-0 items-center gap-1 text-[10px] text-ink-dim"><IconUser className="h-3 w-3" />{g.members}</span>
+                    </div>
+                  </div>
                 </div>
               ))}
               {suggested.length === 0 && <p className="text-[11px] text-ink-dim">—</p>}

@@ -311,9 +311,9 @@ export function IconPlay({ className }: IconProps) {
 
 type Accent = "neon" | "cyan" | "amber" | "danger" | "violet" | "magenta";
 
-/** TERMINAL discipline (founder, 2026-07-03): phosphor green is the voice —
- *  KPI numbers are all neon; amber warns, red is negative, cyan is rare. The
- *  cycle helper stays as the single knob if that ever changes again. */
+/** TERMINAL discipline (founder, re-confirmed 2026-07-11 after trying color
+ *  rotations twice): phosphor green is the voice — KPI numbers are all neon;
+ *  amber warns, red is negative, cyan is rare. This is the single knob. */
 export const ACCENTS: Accent[] = ["neon"];
 /** CSS color for the i-th KPI in a strip. */
 export const kpiColor = (i: number): string => `var(--ng-${ACCENTS[i % ACCENTS.length]})`;

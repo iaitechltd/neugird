@@ -12,6 +12,7 @@ import Link from "next/link";
 import NeuHeader from "@/components/app/NeuHeader";
 import OrbPanel from "@/components/app/OrbPanel";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
+import Meter from "@/components/app/Meter";
 import { Panel, Mark, DataRow, IconCoins, IconSparkle, IconUser, IconActivity , kpiColor } from "@/components/app/ui";
 import { Area, Bars, StepArea, LabeledBars, Donut, RadialProgress } from "@/components/app/charts";
 import { PanelChart } from "@/components/app/terminal";
@@ -105,6 +106,9 @@ export default function RewardsPage() {
   const breakdown = l?.breakdown ?? [];
   const srcUnits = breakdown.map((b) => b.units);
   const srcTotal = srcUnits.reduce((a, b) => a + b, 0);
+  const srcMax = Math.max(1, ...srcUnits);
+  const schedMax = Math.max(1, ...(data?.schedule ?? []).map((r) => Math.abs(r.pulse ?? 0)));
+  const feedMax = Math.max(1, ...(data?.feed ?? []).map((f) => Math.abs(f.pulse)));
   const srcBars = breakdown.map((b) => ({ label: b.dimension, value: b.units }));
   const refVerified = data?.referrals.verified ?? 0;
   const refPending = data?.referrals.pending ?? 0;
@@ -154,9 +158,12 @@ export default function RewardsPage() {
                       {r.pulse === null ? "scaled" : `${r.pulse > 0 ? "+" : ""}${r.pulse}`}
                     </span>
                   </div>
-                  <div className="flex justify-between text-[9.5px] text-ink-faint">
-                    <span>{r.formula ?? r.dimension}</span>
-                    {r.pulse !== null && r.pulse > 0 && <span className="text-cyan/70">{r.pulse * (l?.rate ?? 10)} GRID</span>}
+                  <div className="flex items-center justify-between gap-2 text-[9.5px] text-ink-faint">
+                    <span className="truncate">{r.formula ?? r.dimension}</span>
+                    <span className="flex shrink-0 items-center gap-1.5">
+                      {r.pulse !== null && r.pulse > 0 && <span className="text-cyan/70">{r.pulse * (l?.rate ?? 10)} GRID</span>}
+                      {r.pulse !== null && <Meter value={Math.abs(r.pulse)} max={schedMax} w={36} color={r.pulse < 0 ? "#ff4d5e" : "#00ff00"} />}
+                    </span>
                   </div>
                 </div>
               ))}
@@ -206,7 +213,10 @@ export default function RewardsPage() {
                 {l.breakdown.map((b) => (
                   <div key={b.dimension} className="ng-row !py-1.5">
                     <span className="ng-row__k capitalize">{b.dimension}</span>
-                    <span className="ng-row__v !text-neon">{b.units.toLocaleString()} <span className="text-[9px] font-normal text-ink-faint">({b.events})</span></span>
+                    <span className="flex items-center gap-2">
+                      <Meter value={b.units} max={srcMax} w={44} />
+                      <span className="ng-row__v !text-neon">{b.units.toLocaleString()} <span className="text-[9px] font-normal text-ink-faint">({b.events})</span></span>
+                    </span>
                   </div>
                 ))}
               </div>
@@ -225,7 +235,10 @@ export default function RewardsPage() {
                     <div className="text-[9.5px] uppercase tracking-wider text-ink-faint">{f.action.replace(/_/g, " ")} · {new Date(f.at).toLocaleDateString()}</div>
                   </div>
                   <div className="shrink-0 text-right">
-                    <div className="text-[12px] font-bold text-neon">+{f.pulse} Pulse</div>
+                    <div className="flex items-center justify-end gap-2">
+                      <Meter value={Math.abs(f.pulse)} max={feedMax} w={36} />
+                      <div className="text-[12px] font-bold text-neon">+{f.pulse} Pulse</div>
+                    </div>
                     {f.grid > 0 ? <div className="text-[10px] text-cyan">+{f.grid} GRID</div> : <div className="text-[10px] text-ink-faint">rep only</div>}
                   </div>
                 </div>
@@ -258,10 +271,10 @@ export default function RewardsPage() {
             </div>
 
             <div className="mt-4 divide-y divide-line">
-              <DataRow k="Verified referrals" v={data?.referrals.verified ?? 0} accent="neon" />
-              <DataRow k="Pending (no work yet)" v={data?.referrals.pending ?? 0} />
+              <DataRow k="Verified referrals" v={<span className="flex items-center gap-2"><Meter value={refVerified} max={Math.max(1, refTotal)} w={32} />{refVerified}</span>} accent="neon" />
+              <DataRow k="Pending (no work yet)" v={<span className="flex items-center gap-2"><Meter value={refPending} max={Math.max(1, refTotal)} w={32} color="#ffb020" />{refPending}</span>} />
               <DataRow k="Their protocol fees" v={`$${data?.referrals.affiliate.fees_usd ?? 0}`} />
-              <DataRow k="Your affiliate share" v={`$${data?.referrals.affiliate.share_usd ?? 0} → ${data?.referrals.affiliate.grid ?? 0} GRID`} accent="cyan" />
+              <DataRow k="Your affiliate share" v={<span className="flex items-center gap-2"><Meter value={data?.referrals.affiliate.share_usd ?? 0} max={Math.max(1, data?.referrals.affiliate.fees_usd ?? 0)} w={32} color="#48f5ff" />{`$${data?.referrals.affiliate.share_usd ?? 0} → ${data?.referrals.affiliate.grid ?? 0} GRID`}</span>} accent="cyan" />
             </div>
 
             {(data?.referrals.referrals ?? []).length > 0 && (
@@ -293,8 +306,8 @@ export default function RewardsPage() {
                   <Mark plain accent={hum.tier >= 2 ? "neon" : hum.tier === 1 ? "cyan" : undefined} className="!text-[10px]">T{hum.tier} · {hum.tier_name}</Mark>
                 </div>
                 <div className="mt-2 divide-y divide-line">
-                  <DataRow k={`Wallet age (need ${hum.thresholds.wallet_age_days}d)`} v={hum.signals ? `${hum.signals.wallet_age_days ?? 0}d` : "—"} />
-                  <DataRow k={`Transactions (need ${hum.thresholds.tx_count})`} v={hum.signals ? `${hum.signals.tx_count ?? 0}` : "—"} />
+                  <DataRow k={`Wallet age (need ${hum.thresholds.wallet_age_days}d)`} v={hum.signals ? <span className="flex items-center gap-2"><Meter value={hum.signals.wallet_age_days ?? 0} max={Math.max(1, hum.thresholds.wallet_age_days)} w={32} color={(hum.signals.wallet_age_days ?? 0) >= hum.thresholds.wallet_age_days ? "#00ff00" : "#ffb020"} />{`${hum.signals.wallet_age_days ?? 0}d`}</span> : "—"} />
+                  <DataRow k={`Transactions (need ${hum.thresholds.tx_count})`} v={hum.signals ? <span className="flex items-center gap-2"><Meter value={hum.signals.tx_count ?? 0} max={Math.max(1, hum.thresholds.tx_count)} w={32} color={(hum.signals.tx_count ?? 0) >= hum.thresholds.tx_count ? "#00ff00" : "#ffb020"} />{`${hum.signals.tx_count ?? 0}`}</span> : "—"} />
                   {hum.attestation && <DataRow k="Attested by" v={hum.attestation.provider} accent="neon" />}
                 </div>
                 <button onClick={refreshHumanity} disabled={humBusy} className="ng-btn ng-btn--sm ng-btn--block mt-2 justify-center disabled:opacity-40">{humBusy ? "Reading chain…" : "Refresh wallet signals"}</button>

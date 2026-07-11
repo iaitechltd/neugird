@@ -15,8 +15,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import NeuHeader from "@/components/app/NeuHeader";
 import OrbPanel from "@/components/app/OrbPanel";
-import { Panel, Stat, DataRow, Mark, Tag, IconChart, IconActivity, IconBolt, IconCoins, IconArrowRight, IconShield, IconNetwork, IconCheck, IconLock, IconLayers, IconClose, IconUser } from "@/components/app/ui";
-import { Candles, Gauge, Ring, type Candle } from "@/components/app/charts";
+import { Panel, Stat, Mark, Tag, IconChart, IconActivity, IconBolt, IconCoins, IconArrowRight, IconShield, IconNetwork, IconCheck, IconLock, IconLayers, IconClose, IconUser } from "@/components/app/ui";
+import { Candles, Gauge, Ring, Spark, type Candle } from "@/components/app/charts";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import { Decrypt } from "@/components/app/typefx";
 import type { Market } from "@/lib/types";
@@ -510,15 +510,29 @@ export default function MarketTerminal() {
                   <span className="ng-btn ng-btn--sm !text-[10px] opacity-60">Site</span>
                   <span className="ng-btn ng-btn--sm !text-[10px] opacity-60">X</span>
                 </div>
-                <div className="mt-3 divide-y divide-line">
-                  <DataRow k="Stage" v={<Mark plain accent={STAGE_ACCENT[stage]} className="!text-[10px]">{stage}</Mark>} />
-                  <DataRow k="Price" v={`$${(m.price ?? 0).toFixed(5)}`} accent="neon" />
-                  <DataRow k="Market cap" v={money(m.marketcap ?? 0)} />
-                  <DataRow k="Liquidity" v={money(prog?.liquidity ?? 0)} />
-                  <DataRow k="Holders" v={(d.holder_count ?? 0).toLocaleString()} />
-                  <DataRow k="24h Vol" v={money(st?.volume ?? 0)} />
-                  <DataRow k="Pulse" v={(d.grid?.pulse ?? 0).toLocaleString()} />
+                {/* price headline — the number you came for, big, with its heartbeat */}
+                <div className="mt-3 border-t border-line pt-3">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-[24px] font-bold leading-none text-neon tnum">${(m.price ?? 0).toFixed(5)}</span>
+                    <span className={`text-[12px] font-bold tnum ${(st?.change ?? 0) >= 0 ? "text-neon" : "text-danger"}`}>{(st?.change ?? 0) >= 0 ? "▲" : "▼"} {Math.abs(st?.change ?? 0).toFixed(2)}%</span>
+                  </div>
+                  {candles.length > 1 && (
+                    <div className="mt-2"><Spark data={candles.slice(-40).map((c) => c.c)} up={(st?.change ?? 0) >= 0} gid={`mkt-${id}`} w={240} h={30} /></div>
+                  )}
+                  <div className="mt-1 flex items-center gap-1.5 text-[9px] text-ink-faint"><Mark plain accent={STAGE_ACCENT[stage]} className="!text-[9px]">{stage}</Mark><span>· mark, live · last 40 bars</span></div>
                 </div>
+                {/* vitals — open type, no boxes */}
+                <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-3">
+                  {([["Mkt cap", money(m.marketcap ?? 0)], ["Liquidity", money(prog?.liquidity ?? 0)], ["Holders", (d.holder_count ?? 0).toLocaleString()], ["24h Vol", money(st?.volume ?? 0)]] as [string, string][]).map(([k, v]) => (
+                    <div key={k}><div className="text-[8.5px] uppercase tracking-wide text-ink-faint">{k}</div><div className="mt-0.5 text-[16px] font-bold leading-none text-ink tnum">{v}</div></div>
+                  ))}
+                </div>
+                {/* depth — how much of the cap is actually backed by liquidity */}
+                <div className="mt-3">
+                  <div className="flex items-center justify-between text-[9px] text-ink-faint"><span>Depth · liquidity / cap</span><span className="text-ink-dim tnum">{(m.marketcap ?? 0) > 0 ? ((prog?.liquidity ?? 0) / (m.marketcap ?? 1) * 100).toFixed(1) : "0"}%</span></div>
+                  <div className="mt-1 h-[5px] bg-neon/10"><div className="h-full bg-cyan/80" style={{ width: `${Math.min(100, (m.marketcap ?? 0) > 0 ? ((prog?.liquidity ?? 0) / (m.marketcap ?? 1)) * 100 : 0)}%` }} /></div>
+                </div>
+                <div className="mt-3 flex items-baseline justify-between"><span className="text-[8.5px] uppercase tracking-wide text-ink-faint">Pulse</span><span className="text-[16px] font-bold leading-none text-neon tnum">{(d.grid?.pulse ?? 0).toLocaleString()}</span></div>
                 {d.provenance?.founder && (
                   <div className="mt-4 border-t border-line pt-3">
                     <div className="ng-label mb-2 !text-ink-dim">Founder · provenance</div>
@@ -584,7 +598,16 @@ export default function MarketTerminal() {
                   {stage !== "alpha" && <button onClick={() => setBookOpen((v) => !v)} className={`ml-2 flex items-center gap-1 rounded px-2 py-0.5 text-[10px] transition ${bookOpen ? "bg-neon/15 text-neon" : "text-ink-dim hover:text-neon"}`}><IconLayers className="h-3 w-3" />{bookOpen ? "Hide book" : "Book"}</button>}
                 </div>
                 <div className="mt-1 flex gap-2" style={{ height: "clamp(320px, 56vh, 620px)" }}>
-                  <div ref={chartRef} className="min-w-0 flex-1"><Candles data={candles} w={chartW} h={chartH} /></div>
+                  <div ref={chartRef} className="min-w-0 flex-1">
+                    {candles.length > 0 ? <Candles data={candles} w={chartW} h={chartH} /> : (
+                      <div className="grid h-full w-full place-items-center border border-dashed border-neon/15">
+                        <div className="text-center">
+                          <div className="text-[13px] text-ink-dim">░ awaiting first trades ░</div>
+                          <div className="mt-1 text-[10px] text-ink-faint">The chart plots live from the first fill on this timeframe.</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   {bookOpen && stage !== "alpha" && <OrderBook book={d.orderBook} onClose={() => setBookOpen(false)} />}
                 </div>
               </div>
@@ -747,34 +770,66 @@ export default function MarketTerminal() {
                 {/* FUTURES — perp panel */}
                 {stage === "futures" ? (
                   <div className="mt-3">
-                    <div className="text-[10px] text-ink-faint">Leverage</div>
-                    <div className="mt-1 grid grid-cols-3 gap-1">{LEV.map((l) => <button key={l} onClick={() => setLev(l)} className={`rounded border py-1 text-[11px] transition ${lev === l ? "border-neon/50 bg-neon/10 text-neon" : "border-line text-ink-dim hover:text-neon"}`}>{l}×</button>)}</div>
-                    <div className="mt-2 flex items-center justify-between text-[10px] text-ink-faint"><span>Margin (USDC)</span><span>Bal {money(d.wallet.usdc)}</span></div>
+                    {/* leverage — notched slider track, exchange-style */}
+                    <div className="flex items-center justify-between text-[10px] text-ink-faint"><span>Leverage</span><span className="text-[15px] font-bold text-neon tnum">{lev}×</span></div>
+                    <div className="mt-1.5 flex items-center gap-0">
+                      {LEV.map((l, i) => (
+                        <button key={l} onClick={() => setLev(l)} className="group flex flex-1 flex-col items-center gap-1" aria-label={`${l}× leverage`}>
+                          <span className={`h-[5px] w-full transition ${LEV.indexOf(lev) >= i ? "bg-neon" : "bg-neon/15 group-hover:bg-neon/30"}`} />
+                          <span className={`text-[10px] tnum transition ${lev === l ? "text-neon" : "text-ink-faint group-hover:text-neon"}`}>{l}×</span>
+                        </button>
+                      ))}
+                    </div>
+                    {/* margin — input + balance slider */}
+                    <div className="mt-3 flex items-center justify-between text-[10px] text-ink-faint"><span>Margin (USDC)</span><span>Bal {money(d.wallet.usdc)}</span></div>
                     <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="0" className="ng-input mt-1 !py-2 text-xs" />
-                    <div className="mt-1.5 grid grid-cols-4 gap-1">{[25, 50, 75, 100].map((q) => <button key={q} onClick={() => setAmount(String(+((d.wallet.usdc) * (q / 100)).toFixed(2)))} className="rounded border border-line py-1 text-[10px] text-ink-dim transition hover:border-neon/40 hover:text-neon">{q}%</button>)}</div>
-                    <div className="mt-2 flex items-center justify-between text-[10px] text-ink-faint"><span>Limit entry $ (optional)</span><span>blank = open at mark</span></div>
-                    <input value={limitPrice} onChange={(e) => setLimitPrice(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder={`mark $${(m.price ?? 0).toFixed(4)}`} className="ng-input mt-1 !py-1.5 text-[12px]" />
-                    <div className="mt-2 text-[10px] text-ink-faint">Take-profit / Stop-loss / Trail (optional — attach at entry)</div>
-                    <div className="mt-1 grid grid-cols-3 gap-1">
-                      <input value={tpIn} onChange={(e) => setTpIn(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="TP $" className="ng-input !py-1.5 text-[11px]" />
-                      <input value={slIn} onChange={(e) => setSlIn(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="SL $" className="ng-input !py-1.5 text-[11px]" />
-                      <input value={trailIn} onChange={(e) => setTrailIn(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="Trail %" className="ng-input !py-1.5 text-[11px]" />
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <input
+                        type="range" min={0} max={100} step={5}
+                        value={d.wallet.usdc > 0 ? Math.min(100, Math.round((collateral / d.wallet.usdc) * 100)) : 0}
+                        onChange={(e) => setAmount(String(+(d.wallet.usdc * (Number(e.target.value) / 100)).toFixed(2)))}
+                        className="h-1 flex-1 cursor-pointer appearance-none bg-neon/15"
+                        style={{ accentColor: "#00ff00" }}
+                        aria-label="Margin as percent of balance"
+                      />
+                      <span className="w-9 text-right text-[10px] text-ink-dim tnum">{d.wallet.usdc > 0 ? Math.min(100, Math.round((collateral / d.wallet.usdc) * 100)) : 0}%</span>
                     </div>
-                    <div className="mt-2 divide-y divide-line text-[11px]">
-                      <div className="ng-row !py-1"><span className="ng-row__k">Position size</span><span className="ng-row__v font-normal">{compact(perpSize)} {m.base_symbol}</span></div>
-                      <div className="ng-row !py-1"><span className="ng-row__k">Notional</span><span className="ng-row__v font-normal">{money(collateral * lev)}</span></div>
-                      <div className="ng-row !py-1"><span className="ng-row__k">Est. liq (long)</span><span className="ng-row__v font-normal text-amber">${(((m.price ?? 0) * (1 - 1 / lev + 0.005)) || 0).toFixed(4)}</span></div>
+                    {/* advanced — limit entry + TP/SL/Trail, tucked away until needed */}
+                    <details className="mt-2 group">
+                      <summary className="cursor-pointer list-none text-[10px] text-ink-dim transition hover:text-neon">▸ Advanced — limit entry · TP / SL / Trail</summary>
+                      <div className="mt-1.5 space-y-1.5">
+                        <input value={limitPrice} onChange={(e) => setLimitPrice(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder={`Limit $ (blank = mark $${(m.price ?? 0).toFixed(4)})`} className="ng-input !py-1.5 text-[11px]" />
+                        <div className="grid grid-cols-3 gap-1">
+                          <input value={tpIn} onChange={(e) => setTpIn(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="TP $" className="ng-input !py-1.5 text-[11px]" />
+                          <input value={slIn} onChange={(e) => setSlIn(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="SL $" className="ng-input !py-1.5 text-[11px]" />
+                          <input value={trailIn} onChange={(e) => setTrailIn(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="Trail %" className="ng-input !py-1.5 text-[11px]" />
+                        </div>
+                      </div>
+                    </details>
+                    {/* order readout — open type + the liquidation buffer bar */}
+                    <div className="mt-3 grid grid-cols-3 divide-x divide-line text-center">
+                      <div className="px-1"><div className="text-[8.5px] uppercase tracking-wide text-ink-faint">Size</div><div className="mt-0.5 text-[14px] font-bold leading-none text-ink tnum">{compact(perpSize)}</div></div>
+                      <div className="px-1"><div className="text-[8.5px] uppercase tracking-wide text-ink-faint">Notional</div><div className="mt-0.5 text-[14px] font-bold leading-none text-ink tnum">{money(collateral * lev)}</div></div>
+                      <div className="px-1"><div className="text-[8.5px] uppercase tracking-wide text-ink-faint">Liq (long)</div><div className="mt-0.5 text-[14px] font-bold leading-none text-amber tnum">${(((m.price ?? 0) * (1 - 1 / lev + 0.005)) || 0).toFixed(2)}</div></div>
                     </div>
-                    <div className="mt-2 grid grid-cols-2 gap-1.5">
-                      <button onClick={() => { const lp = Number(limitPrice); act(`/api/markets/${id}/perp`, { action: "open", side: "long", collateral, leverage: lev, ...(lp > 0 ? { limit_price: lp } : {}), ...(Number(tpIn) > 0 ? { take_profit: Number(tpIn) } : {}), ...(Number(slIn) > 0 ? { stop_loss: Number(slIn) } : {}), ...(Number(trailIn) > 0 ? { trailing_pct: Number(trailIn) } : {}) }, lp > 0 ? "Long entry resting" : "Long opened"); setAmount(""); setLimitPrice(""); setTpIn(""); setSlIn(""); setTrailIn(""); }} disabled={busy || !(collateral > 0)} className="ng-btn ng-btn-primary disabled:opacity-40">{Number(limitPrice) > 0 ? "Limit Long" : "Open Long"}</button>
-                      <button onClick={() => { const lp = Number(limitPrice); act(`/api/markets/${id}/perp`, { action: "open", side: "short", collateral, leverage: lev, ...(lp > 0 ? { limit_price: lp } : {}), ...(Number(tpIn) > 0 ? { take_profit: Number(tpIn) } : {}), ...(Number(slIn) > 0 ? { stop_loss: Number(slIn) } : {}), ...(Number(trailIn) > 0 ? { trailing_pct: Number(trailIn) } : {}) }, lp > 0 ? "Short entry resting" : "Short opened"); setAmount(""); setLimitPrice(""); setTpIn(""); setSlIn(""); setTrailIn(""); }} disabled={busy || !(collateral > 0)} className="ng-btn ng-btn-danger disabled:opacity-40">{Number(limitPrice) > 0 ? "Limit Short" : "Open Short"}</button>
+                    <div className="mt-1.5 flex items-center gap-2 text-[9px] text-ink-faint">
+                      <span className="shrink-0">Liq buffer</span>
+                      <span className="h-[5px] flex-1 bg-danger/25"><span className="block h-full bg-neon/80" style={{ width: `${Math.max(2, Math.min(100, (1 / lev - 0.005) * 100 * 4))}%` }} /></span>
+                      <span className="shrink-0 text-ink-dim tnum">~{((1 / lev - 0.005) * 100).toFixed(1)}% to liq</span>
                     </div>
-                    <p className="mt-2 text-[9.5px] text-ink-faint">Mark = spot AMM · margin in USDC · auto-liquidation past the liq price · max {d.maxLeverage}× · a limit entry opens when the mark reaches your price (long at-or-below, short at-or-above).</p>
+                    <div className="mt-2.5 grid grid-cols-2 gap-1.5">
+                      <button onClick={() => { const lp = Number(limitPrice); act(`/api/markets/${id}/perp`, { action: "open", side: "long", collateral, leverage: lev, ...(lp > 0 ? { limit_price: lp } : {}), ...(Number(tpIn) > 0 ? { take_profit: Number(tpIn) } : {}), ...(Number(slIn) > 0 ? { stop_loss: Number(slIn) } : {}), ...(Number(trailIn) > 0 ? { trailing_pct: Number(trailIn) } : {}) }, lp > 0 ? "Long entry resting" : "Long opened"); setAmount(""); setLimitPrice(""); setTpIn(""); setSlIn(""); setTrailIn(""); }} disabled={busy || !(collateral > 0)} className="ng-btn ng-btn-primary !py-2.5 !text-[13px] font-bold disabled:opacity-40">{Number(limitPrice) > 0 ? "Limit Long ↗" : "Long ↗"}</button>
+                      <button onClick={() => { const lp = Number(limitPrice); act(`/api/markets/${id}/perp`, { action: "open", side: "short", collateral, leverage: lev, ...(lp > 0 ? { limit_price: lp } : {}), ...(Number(tpIn) > 0 ? { take_profit: Number(tpIn) } : {}), ...(Number(slIn) > 0 ? { stop_loss: Number(slIn) } : {}), ...(Number(trailIn) > 0 ? { trailing_pct: Number(trailIn) } : {}) }, lp > 0 ? "Short entry resting" : "Short opened"); setAmount(""); setLimitPrice(""); setTpIn(""); setSlIn(""); setTrailIn(""); }} disabled={busy || !(collateral > 0)} className="ng-btn ng-btn-danger !py-2.5 !text-[13px] font-bold disabled:opacity-40">{Number(limitPrice) > 0 ? "Limit Short ↘" : "Short ↘"}</button>
+                    </div>
+                    <details className="mt-2">
+                      <summary className="cursor-pointer list-none text-[9px] text-ink-faint transition hover:text-neon">ⓘ how margin works</summary>
+                      <p className="mt-1 text-[9.5px] leading-relaxed text-ink-faint">Mark = spot AMM · margin in USDC · auto-liquidation past the liq price · max {d.maxLeverage}× · a limit entry opens when the mark reaches your price (long at-or-below, short at-or-above).</p>
+                    </details>
                   </div>
                 ) : (
                   /* ALPHA + SPOT — buy / sell */
                   <div className="mt-3">
-                    <div className="grid grid-cols-2 gap-1"><button onClick={() => setSide("buy")} className={`rounded py-1.5 text-[12px] font-semibold transition ${side === "buy" ? "bg-neon text-bg" : "border border-line text-ink-dim hover:text-neon"}`}>Buy</button><button onClick={() => setSide("sell")} className={`rounded py-1.5 text-[12px] font-semibold transition ${side === "sell" ? "bg-danger text-bg" : "border border-line text-ink-dim hover:text-danger"}`}>Sell</button></div>
+                    <div className="grid grid-cols-2 gap-1"><button onClick={() => setSide("buy")} className={`rounded py-2.5 text-[13px] font-bold transition ${side === "buy" ? "bg-neon text-bg" : "border border-line text-ink-dim hover:text-neon"}`}>Buy ↗</button><button onClick={() => setSide("sell")} className={`rounded py-2.5 text-[13px] font-bold transition ${side === "sell" ? "bg-danger text-bg" : "border border-line text-ink-dim hover:text-danger"}`}>Sell ↘</button></div>
                     {stage === "spot" && (
                       <div className="mt-2 flex gap-3 text-[11px]">{(["market", "limit"] as const).map((o) => <button key={o} onClick={() => setOt(o)} className={`capitalize transition ${ot === o ? "text-neon" : "text-ink-dim hover:text-neon"}`}>{o}{ot === o && <span className="ml-1 text-neon/60">●</span>}</button>)}</div>
                     )}
@@ -809,11 +864,14 @@ export default function MarketTerminal() {
                   </div>
                 )}
 
-                {/* flow */}
-                <div className="mt-3 space-y-1.5">
-                  <div className="flex items-center justify-between text-[10px] text-ink-faint"><span>Buys {st.buys}</span><span>Sells {st.sells}</span></div>
-                  <span className="flex h-1 overflow-hidden rounded-full bg-danger/30"><span className="block h-full bg-neon" style={{ width: `${st.buyVol + st.sellVol > 0 ? (st.buyVol / (st.buyVol + st.sellVol)) * 100 : 50}%` }} /></span>
-                  <div className="flex items-center justify-between text-[10px]"><span className="text-neon">Buy {money(st.buyVol)}</span><span className="text-danger">Sell {money(st.sellVol)}</span></div>
+                {/* flow — the long/short pressure bar, exchange-style */}
+                <div className="mt-3">
+                  <div className="relative flex h-[18px] overflow-hidden">
+                    <span className="flex h-full items-center bg-neon/80 pl-1.5 text-[9px] font-bold text-bg transition-all duration-500" style={{ width: `${st.buyVol + st.sellVol > 0 ? (st.buyVol / (st.buyVol + st.sellVol)) * 100 : 50}%` }}>{st.buyVol + st.sellVol > 0 ? `${Math.round((st.buyVol / (st.buyVol + st.sellVol)) * 100)}%` : ""}</span>
+                    <span className="flex h-full flex-1 items-center justify-end bg-danger/60 pr-1.5 text-[9px] font-bold text-bg" >{st.buyVol + st.sellVol > 0 ? `${Math.round((st.sellVol / (st.buyVol + st.sellVol)) * 100)}%` : ""}</span>
+                    <span className="absolute left-1/2 top-0 h-full w-px bg-black/60" />
+                  </div>
+                  <div className="mt-1 flex items-center justify-between text-[10px]"><span className="text-neon">Buy {money(st.buyVol)} · {st.buys}×</span><span className="text-danger">{st.sells}× · Sell {money(st.sellVol)}</span></div>
                 </div>
 
                 {/* BACKER ALLOCATION — the upside side of backing the raise */}
@@ -876,10 +934,18 @@ export default function MarketTerminal() {
                 )}
 
                 {stage === "futures" && (
-                  <div className="mt-5 border-t border-line pt-3 text-[10px] text-ink-dim">
-                    <div className="ng-label mb-1 flex items-center gap-2 !text-cyan"><IconShield className="h-3.5 w-3.5" />Margin</div>
-                    <div className="divide-y divide-line"><div className="ng-row !py-1"><span className="ng-row__k">Maint. margin rate</span><span className="ng-row__v font-normal">0.50%</span></div><div className="ng-row !py-1"><span className="ng-row__k">Max leverage</span><span className="ng-row__v font-normal">{d.maxLeverage}×</span></div><div className="ng-row !py-1"><span className="ng-row__k">Mark source</span><span className="ng-row__v font-normal">spot AMM</span></div><div className="ng-row !py-1"><span className="ng-row__k">Funding / {d.funding.interval_hours}h</span><span className={`ng-row__v font-normal ${d.funding.pays === "long" ? "text-danger" : d.funding.pays === "short" ? "text-neon" : ""}`}>{(d.funding.rate * 100).toFixed(3)}% · {d.funding.pays === "none" ? "balanced" : `${d.funding.pays}s pay`}</span></div></div>
-                    <p className="mt-1.5 text-[9px] leading-relaxed text-ink-faint">Funding = a skew carry: when open interest is one-sided, the crowded side pays the insurance fund, nudging the book back to balance.</p>
+                  <div className="mt-5 border-t border-line pt-3">
+                    <div className="ng-label mb-2 flex items-center gap-2 !text-cyan"><IconShield className="h-3.5 w-3.5" />Margin</div>
+                    <div className="grid grid-cols-2 gap-y-3">
+                      <div><div className="text-[8.5px] uppercase tracking-wide text-ink-faint">Maint. rate</div><div className="mt-0.5 text-[15px] font-bold leading-none text-ink tnum">0.50%</div></div>
+                      <div className="text-right"><div className="text-[8.5px] uppercase tracking-wide text-ink-faint">Max leverage</div><div className="mt-0.5 text-[15px] font-bold leading-none text-ink tnum">{d.maxLeverage}×</div></div>
+                      <div><div className="text-[8.5px] uppercase tracking-wide text-ink-faint">Mark source</div><div className="mt-0.5 text-[15px] font-bold leading-none text-ink">spot AMM</div></div>
+                      <div className="text-right"><div className="text-[8.5px] uppercase tracking-wide text-ink-faint">Funding / {d.funding.interval_hours}h</div><div className={`mt-0.5 text-[15px] font-bold leading-none tnum ${d.funding.pays === "long" ? "text-danger" : d.funding.pays === "short" ? "text-neon" : "text-ink"}`}>{(d.funding.rate * 100).toFixed(3)}%</div><div className="mt-0.5 text-[8px] text-ink-faint">{d.funding.pays === "none" ? "balanced" : `${d.funding.pays}s pay`}</div></div>
+                    </div>
+                    <details className="mt-1.5">
+                      <summary className="cursor-pointer list-none text-[9px] text-ink-faint transition hover:text-neon">ⓘ how funding works</summary>
+                      <p className="mt-1 text-[9px] leading-relaxed text-ink-faint">Funding = a skew carry: when open interest is one-sided, the crowded side pays the insurance fund, nudging the book back to balance.</p>
+                    </details>
                   </div>
                 )}
                 </>

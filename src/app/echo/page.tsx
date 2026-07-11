@@ -13,7 +13,8 @@ import {
   IconRefresh, IconExternal, IconSparkle, IconMessage,
 } from "@/components/app/ui";
 import { Ring, Histogram, SegBar, Donut, Spark } from "@/components/app/charts";
-import { PanelChart } from "@/components/app/terminal";
+import { PanelChart, TMeter } from "@/components/app/terminal";
+import Meter from "@/components/app/Meter";
 import { Decrypt, CountUp, Typewriter } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import OrbPanel from "@/components/app/OrbPanel";
@@ -399,6 +400,14 @@ export default function EchoPage() {
   const snapRaw = [askSnap?.builds ?? 0, askSnap?.agents ?? 0, askSnap?.open_raises ?? askSnap?.raises ?? 0, askSnap?.markets?.length ?? 0, askSnap?.open_jobs ?? 0];
   const snapTotal = snapRaw.reduce((s, v) => s + v, 0);
   const hasSnap = snapRaw.some((v) => v > 0);
+  // inline-bar scales — all derived from REAL rows already in scope (SSR-safe)
+  const maxFiles = Math.max(...pastBuilds.map((b) => b.artifact?.files?.length ?? 0), 1);
+  const covMax = Math.max(askSnap?.markets?.length ?? 0, askSnap?.grids ?? 0, askSnap?.open_raises ?? 0, askSnap?.open_jobs ?? 0, askSnap?.agents ?? 0, 1);
+  const watchMax = Math.max(...(["reputation", "trades", "jobs", "builds", "payments"] as const).map((k) => askSnap?.counts?.[k] ?? 0), 1);
+  const snapMaxLiq = Math.max(...(askSnap?.markets?.map((mm) => mm.liq) ?? [0]), 1);
+  const maxPulse = Math.max(...(askSnap?.top_grids?.map((g) => g.pulse) ?? [0]), 1);
+  const gridNow = askSnap?.grid ?? 0, gridVest = askSnap?.allocation ?? 0;
+  const gridLiquidPct = gridNow + gridVest > 0 ? Math.round((gridNow / (gridNow + gridVest)) * 100) : 0;
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
@@ -467,6 +476,7 @@ export default function EchoPage() {
                   <button key={b.build_id} onClick={() => { resumeBuild(b); setMode("builder"); }} className="flex w-full items-center gap-2.5 py-2 text-left transition hover:text-neon">
                     <span className="ng-led" />
                     <div className="min-w-0 flex-1"><div className="truncate text-[12px] text-ink">{b.title}</div><div className="text-[10px] text-ink-faint">Builder · v{b.version ?? 1} · {b.artifact.files?.length ?? 0} files{b.revisions?.length ? ` · ${b.revisions.length} rev` : ""}</div></div>
+                    <span className="shrink-0" title={`${b.artifact.files?.length ?? 0} files vs your largest build`}><Meter value={b.artifact.files?.length ?? 0} max={maxFiles} w={28} /></span>
                     {b.proposal_id && <Mark className="!text-[9px]">raising</Mark>}
                   </button>
                 ))}</div>
@@ -512,14 +522,15 @@ export default function EchoPage() {
           {mode === "analyst" && (
             <Card>
               <SecLabel icon={<IconChart className="h-3.5 w-3.5" />}>COVERAGE</SecLabel>
+              {/* per-row bars scale each surface vs the largest one */}
               <div className="divide-y divide-line">
-                <DataRow k="Markets" v={<Mark plain>{askSnap?.markets?.length ?? "—"}</Mark>} accent="cyan" />
-                <DataRow k="Communities" v={<Mark plain>{askSnap?.grids ?? "—"}</Mark>} />
-                <DataRow k="Open raises" v={<Mark plain>{askSnap?.open_raises ?? "—"}</Mark>} />
-                <DataRow k="Open jobs" v={<Mark plain>{askSnap?.open_jobs ?? "—"}</Mark>} />
-                <DataRow k="Agents" v={<Mark plain>{askSnap?.agents ?? "—"}</Mark>} />
+                <DataRow k="Markets" v={<span className="flex items-center gap-1.5"><Meter value={askSnap?.markets?.length ?? 0} max={covMax} w={32} color="#48f5ff" /><Mark plain>{askSnap?.markets?.length ?? "—"}</Mark></span>} accent="cyan" />
+                <DataRow k="Communities" v={<span className="flex items-center gap-1.5"><Meter value={askSnap?.grids ?? 0} max={covMax} w={32} /><Mark plain>{askSnap?.grids ?? "—"}</Mark></span>} />
+                <DataRow k="Open raises" v={<span className="flex items-center gap-1.5"><Meter value={askSnap?.open_raises ?? 0} max={covMax} w={32} /><Mark plain>{askSnap?.open_raises ?? "—"}</Mark></span>} />
+                <DataRow k="Open jobs" v={<span className="flex items-center gap-1.5"><Meter value={askSnap?.open_jobs ?? 0} max={covMax} w={32} /><Mark plain>{askSnap?.open_jobs ?? "—"}</Mark></span>} />
+                <DataRow k="Agents" v={<span className="flex items-center gap-1.5"><Meter value={askSnap?.agents ?? 0} max={covMax} w={32} /><Mark plain>{askSnap?.agents ?? "—"}</Mark></span>} />
               </div>
-              <p className="mt-2 text-[10px] text-ink-faint">The analysis surface — live platform data only, no external feeds.</p>
+              <p className="mt-2 text-[10px] text-ink-faint">The analysis surface — live platform data only, no external feeds. Bars scale vs the largest surface.</p>
             </Card>
           )}
 
@@ -527,6 +538,9 @@ export default function EchoPage() {
             <Card>
               <SecLabel icon={<IconRocket className="h-3.5 w-3.5" />}>LAUNCH STATUS</SecLabel>
               <div className="divide-y divide-line">{([["Project Grid", lp.gridSlug], ["GridX product", lp.productId], ["Fund raise", lp.proposalId]] as [string, string | undefined][]).map(([k, v]) => <div key={k} className="ng-row !text-[12px]"><span className="ng-row__k text-ink">{k}</span><span className="ng-row__v">{v ? <Mark className="!text-[10px]"><IconCheck className="h-3 w-3" />Done</Mark> : <span className="text-[10px] text-ink-faint">Pending</span>}</span></div>)}</div>
+              {(() => { const done = [lp.gridSlug, lp.productId, lp.proposalId].filter(Boolean).length; return (
+                <div className="mt-2 flex items-center gap-1.5 text-[10px] text-ink-faint"><Meter value={done} max={3} w={60} /><span className="tnum">{done}/3 launched</span></div>
+              ); })()}
               <p className="mt-2 text-[10px] text-ink-faint">Launch destinations for this build — act on them in the center.</p>
             </Card>
           )}
@@ -551,7 +565,7 @@ export default function EchoPage() {
               <SecLabel icon={<IconEye className="h-3.5 w-3.5" />}>WATCH SCOPE</SecLabel>
               <div className="divide-y divide-line">
                 {(["reputation", "trades", "jobs", "builds", "payments"] as const).map((k) => (
-                  <div key={k} className="ng-row !text-[12px]"><span className="ng-row__k flex items-center gap-2 capitalize text-ink"><IconCheck className="h-3.5 w-3.5 text-cyan" />{k}</span><span className="ng-row__v"><Mark plain className="!text-[10px]">{askSnap?.counts?.[k] ?? "—"}</Mark></span></div>
+                  <div key={k} className="ng-row !text-[12px]"><span className="ng-row__k flex items-center gap-2 capitalize text-ink"><IconCheck className="h-3.5 w-3.5 text-cyan" />{k}</span><span className="ng-row__v flex items-center gap-1.5"><span title="events vs the busiest stream"><Meter value={askSnap?.counts?.[k] ?? 0} max={watchMax} w={32} color="#48f5ff" /></span><Mark plain className="!text-[10px]">{askSnap?.counts?.[k] ?? "—"}</Mark></span></div>
                 ))}
               </div>
               <p className="mt-2 text-[10px] text-ink-faint">All-time event counts per stream — everything Echo is witnessing.</p>
@@ -594,6 +608,7 @@ export default function EchoPage() {
                         <div className="truncate text-[12.5px] text-ink">{b.title}</div>
                         <div className="truncate text-[10px] text-ink-faint">v{b.version ?? 1} · {b.artifact.files?.length ?? 0} files{b.revisions?.length ? ` · ${b.revisions.length} rev` : ""} · {new Date(b.created_at).toLocaleDateString()}</div>
                       </div>
+                      <span className="shrink-0" title={`${b.artifact.files?.length ?? 0} files vs your largest build`}><Meter value={b.artifact.files?.length ?? 0} max={maxFiles} w={36} /></span>
                       {b.deployment && <Mark plain accent="cyan" className="!text-[9px] shrink-0">live</Mark>}
                       {b.proposal_id && <Mark className="!text-[9px] shrink-0">raising</Mark>}
                       <button onClick={() => { resumeBuild(b); setMode("builder"); }} className="ng-btn ng-btn--sm shrink-0">Open</button>
@@ -644,6 +659,12 @@ export default function EchoPage() {
                   <DataRow k="Active work · Raises" v={<span className="text-[12px]">{askSnap.working ?? 0} · {askSnap.raises ?? 0}</span>} />
                 </div>
               ) : <p className="text-[11px] text-ink-dim">Loading your live state…</p>}
+              {askSnap && gridNow + gridVest > 0 && (
+                <div className="mt-2 border-t border-line pt-2">
+                  <TMeter label="liquid" pct={gridLiquidPct} value={`${gridLiquidPct}%`} />
+                  <p className="mt-1 text-[9.5px] text-ink-faint">Liquid GRID in your wallet vs your total (wallet + TGE allocation).</p>
+                </div>
+              )}
             </Card>
           </>}
 
@@ -673,6 +694,7 @@ export default function EchoPage() {
                         <div className="truncate text-[13px] text-ink">{b.title}</div>
                         <div className="truncate text-[10px] text-ink-dim">v{b.version ?? 1} · {b.artifact.files!.length} files{b.revisions?.length ? ` · ${b.revisions.length} revision${b.revisions.length === 1 ? "" : "s"}` : ""} · {b.stack.slice(0, 3).join(" · ")} · {new Date(b.created_at).toLocaleDateString()}</div>
                       </div>
+                      <span className="shrink-0" title={`${b.artifact.files!.length} files vs your largest build`}><Meter value={b.artifact.files!.length} max={maxFiles} w={36} /></span>
                       {b.deployment && <Mark plain accent="cyan" className="!text-[9px] shrink-0">live</Mark>}
                       <button onClick={() => resumeBuild(b)} className="ng-btn ng-btn--sm shrink-0">Continue</button>
                     </div>
@@ -810,7 +832,7 @@ export default function EchoPage() {
                   {askSnap.markets.map((m) => (
                     <div key={m.symbol} className="flex items-center justify-between gap-3 py-2">
                       <div className="min-w-0"><span className="text-[13px] font-semibold text-neon">{m.symbol}</span> <Tag accent="cyan" className="!text-[9px]">{m.stage}</Tag>{m.status !== "active" && <Mark accent="danger" plain className="ml-1 !text-[9px]">{m.status}</Mark>}</div>
-                      <div className="shrink-0 text-right text-[11px] text-ink-dim tnum">{m.price.toFixed(4)} · liq ${Math.round(m.liq / 1000)}K · {m.holders} holders</div>
+                      <div className="flex shrink-0 items-center gap-1.5 text-right text-[11px] text-ink-dim tnum"><span title="liquidity vs the deepest market"><Meter value={m.liq} max={snapMaxLiq} w={32} color="#48f5ff" /></span>{m.price.toFixed(4)} · liq ${Math.round(m.liq / 1000)}K · {m.holders} holders</div>
                     </div>
                   ))}
                 </div>
@@ -1144,8 +1166,8 @@ export default function EchoPage() {
                 <div className="divide-y divide-line">
                   {askSnap.top_grids.map((g, i) => (
                     <div key={g.name} className="flex items-center justify-between gap-2 py-2">
-                      <span className="min-w-0 truncate text-[12px] text-ink"><span className="text-ink-faint">{i + 1} · </span>{g.name}</span>
-                      <span className="shrink-0 text-[10.5px] text-ink-dim tnum">{g.members} members · {g.pulse.toLocaleString()} pulse</span>
+                      <span className="flex min-w-0 items-center gap-2 text-[12px] text-ink"><Av size={20} seed={g.name} /><span className="shrink-0 text-ink-faint">{i + 1} ·</span><span className="truncate">{g.name}</span></span>
+                      <span className="flex shrink-0 items-center gap-1.5 text-[10.5px] text-ink-dim tnum"><span title="pulse vs the top community"><Meter value={g.pulse} max={maxPulse} w={28} /></span>{g.members} members · {g.pulse.toLocaleString()} pulse</span>
                     </div>
                   ))}
                 </div>

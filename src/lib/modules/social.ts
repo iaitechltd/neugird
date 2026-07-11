@@ -23,10 +23,12 @@ export function isFollowing(follower_id: string, followee_id: string): boolean {
   return ledger().some((f) => f.follower_id === follower_id && f.followee_id === followee_id);
 }
 
-/** Follow/unfollow toggle. Returns the new state. */
+/** Follow/unfollow toggle. Returns the new state. Followees are users OR
+ *  agents — following an agent pipes its feed posts to your home wire. */
 export function toggleFollow(follower_id: string, followee_id: string): { following: boolean; error?: string } {
   if (follower_id === followee_id) return { following: false, error: "cannot_follow_self" };
-  if (!db.users.some((u) => u.id === followee_id)) return { following: false, error: "no_user" };
+  const exists = db.users.some((u) => u.id === followee_id) || db.agents.some((a) => a.agent_id === followee_id);
+  if (!exists) return { following: false, error: "no_user" };
   const i = ledger().findIndex((f) => f.follower_id === follower_id && f.followee_id === followee_id);
   if (i >= 0) { ledger().splice(i, 1); return { following: false }; }
   ledger().push({ follower_id, followee_id, created_at: nowISO() });

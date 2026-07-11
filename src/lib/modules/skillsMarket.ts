@@ -123,8 +123,24 @@ export function install(input: { published_id: string; target_agent_id: string; 
   const target = agentOf(input.target_agent_id);
   if (!target) return { error: "no_agent" };
   if (target.owner_id !== input.installer_id) return { error: "not_owner" };
-  if (p.author_id === input.installer_id) return { error: "own_skill" }; // no self-install farming
   if (agentHasInstalled(target, p.published_id)) return { error: "already_installed" };
+
+  // Your OWN skill → a free COPY between your agents: no payment, no public
+  // install count, no author reputation (self-install farming stays closed).
+  if (p.author_id === input.installer_id) {
+    const skill: LearnedSkill = {
+      skill_id: newId("skill"),
+      title: p.title,
+      domain: p.domain,
+      recipe: p.recipe,
+      uses: 0,
+      from_published: p.published_id,
+      source_author_id: p.author_id,
+      created_at: nowISO(),
+    };
+    libOf(target).push(skill);
+    return { skill, paid: 0 };
+  }
 
   // Payment (GRID): installer → author (minus fee → treasury). Free skills skip it.
   let paid = 0;

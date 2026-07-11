@@ -13,7 +13,9 @@ import NeuHeader from "@/components/app/NeuHeader";
 import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, Tag, Mark, DataRow, IconBriefcase, IconActivity, IconCheck , kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
-import { PanelChart } from "@/components/app/terminal";
+import { MatrixAvatar } from "@/components/app/MatrixAvatar";
+import Meter from "@/components/app/Meter";
+import { PanelChart, TMeter, barStr } from "@/components/app/terminal";
 import { Bullet, LabeledBars, Marimekko, Pie, Histogram, SERIES } from "@/components/app/charts";
 import type { Job } from "@/lib/types";
 
@@ -121,6 +123,8 @@ export default function JobsPage() {
   const rewardSpread = list.map((j) => j.reward_amount ?? 0).filter((v) => v > 0);
   // Card bullet — every job's reward measured against the whole board's average
   const boardAvg = rewardSpread.length ? Math.round(rewardSpread.reduce((a, b) => a + b, 0) / rewardSpread.length) : 0;
+  // Rail meters — the open board's share of all jobs / of all reward value
+  const totalRewards = list.reduce((s, j) => s + (j.reward_amount ?? 0), 0);
 
   async function act(url: string, body?: object, msg?: string) {
     if (busy) return;
@@ -168,6 +172,12 @@ export default function JobsPage() {
               <DataRow k="Reward Pool" v={`${counts.pool} Pulse`} />
               <DataRow k="Total Jobs" v={list.length} />
             </div>
+            {list.length > 0 && (
+              <div className="mt-2 border-t border-line pt-1.5">
+                <TMeter label="Open share" pct={(counts.open / list.length) * 100} value={`${Math.round((counts.open / list.length) * 100)}% of jobs`} w={10} />
+                <TMeter label="Pool share" pct={(counts.pool / Math.max(1, totalRewards)) * 100} value={`${Math.round((counts.pool / Math.max(1, totalRewards)) * 100)}% of rewards`} w={10} color="#48f5ff" />
+              </div>
+            )}
 
             <PanelChart title="Demand · by skill" read={`top ${skillBars.length}`}>
               {skillBars.length > 0
@@ -189,7 +199,11 @@ export default function JobsPage() {
             <div className="space-y-1">
               {([["open", "Open", counts.open], ["doing", "I'm doing", counts.doing], ["created", "I created", counts.created], ["all", "All", list.length]] as [View, string, number][]).map(([v, label, n]) => (
                 <button key={v} onClick={() => setView(v)} className={`flex w-full items-center justify-between rounded px-2.5 py-2 text-[13px] transition ${view === v ? "bg-neon/10 text-neon" : "text-ink-dim hover:bg-neon/[0.06] hover:text-neon"}`}>
-                  <span>{label}</span><Mark plain className="!text-[10px]">{n}</Mark>
+                  <span>{label}</span>
+                  <span className="flex items-center gap-2">
+                    <Meter value={n} max={Math.max(1, list.length)} w={40} />
+                    <Mark plain className="!text-[10px]">{n}</Mark>
+                  </span>
                 </button>
               ))}
             </div>
@@ -342,11 +356,20 @@ export default function JobsPage() {
                   {disputes.map((d) => (
                     <div key={d.dispute_id} className="rounded border border-amber/25 bg-amber/[0.04] p-2 text-[11px]">
                       <div className="font-semibold text-ink">{d.job_title}</div>
-                      <div className="mt-0.5 text-[10px] text-ink-faint">{d.worker} vs {d.creator}{d.amount ? ` · $${d.amount.toLocaleString()} escrow` : ""}</div>
+                      <div className="mt-0.5 flex items-center gap-1 text-[10px] text-ink-faint">
+                        <MatrixAvatar seed={d.worker} size={14} /><span className="truncate">{d.worker}</span>
+                        <span className="shrink-0">vs</span>
+                        <MatrixAvatar seed={d.creator} size={14} /><span className="truncate">{d.creator}</span>
+                        {d.amount ? <span className="shrink-0"> · ${d.amount.toLocaleString()} escrow</span> : null}
+                      </div>
                       {d.reason && <p className="mt-1 line-clamp-2 text-[10px] italic leading-relaxed text-ink-dim">“{d.reason}”</p>}
                       <div className="mt-1.5 flex items-center justify-between text-[10px] text-ink-faint">
                         <span>worker {d.for_worker_votes} · creator {d.for_creator_votes}</span>
                         <span>{d.votes_needed} more to resolve</span>
+                      </div>
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <Meter value={d.for_worker_votes + d.for_creator_votes} max={Math.max(1, d.quorum)} w={110} color="#ffb020" />
+                        <span className="tnum text-[9px] text-ink-faint">{d.for_worker_votes + d.for_creator_votes}/{d.quorum} quorum</span>
                       </div>
                       {d.can_evaluate ? (
                         <div className="mt-1.5 grid grid-cols-2 gap-1.5">
@@ -368,7 +391,13 @@ export default function JobsPage() {
 
             <div className="ng-label mb-2 mt-5 !text-ink-dim">Lifecycle</div>
             <div className="space-y-1.5 text-[11px] text-ink-dim">
-              {LIFECYCLE.map((s, i) => <div key={s} className="flex items-center gap-2"><span className="grid h-4 w-4 place-items-center rounded-full bg-neon/15 text-[9px] text-neon">{i + 1}</span>{s}</div>)}
+              {LIFECYCLE.map((s, i) => (
+                <div key={s} className="flex items-center gap-2">
+                  <span className="grid h-4 w-4 place-items-center rounded-full bg-neon/15 text-[9px] text-neon">{i + 1}</span>
+                  <span className="min-w-0 flex-1">{s}</span>
+                  <span className="shrink-0 font-mono text-[10px] tracking-tighter text-neon/60" title={`stage ${i + 1} of ${LIFECYCLE.length}`}>{barStr(((i + 1) / LIFECYCLE.length) * 100, 5)}</span>
+                </div>
+              ))}
             </div>
             <Link href="/talent" className="ng-btn ng-btn--block ng-btn--sm mt-4">Browse talent →</Link>
             <p className="mt-4 text-[10px] leading-relaxed text-ink-faint">Approved work pays the doer real builder reputation — earned, not bought.</p>

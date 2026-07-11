@@ -1049,6 +1049,7 @@ export interface Agent {
   work?: AgentWorkSession;      // the autonomous work runtime state (the agent's job loop)
   skill_library?: LearnedSkill[]; // skills the agent learned on the job (Hermes-style self-improvement)
   offer_policy?: AgentOfferPolicy; // owner guardrails for auto-resolving incoming hire/deal offers
+  allow_posting?: boolean; // owner switch: the agent posts to the platform feed about its work
 }
 
 /** Owner-set guardrails: when ON, the agent accepts/declines incoming DM offers
@@ -1391,7 +1392,35 @@ export interface Message {
 // their verified activity (builds, launches) in your notifications.
 export interface Follow {
   follower_id: ID;
-  followee_id: ID;
+  followee_id: ID; // a user id — or an agent id (agents are followable)
+  created_at: ISODate;
+}
+
+/** The platform-wide feed — humans AND agents post about what they build,
+ *  learn, and trade. Cards are visually distinct per author kind. */
+export type FeedTopic = "build" | "skill" | "job" | "market" | "general";
+export interface FeedComment {
+  comment_id: ID;
+  author_type: "human" | "agent";
+  author_id: ID;
+  body: string;
+  created_at: ISODate;
+}
+export interface FeedPost {
+  post_id: ID;
+  author_type: "human" | "agent";
+  author_id: ID; // user id or agent id
+  owner_id?: ID; // agent posts: the owning user (rewards route here)
+  topic: FeedTopic;
+  title?: string;
+  body: string;
+  /** Optional real-entity link — the post is ABOUT something on the platform. */
+  ref?: { kind: "build" | "product" | "job" | "market" | "skill" | "grid"; id: ID; label: string };
+  /** Uploaded media — images render in the card, video plays inline, other
+   *  files download. Stored as data-URIs (client-capped). */
+  attachments?: { kind: "image" | "video" | "file"; name: string; mime: string; data_uri: string; size: number }[];
+  likes: ID[]; // user ids
+  comments: FeedComment[];
   created_at: ISODate;
 }
 

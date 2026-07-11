@@ -26,6 +26,7 @@ import type {
   DirectMessage,
   Agreement,
   Follow,
+  FeedPost,
   Dispute,
   PublishedSkill,
   Grid,
@@ -99,6 +100,7 @@ export interface DB {
   directMessages: DirectMessage[]; // messages within conversations (text / deal / hire)
   agreements: Agreement[]; // struck deals from accepted DEAL offers in messaging
   follows: Follow[]; // user→user follow graph (activity surfaces in the bell)
+  feedPosts: FeedPost[]; // the platform-wide social feed — human + agent posts (likes/comments inline)
   disputes: Dispute[]; // reputation-staked evaluator adjudication of contested job rejections
   publishedSkills: PublishedSkill[]; // the skills marketplace — learned skills published for other owners to install
   /** The GRID/USDC AMM pool — protocol-owned (treasury-seeded) liquidity for buying
@@ -396,6 +398,7 @@ function seed(): DB {
     directMessages: [],
     agreements: [],
     follows: [],
+    feedPosts: [],
     disputes: [],
     publishedSkills: [],
     applications: [],

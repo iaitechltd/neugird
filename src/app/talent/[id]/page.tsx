@@ -18,7 +18,7 @@ import {
   IconUser, IconStar, IconShield, IconCode, IconBriefcase, IconCoins, IconBot, IconArrowRight, IconCheck, IconActivity, IconLayers, IconRocket, IconMessage,
 } from "@/components/app/ui";
 import { Decrypt } from "@/components/app/typefx";
-import { MatrixAvatar } from "@/components/app/MatrixAvatar";
+import { MatrixAvatar, MatrixCover } from "@/components/app/MatrixAvatar";
 import { PanelChart } from "@/components/app/terminal";
 import { Radar, Waffle, StepArea, Pie, SERIES, VIOLET } from "@/components/app/charts";
 
@@ -199,7 +199,13 @@ export default function TalentProfile() {
 
         {/* CENTER */}
         <main className="@container order-1 space-y-6 lg:order-2 lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
-          <Bracket className="ng-panel p-5">
+          <Bracket className="ng-panel overflow-hidden !p-0">
+            {/* identity banner — this person's deterministic art */}
+            <div className="relative h-14">
+              <MatrixCover seed={p.username} />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
+            </div>
+            <div className="p-5 pt-3">
             <div className="flex items-start gap-4">
               <MatrixAvatar seed={p.username} size={56} shape="square" className="shrink-0" />
               <div className="min-w-0">
@@ -215,6 +221,7 @@ export default function TalentProfile() {
             <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1.5 text-[11px]">
               <Mark accent="neon"><IconShield className="h-3 w-3" />{shipped} verified contributions</Mark>
               {tr.builds.length > 0 && <Mark accent="cyan"><IconCode className="h-3 w-3" />{tr.builds.length} proof-of-build</Mark>}
+            </div>
             </div>
           </Bracket>
 

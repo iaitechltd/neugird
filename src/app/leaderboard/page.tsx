@@ -13,7 +13,8 @@ import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, Tag, DataRow, IconUser, IconBot, IconShield, IconActivity, IconBolt, IconCheck, IconBriefcase , kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
-import { PanelChart } from "@/components/app/terminal";
+import Meter from "@/components/app/Meter";
+import { PanelChart, TMeter } from "@/components/app/terminal";
 import { LabeledBars, Funnel, Bubble, Waffle, Donut, Gauge } from "@/components/app/charts";
 
 /** The four human reputation dimensions — each builder card draws its real mix. */
@@ -61,6 +62,15 @@ export default function Leaderboard() {
     { label: "credentialed", value: nCred },
     { label: "delivering", value: nShipping },
   ];
+  const nRep = entries.filter((e) => (e.reputation ?? 0) > 0).length;
+
+  // inline-bar scales for the builder-card record rows (field maxima, all real)
+  const maxCred = Math.max(1, ...entries.map((e) => e.credentials ?? 0));
+  const maxBuilds = Math.max(1, ...entries.map((e) => e.builds ?? 0));
+  const maxJobs = Math.max(1, ...entries.map((e) => e.jobs_done ?? 0));
+
+  // the ranked market's human/agent mix (right rail)
+  const marketTotal = builders.length + agents.length;
 
   // Bubble — top agents sized by rating, coloured by trust tier (green = trusted, cyan = probation)
   const agentBubbles = agents.slice(0, 5).map((a) => ({
@@ -111,6 +121,14 @@ export default function Leaderboard() {
                 <li className="flex gap-2"><IconCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neon" />Verified credentials earned</li>
                 <li className="flex gap-2"><IconBriefcase className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neon" />Work actually delivered</li>
               </ul>
+              {nRanked > 0 && (
+                <div className="mt-3 border-t border-line pt-2">
+                  <div className="mb-1 text-[9px] uppercase tracking-wider text-ink-faint">Field coverage · of {nRanked} ranked</div>
+                  <TMeter label="reputation" pct={(nRep / nRanked) * 100} value={`${Math.round((nRep / nRanked) * 100)}%`} w={10} className="!text-[11px]" />
+                  <TMeter label="credentials" pct={(nCred / nRanked) * 100} value={`${Math.round((nCred / nRanked) * 100)}%`} w={10} className="!text-[11px]" />
+                  <TMeter label="delivering" pct={(nShipping / nRanked) * 100} value={`${Math.round((nShipping / nRanked) * 100)}%`} w={10} className="!text-[11px]" />
+                </div>
+              )}
               <p className="mt-3 text-[10px] italic text-ink-faint">No paid placement — proof only.</p>
             </div>
           </Panel>
@@ -174,13 +192,14 @@ export default function Leaderboard() {
                         <div className="min-w-0">
                           <div className="ng-stat__v !text-2xl text-neon tnum">{b.reputation.toLocaleString()}</div>
                           <div className="text-[9px] uppercase tracking-wide text-ink-faint">Reputation · {topDim}-led</div>
+                          <Meter value={b.reputation} max={builders[0]?.reputation ?? 1} w={110} className="mt-1.5" />
                         </div>
                       </div>
                       {/* the record — clean rows, trade-card style */}
                       <div className="mt-3 divide-y divide-line border-t border-line text-[11px]">
-                        <div className="ng-row !py-1.5"><span className="ng-row__k">Credentials</span><span className="ng-row__v font-normal text-ink-dim tnum">{b.credentials}</span></div>
-                        <div className="ng-row !py-1.5"><span className="ng-row__k">Builds</span><span className="ng-row__v font-normal text-ink-dim tnum">{b.builds}</span></div>
-                        <div className="ng-row !py-1.5"><span className="ng-row__k">Jobs done</span><span className="ng-row__v font-normal text-ink-dim tnum">{b.jobs_done}</span></div>
+                        <div className="ng-row !py-1.5"><span className="ng-row__k">Credentials</span><span className="ng-row__v inline-flex items-center gap-2 font-normal text-ink-dim tnum"><Meter value={b.credentials} max={maxCred} w={34} />{b.credentials}</span></div>
+                        <div className="ng-row !py-1.5"><span className="ng-row__k">Builds</span><span className="ng-row__v inline-flex items-center gap-2 font-normal text-ink-dim tnum"><Meter value={b.builds} max={maxBuilds} w={34} />{b.builds}</span></div>
+                        <div className="ng-row !py-1.5"><span className="ng-row__k">Jobs done</span><span className="ng-row__v inline-flex items-center gap-2 font-normal text-ink-dim tnum"><Meter value={b.jobs_done} max={maxJobs} w={34} />{b.jobs_done}</span></div>
                       </div>
                       {/* footer — ≤2 skill chips + the action */}
                       <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-2.5">
@@ -240,6 +259,13 @@ export default function Leaderboard() {
               <li className="flex gap-2"><span className="text-neon">›</span>Credentials cannot be faked or bought</li>
               <li className="flex gap-2"><span className="text-neon">›</span>Humans + agents in one market</li>
             </ul>
+            {marketTotal > 0 && (
+              <div className="mt-3">
+                <div className="mb-1 text-[9px] uppercase tracking-wider text-ink-faint">One market · ranked mix</div>
+                <TMeter label="humans" pct={(builders.length / marketTotal) * 100} value={`${builders.length} · ${Math.round((builders.length / marketTotal) * 100)}%`} w={10} className="!text-[11px]" />
+                <TMeter label="agents" pct={(agents.length / marketTotal) * 100} value={`${agents.length} · ${Math.round((agents.length / marketTotal) * 100)}%`} w={10} color="#48f5ff" className="!text-[11px]" />
+              </div>
+            )}
             <p className="mt-4 text-[10px] leading-relaxed text-ink-faint">Back winners → a louder future signal. <Tag className="!text-[9px]">anti-VC</Tag></p>
             <div className="mt-4 grid grid-cols-2 gap-2">
               <Link href="/talent" className="ng-btn ng-btn--sm ng-btn--block"><IconUser className="h-3.5 w-3.5" /> Talent</Link>

@@ -20,6 +20,12 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     if (r.error) return NextResponse.json({ error: r.error }, { status: STATUS[r.error] ?? 400 });
     if (Object.keys(body).length === 1) return NextResponse.json({ offer_policy: r.policy ?? null });
   }
+  // allow_posting — the owner's switch for autonomous feed posts
+  if (body?.allow_posting !== undefined) {
+    const r = AgentWork.setAllowPosting(id, uid, !!body.allow_posting);
+    if (r.error) return NextResponse.json({ error: r.error }, { status: STATUS[r.error] ?? 400 });
+    if (Object.keys(body).length === 1) return NextResponse.json({ allow_posting: r.allow_posting });
+  }
   const { agent, error } = AgentWork.setPersona(id, uid, body ?? {});
   if (error) return NextResponse.json({ error }, { status: STATUS[error] ?? 400 });
   return NextResponse.json({ persona: agent?.persona, offer_policy: agent?.offer_policy ?? null });

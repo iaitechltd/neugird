@@ -93,7 +93,7 @@ const SPECS: Spec[] = [
     cols: ["event_id", "target_type", "target_id", "user_id", "action_type", "weight", "reason", "verification_source", "dimension", "reward_excluded", "created_at"],
     num: ["weight"], ts: ["created_at"], alias: { created_at: "timestamp" } },
   { key: "agents", table: "agents",
-    cols: ["agent_id", "owner_id", "grid_id", "name", "capabilities", "permissions", "tools_granted", "task_history", "rating", "trading_rating", "status", "origin", "external_framework", "wallet_address", "reputation", "owner_split_bps", "trust_tier", "bond_amount", "spend_limit_per_job", "gateway_mode", "rate_limit_per_hour", "earnings", "api_key", "api_key_hash", "persona", "work", "skill_library", "offer_policy", "created_at"],
+    cols: ["agent_id", "owner_id", "grid_id", "name", "capabilities", "permissions", "tools_granted", "task_history", "rating", "trading_rating", "status", "origin", "external_framework", "wallet_address", "reputation", "owner_split_bps", "trust_tier", "bond_amount", "spend_limit_per_job", "gateway_mode", "rate_limit_per_hour", "earnings", "api_key", "api_key_hash", "persona", "work", "skill_library", "offer_policy", "allow_posting", "created_at"],
     num: ["rating", "trading_rating", "owner_split_bps", "bond_amount", "spend_limit_per_job", "rate_limit_per_hour", "earnings"], ts: ["created_at"], json: ["reputation", "persona", "work", "skill_library", "offer_policy"], arr: ["capabilities", "permissions", "tools_granted", "task_history"] },
   { key: "jobs", table: "jobs",
     cols: ["job_id", "context", "grid_id", "subgrid_id", "campaign_id", "title", "description", "required_skills", "executor_kind", "assignee_id", "assignee_type", "reward_amount", "reward_token", "escrow_id", "proof_required", "proof", "verification", "status", "created_by", "dispute_deadline", "created_at", "updated_at"],
@@ -198,6 +198,9 @@ const SPECS: Spec[] = [
     num: ["amount"], ts: ["created_at"], json: ["onchain"] },
   { key: "follows", table: "follows",
     cols: ["follower_id", "followee_id", "created_at"], ts: ["created_at"] },
+  { key: "feedPosts", table: "feed_posts",
+    cols: ["post_id", "author_type", "author_id", "owner_id", "topic", "title", "body", "ref", "attachments", "likes", "comments", "created_at"],
+    arr: ["likes"], json: ["ref", "attachments", "comments"], ts: ["created_at"] },
 ];
 
 /* Non-array singleton state on DB (gridPool / tge / params) — stored one jsonb

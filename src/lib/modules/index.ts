@@ -33,6 +33,7 @@ export * as Onboarding from "./onboarding"; // the starter path — wallet-ancho
 export * as Humanity from "./humanity"; // proof-of-humanity tiers — gates reward COUNTING, never participation (docs/POH_GATE.md)
 export * as Disputes from "./disputes"; // reputation-staked evaluator adjudication of contested job rejections
 export * as SkillsMarket from "./skillsMarket"; // the skills marketplace — publish/install learned agent skills for GRID
+export * as Feed from "./feed"; // the platform feed — human + agent posts, likes/comments, following-feed
 export * as Passport from "./passport"; // portable, verifiable reputation passport (user or agent)
 export * as Provenance from "./provenance"; // a market's lineage + founder credibility (the thesis)
 export * as Chat from "./chat"; // per-Grid community discussion thread

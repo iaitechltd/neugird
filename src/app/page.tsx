@@ -10,6 +10,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { motion, useReducedMotion, useScroll, useTransform } from "motion/react";
 import NeuGridMark from "@/components/NeuGridMark";
 import SiteFooter from "@/components/app/SiteFooter";
 import { Cursor } from "@/components/app/typefx";
@@ -60,6 +61,67 @@ function TypeLine({
   );
 }
 
+/* Seamless video loop: two stacked copies of the same clip. When the visible
+   copy nears its end, the hidden one restarts from frame 0 and crossfades in —
+   the hard cut of a native `loop` never reaches the screen. Reduced motion
+   holds the poster still. */
+const SEAM_WINDOW = 1.2; // s left on the clip when the swap begins
+const XFADE = 1.0; // s of crossfade (must stay under SEAM_WINDOW)
+
+function CrossfadeLoop({ src, poster }: { src?: string; poster: string }) {
+  const vidA = useRef<HTMLVideoElement>(null);
+  const vidB = useRef<HTMLVideoElement>(null);
+  const vids = [vidA, vidB];
+  const [front, setFront] = useState(0);
+
+  // nudge playback once the src attaches; reduced motion keeps the poster
+  useEffect(() => {
+    const v = vids[front].current;
+    if (!src || !v) return;
+    if (prefersReduced()) { v.pause(); return; }
+    if (v.paused) v.play().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src, front]);
+
+  const handleTime = (i: number) => {
+    if (i !== front || prefersReduced()) return;
+    const v = vids[i].current, next = vids[1 - i].current;
+    if (!v || !next || !isFinite(v.duration) || v.duration <= SEAM_WINDOW) return;
+    if (v.duration - v.currentTime <= SEAM_WINDOW) {
+      next.currentTime = 0;
+      next.play().catch(() => {});
+      setFront(1 - i);
+    }
+  };
+
+  return (
+    <>
+      {[0, 1].map((i) => (
+        <motion.div
+          key={i}
+          className="absolute inset-0"
+          initial={false}
+          animate={{ opacity: front === i ? 1 : 0 }}
+          transition={{ duration: XFADE, ease: "linear" }}
+          onAnimationComplete={() => { const v = vids[i].current; if (front !== i && v) v.pause(); }}
+        >
+          <video
+            ref={vids[i]}
+            className="absolute inset-0 h-full w-full scale-[1.04] object-cover [object-position:76%_center] lg:[object-position:right_center]"
+            src={src}
+            poster={i === 0 ? poster : undefined}
+            preload={src ? "auto" : "none"}
+            autoPlay={i === 0}
+            muted
+            playsInline
+            onTimeUpdate={() => handleTime(i)}
+          />
+        </motion.div>
+      ))}
+    </>
+  );
+}
+
 type TitleLine = { t: string; accent?: boolean };
 
 // The positioning title — shared across both scenes as the anchor; each scene
@@ -77,8 +139,15 @@ function Scene({
   cta?: React.ReactNode; cue?: boolean; eager?: boolean;
 }) {
   const ref = useRef<HTMLElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
   const [started, setStarted] = useState(false);
+  // parallax: the render drifts ±2% against the scroll (inside the 1.04 scale
+  // headroom, so edges never show); off under reduced motion
+  const reduce = useReducedMotion();
+  const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "end start"] });
+  const parallaxY = useTransform(scrollYProgress, [0, 1], ["-2%", "2%"]);
+  // scene-to-scene dissolve: fade toward black while entering/leaving the
+  // viewport (0.5 = center stage), so stacked scenes read as film cuts
+  const seamFade = useTransform(scrollYProgress, [0.12, 0.38, 0.62, 0.88], [0.92, 0, 0, 0.92]);
   // lazy video: below-the-fold scenes only fetch their mp4 when scrolled within
   // one viewport (poster paints instantly regardless); scene-1 is eager
   const [near, setNear] = useState(false);
@@ -93,13 +162,6 @@ function Scene({
     io.observe(el);
     return () => io.disconnect();
   }, [video, eager]);
-  // respect reduced motion (hold the poster); nudge playback once the src attaches
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!video || !v) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { v.pause(); return; }
-    if (loadVideo && v.paused) v.play().catch(() => {});
-  }, [video, loadVideo]);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -120,30 +182,29 @@ function Scene({
   return (
     <section ref={ref} id={id} className="relative flex h-screen min-h-[620px] w-full items-end overflow-hidden">
       {/* background render — video when provided (poster = the still, instant paint) */}
-      {video ? (
-        <video
-          ref={videoRef}
-          className="absolute inset-0 h-full w-full scale-[1.04] object-cover [object-position:76%_center] lg:[object-position:right_center]"
-          src={loadVideo ? video : undefined}
-          poster={img}
-          preload={loadVideo ? "auto" : "none"}
-          autoPlay
-          muted
-          loop
-          playsInline
-        />
-      ) : (
-        <div
-          className="absolute inset-0 scale-[1.04] bg-cover bg-no-repeat [background-position:76%_center] lg:[background-position:right_center]"
-          style={{ backgroundImage: `url('${img}')` }}
-        />
-      )}
+      <motion.div className="absolute inset-0" style={reduce ? undefined : { y: parallaxY }}>
+        {video ? (
+          <CrossfadeLoop src={loadVideo ? video : undefined} poster={img} />
+        ) : (
+          <div
+            className="absolute inset-0 scale-[1.04] bg-cover bg-no-repeat [background-position:76%_center] lg:[background-position:right_center]"
+            style={{ backgroundImage: `url('${img}')` }}
+          />
+        )}
+      </motion.div>
       {/* legibility: dark on the left → clear on the right, plus a soft vignette.
           Video scenes are already graded — only a light touch, no double-darkening. */}
       <div className="absolute inset-0" style={{ background: video
         ? "linear-gradient(90deg, rgba(0,0,0,.45) 0%, rgba(0,0,0,.25) 35%, rgba(0,0,0,.05) 65%, rgba(0,0,0,0) 100%)"
         : "linear-gradient(90deg, rgba(0,0,0,.97) 0%, rgba(0,0,0,.88) 30%, rgba(0,0,0,.52) 58%, rgba(0,0,0,.12) 100%)" }} />
       <div className={`absolute inset-0 bg-gradient-to-t ${video ? "from-black/35 via-transparent to-black/20" : "from-black/75 via-transparent to-black/40"}`} />
+
+      {/* seam feathering — every scene melts into black at its edges, so the
+          stack reads as one continuous film instead of tiled videos */}
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-[5] h-32 bg-gradient-to-b from-black via-black/45 to-transparent" />
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 z-[5] h-32 bg-gradient-to-t from-black via-black/45 to-transparent" />
+      {/* scroll-linked dissolve — fade to black while off center-stage */}
+      <motion.div aria-hidden className="pointer-events-none absolute inset-0 z-[15] bg-black" style={{ opacity: reduce ? 0 : seamFade }} />
 
       {/* content */}
       <div className="relative z-10 mx-auto w-full max-w-7xl px-6 pb-20 sm:px-10 sm:pb-24 lg:pb-28">
@@ -187,13 +248,27 @@ function Scene({
 }
 
 export default function Landing() {
+  const reduce = useReducedMotion();
+  const { scrollYProgress } = useScroll();
   return (
     <div className="relative min-h-screen bg-black text-ink">
       <style>{CSS}</style>
 
+      {/* ── scroll progress — a neon hairline across the very top ── */}
+      <motion.div
+        aria-hidden
+        className="fixed inset-x-0 top-0 z-[60] h-[2px] origin-left bg-neon"
+        style={{ scaleX: scrollYProgress }}
+      />
+
       {/* ── minimal fixed nav ── */}
       <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-40 h-24 bg-gradient-to-b from-black/70 to-transparent" />
-      <header className="fixed inset-x-0 top-0 z-50">
+      <motion.header
+        className="fixed inset-x-0 top-0 z-50"
+        initial={reduce ? false : { opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+      >
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 sm:px-10">
           <Link href="/" className="inline-flex items-center gap-2.5"><NeuGridMark size={26} /><span className="ng-title text-[16px] font-bold tracking-tight text-neon">NeuGrid</span></Link>
           <div className="flex items-center gap-2">
@@ -201,7 +276,7 @@ export default function Landing() {
             <Link href="/home" className="ng-btn ng-btn-primary ng-btn--sm">Enter <IconArrowRight className="h-3.5 w-3.5" /></Link>
           </div>
         </div>
-      </header>
+      </motion.header>
 
       {/* ── SCENE 1 — the full path ── */}
       <Scene

@@ -11,6 +11,10 @@ import {
 } from "@/components/app/ui";
 import { Decrypt, CountUp } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
+import Meter from "@/components/app/Meter";
+import LivePreview from "@/components/app/LivePreview";
+import PostCard, { type WirePost } from "@/components/app/PostCard";
+import PostComposer from "@/components/app/PostComposer";
 import OrbPanel from "@/components/app/OrbPanel";
 import { Area, Bars, Radar, LabeledBars, Ring, StepArea, Stream, RadialProgress } from "@/components/app/charts";
 import { PanelChart, barStr } from "@/components/app/terminal";
@@ -40,7 +44,9 @@ export default function MePage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [grids, setGrids] = useState<Grid[]>([]);
-  const [gridM, setGridM] = useState<{ grid_reserve: number; usdc_reserve: number; price: number; liquidity_usd: number; balances: { usdc: number; grid: number }; pay_fees_in_grid?: boolean; fee_discount_bps?: number } | null>(null);
+  const [myPosts, setMyPosts] = useState<WirePost[]>([]);
+  const loadPosts = () => fetch("/api/feed?filter=mine").then((r) => r.json()).then((d) => setMyPosts((d.posts ?? []).slice(0, 6))).catch(() => {});
+    const [gridM, setGridM] = useState<{ grid_reserve: number; usdc_reserve: number; price: number; liquidity_usd: number; balances: { usdc: number; grid: number }; pay_fees_in_grid?: boolean; fee_discount_bps?: number } | null>(null);
   const [gridSide, setGridSide] = useState<"buy" | "sell">("buy");
   const [gridAmt, setGridAmt] = useState("");
   useEffect(() => {
@@ -50,6 +56,7 @@ export default function MePage() {
     fetch("/api/gridx").then((r) => r.json()).then((d) => setProducts(d.products ?? [])).catch(() => {});
     fetch("/api/grids").then((r) => r.json()).then((d) => setGrids(d.grids ?? d ?? [])).catch(() => {});
     fetch("/api/grid").then((r) => r.json()).then(setGridM).catch(() => {});
+    fetch("/api/feed?filter=mine").then((r) => r.json()).then((d) => setMyPosts((d.posts ?? []).slice(0, 6))).catch(() => {});
   }, []);
 
   async function swapGrid() {
@@ -116,6 +123,11 @@ export default function MePage() {
   const agentBars = [...agents].sort((a, b) => (b.earnings ?? 0) - (a.earnings ?? 0)).slice(0, 6).map((a) => ({ label: a.name, value: a.earnings ?? 0, color: a.trust_tier === "trusted" ? "#00ff00" : "#ffb020" }));
   const hasAgentEarn = agents.some((a) => (a.earnings ?? 0) > 0);
   const vesting = me?.reward?.vesting;
+  const gridMaxMembers = Math.max(1, ...myGrids.map((g) => g.member_count ?? 0));
+  const repEvMax = Math.max(1, ...(me?.rep_events ?? []).map((e) => Math.abs(e.weight)));
+  const pipeGridx = builds.filter((b) => b.product_id).length;
+  const pipeFund = builds.filter((b) => b.proposal_id).length;
+  const pipeMax = Math.max(1, pipeGridx, pipeFund, myGrids.length);
   // RIGHT ring — vesting-claimed % if TGE ran, else builds-shipped ratio, else rep-vs-1000 target.
   const shipped = builds.filter((b) => b.status === "listed" || b.status === "funded").length;
   const ring = vesting && vesting.total > 0
@@ -172,9 +184,9 @@ export default function MePage() {
             {myGrids.length ? (
               <div className="divide-y divide-line">
                 {myGrids.map((g) => (
-                  <Link key={g.grid_id} href={`/grid/${g.slug}`} className="flex items-center justify-between py-2.5 text-xs text-ink transition hover:text-neon">
-                    <span className="flex items-center gap-2 truncate"><IconGrid className="h-3.5 w-3.5 text-neon/70" />{g.name}</span>
-                    <span className="shrink-0 text-[11px] text-ink-dim">{g.member_count}</span>
+                  <Link key={g.grid_id} href={`/grid/${g.slug}`} className="flex items-center justify-between gap-2 py-2.5 text-xs text-ink transition hover:text-neon">
+                    <span className="flex min-w-0 items-center gap-2 truncate"><MatrixAvatar seed={g.slug} size={22} shape="square" />{g.name}</span>
+                    <span className="flex shrink-0 items-center gap-2 text-[11px] text-ink-dim" title={`${g.member_count} members`}><Meter value={g.member_count ?? 0} max={gridMaxMembers} w={32} />{g.member_count}</span>
                   </Link>
                 ))}
               </div>
@@ -240,6 +252,18 @@ export default function MePage() {
           </div>
 
           {/* proof of build — track record */}
+          {/* THE WIRE — publish + your posts (humans and your agents' voices) */}
+          <Section icon={<IconStar className="h-3.5 w-3.5" />} action={<span className="text-[10px] text-ink-faint">followers see these on their home wire</span>}>Post to the Wire</Section>
+          <PostComposer notify={notify} onPosted={loadPosts} />
+          {myPosts.length > 0 && (
+            <>
+              <Section icon={<IconStar className="h-3.5 w-3.5" />} action={<Mark plain accent="cyan" className="text-[10px]">{myPosts.length}</Mark>}>Your Posts</Section>
+              <div className="columns-1 gap-3 lg:[column-count:var(--cols)]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
+                {myPosts.map((p) => <PostCard key={p.post_id} p={p} />)}
+              </div>
+            </>
+          )}
+
           <Section icon={<IconShield className="h-3.5 w-3.5" />} action={<Mark plain accent="cyan" className="text-[10px]">{builds.length}</Mark>}>Proof of Build · Track Record</Section>
           {builds.length ? (
             <div className="grid grid-cols-1 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 2 + closed } as React.CSSProperties}>
@@ -250,6 +274,8 @@ export default function MePage() {
                     <span className="truncate text-[14px] font-semibold text-ink">{b.title}</span>
                     <Mark plain accent={b.status === "built" ? "amber" : "neon"} className="!text-[9px] shrink-0">{b.status}</Mark>
                   </div>
+                  {/* live window — the deployed build itself, rendered small */}
+                  {b.deployment?.slug && <LivePreview src={`/d/${b.deployment.slug}`} height={104} scale={0.3} className="mt-3" />}
                   {/* hero — version ring + witnessed-output headline */}
                   <div className="mt-3 flex items-center gap-4">
                     <Ring size={62} stroke={5} percent={Math.round(((b.artifact.files?.length ?? 0) / Math.max(1, ...builds.map((x) => x.artifact.files?.length ?? 0))) * 100)} value={`v${b.version ?? 1}`} />
@@ -345,9 +371,12 @@ export default function MePage() {
                   <div className="mb-1 text-[10px] uppercase tracking-wider text-ink-faint">Recent movement</div>
                   <div className="divide-y divide-line">
                     {me!.rep_events!.map((e, i) => (
-                      <div key={i} className="flex items-start justify-between gap-2 py-1.5 first:pt-0 last:pb-0">
+                      <div key={i} className="flex items-center justify-between gap-2 py-1.5 first:pt-0 last:pb-0">
                         <span className="min-w-0 truncate text-[10.5px] text-ink-dim">{e.reason}</span>
-                        <span className={`shrink-0 text-[10.5px] font-bold tnum ${e.weight < 0 ? "text-danger" : "text-neon"}`}>{e.weight < 0 ? "" : "+"}{e.weight}</span>
+                        <span className="flex shrink-0 items-center gap-1.5">
+                          <Meter value={Math.abs(e.weight)} max={repEvMax} w={28} color={e.weight < 0 ? "#ff4d5e" : "#00ff00"} />
+                          <span className={`text-[10.5px] font-bold tnum ${e.weight < 0 ? "text-danger" : "text-neon"}`}>{e.weight < 0 ? "" : "+"}{e.weight}</span>
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -372,7 +401,7 @@ export default function MePage() {
               ) : <p className="mt-2 text-[11px] text-ink-dim">No allocation yet — ship verified work to earn GRID.</p>}
               <div className="mt-3 divide-y divide-line text-[11px]">
                 <div className="ng-row !py-1"><span className="ng-row__k">Raw accrued</span><span className="ng-row__v font-normal">{(me?.reward?.accrued ?? 0).toLocaleString()}</span></div>
-                <div className="ng-row !py-1"><span className="ng-row__k">Sybil filter</span><span className="ng-row__v font-normal">×{me?.reward?.sybil_factor ?? 1}</span></div>
+                <div className="ng-row !py-1"><span className="ng-row__k">Sybil filter</span><span className="ng-row__v flex items-center gap-2 font-normal" title={`${Math.round((me?.reward?.sybil_factor ?? 1) * 100)}% of accrual counts`}><Meter value={me?.reward?.sybil_factor ?? 1} max={1} w={32} color={(me?.reward?.sybil_factor ?? 1) < 1 ? "#ffb020" : "#00ff00"} />×{me?.reward?.sybil_factor ?? 1}</span></div>
                 <div className="ng-row !py-1"><span className="ng-row__k">Wallet GRID</span><span className="ng-row__v font-normal">{Math.round(me?.balances?.grid ?? 0).toLocaleString()}{me?.demo && <span className="text-ink-faint"> · faucet</span>}</span></div>
               </div>
               {me?.reward?.tge?.executed && me?.reward?.vesting ? (
@@ -440,8 +469,8 @@ export default function MePage() {
             <Section icon={<IconCoins className="h-3.5 w-3.5" />}>Pipeline</Section>
             <div className="ng-card p-3.5">
               <div className="divide-y divide-line text-[12px]">
-                {([["On GridX", builds.filter((b) => b.product_id).length, "/gridx", IconRocket], ["On Fund", builds.filter((b) => b.proposal_id).length, "/genesis/board", IconCoins], ["Grids joined", myGrids.length, "/grids/explore", IconGrid]] as [string, number, string, (p: { className?: string }) => React.JSX.Element][]).map(([k, v, href, Ico]) => (
-                  <Link key={k} href={href} className="ng-row flex items-center !py-2 transition hover:text-neon"><span className="ng-row__k flex items-center gap-2 text-ink"><Ico className="h-3.5 w-3.5 text-neon/70" />{k}</span><span className="ng-row__v"><Mark plain>{v}</Mark></span></Link>
+                {([["On GridX", pipeGridx, "/gridx", IconRocket], ["On Fund", pipeFund, "/genesis/board", IconCoins], ["Grids joined", myGrids.length, "/grids/explore", IconGrid]] as [string, number, string, (p: { className?: string }) => React.JSX.Element][]).map(([k, v, href, Ico]) => (
+                  <Link key={k} href={href} className="ng-row flex items-center !py-2 transition hover:text-neon"><span className="ng-row__k flex items-center gap-2 text-ink"><Ico className="h-3.5 w-3.5 text-neon/70" />{k}</span><span className="ng-row__v flex items-center gap-2"><Meter value={v} max={pipeMax} w={32} /><Mark plain>{v}</Mark></span></Link>
                 ))}
               </div>
             </div>
