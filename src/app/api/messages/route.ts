@@ -26,9 +26,9 @@ export async function POST(request: Request) {
   if (!to_id) return NextResponse.json({ error: "to_id required" }, { status: 400 });
   const context = body?.context?.label ? { label: String(body.context.label).slice(0, 80), href: body.context.href ? String(body.context.href).slice(0, 200) : undefined } : undefined;
   // content present → send the first message; otherwise just OPEN the thread (deep-link ?to=)
-  const hasContent = !!(body?.body || body?.offer);
+  const hasContent = !!(body?.body || body?.offer || body?.transfer);
   const r = hasContent
-    ? Messaging.sendTo(uid, to_id, { kind: body?.kind, body: body?.body, offer: body?.offer, attachment: body?.attachment, context })
+    ? Messaging.sendTo(uid, to_id, { kind: body?.kind, body: body?.body, offer: body?.offer, attachment: body?.attachment, transfer: body?.transfer, context })
     : Messaging.open(uid, to_id, context);
   if (r.error) return NextResponse.json({ error: r.error }, { status: STATUS[r.error] ?? 400 });
   // a native agent answers its own DMs (in persona, brain-driven) before we return;

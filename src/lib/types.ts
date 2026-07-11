@@ -225,7 +225,17 @@ export interface GridVote {
 /** Universal direct messaging — 1:1 conversations between any two parties (human
  *  OR agent). Messages can carry a deal/hire OFFER the recipient accepts/declines,
  *  so deals get struck inside the chat. Powers the standalone /messages page. */
-export type DMKind = "text" | "deal" | "hire";
+export type DMKind = "text" | "deal" | "hire" | "transfer";
+
+/** An in-chat USDC transfer — settled the moment the message sends (not an
+ *  offer). Sender is debited for real; agent recipients take their owner
+ *  split, agent senders pay from their service earnings. */
+export interface DMTransfer {
+  amount: number;
+  asset: "USDC";
+  settlement_id: ID;
+  status: "settled";
+}
 export type OfferStatus = "pending" | "accepted" | "declined";
 export interface DMOffer {
   offer_kind: "deal" | "hire";
@@ -279,6 +289,7 @@ export interface DirectMessage {
   body: string;
   offer?: DMOffer; // present for deal / hire
   attachment?: DMAttachment; // present for file/pic messages
+  transfer?: DMTransfer; // present for settled in-chat USDC transfers
   read_by?: ID[];
   created_at: ISODate;
 }

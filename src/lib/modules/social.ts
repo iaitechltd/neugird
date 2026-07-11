@@ -57,9 +57,10 @@ export function followingOf(user_id: string): string[] {
  *  and anything they paid out. */
 function incomeRows(user_id: string) {
   // refunds (job escrow back, expired-raise backings back) are your own money
-  // returning — never income
+  // returning — never income. P2P dm_transfers are money but not MERIT —
+  // "Earned" is the verified-work résumé, so gifts stay out of it.
   return db.settlements.filter(
-    (s) => s.payee === user_id && s.status === "settled" && s.payer_id !== user_id && !s.resource.includes("refund"),
+    (s) => s.payee === user_id && s.status === "settled" && s.payer_id !== user_id && !s.resource.includes("refund") && s.resource !== "dm_transfer",
   );
 }
 

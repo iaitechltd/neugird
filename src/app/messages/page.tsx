@@ -18,7 +18,8 @@ import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 type Party = { id: string; type: "user" | "agent"; name: string; reputation?: number; rating?: number; trust_tier?: string; owner_name?: string; earnings?: number; jobs?: number; skills?: string[]; capabilities?: string[]; grids?: number; bio?: string; href: string };
 type Offer = { offer_kind: "deal" | "hire"; amount: number; asset?: string; terms: string; success_metric?: string; status: "pending" | "accepted" | "declined"; result_ref?: string; result_kind?: "job" | "agreement" };
 type Attachment = { name: string; mime: string; size: number; data_uri: string };
-type Msg = { message_id: string; from_id: string; mine: boolean; from_name: string; kind: "text" | "deal" | "hire"; body: string; offer?: Offer; attachment?: Attachment; ago: string };
+type Transfer = { amount: number; asset: string; settlement_id: string; status: string };
+type Msg = { message_id: string; from_id: string; mine: boolean; from_name: string; kind: "text" | "deal" | "hire" | "transfer"; body: string; offer?: Offer; attachment?: Attachment; transfer?: Transfer; ago: string };
 type Ctx = { label: string; href?: string } | null;
 type DealRow = { id: string; kind: "deal" | "hire"; amount: number; asset?: string; terms: string; status: string };
 type Convo = { conversation_id: string; counterparty: Party; context: Ctx; last_text: string; last_ago: string; unread: number; pending_offer: boolean };
@@ -33,8 +34,10 @@ export default function MessagesPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [thread, setThread] = useState<Thread | null>(null);
   const [draft, setDraft] = useState("");
-  const [mode, setMode] = useState<"text" | "deal" | "hire">("text");
+  const [mode, setMode] = useState<"text" | "deal" | "hire" | "pay">("text");
   const [offer, setOffer] = useState({ amount: "", asset: "USDC", terms: "", success_metric: "" });
+  const [payAmount, setPayAmount] = useState("");
+  const [payErr, setPayErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [attach, setAttach] = useState<Attachment | null>(null);
   const [attachErr, setAttachErr] = useState<string | null>(null);
@@ -105,16 +108,22 @@ export default function MessagesPage() {
 
   async function sendMessage() {
     if (!activeId || busy) return;
-    const isOffer = mode !== "text";
+    const isOffer = mode === "deal" || mode === "hire";
+    const isPay = mode === "pay";
     if (isOffer && !offer.terms.trim()) return;
-    if (!isOffer && !draft.trim() && !attach) return;
+    if (isPay && !(Number(payAmount) > 0)) return;
+    if (!isOffer && !isPay && !draft.trim() && !attach) return;
     setBusy(true);
+    setPayErr(null);
     const payload = isOffer
       ? { kind: mode, body: draft.trim(), offer: { amount: Number(offer.amount) || 0, asset: offer.asset, terms: offer.terms.trim(), success_metric: mode === "deal" ? offer.success_metric.trim() : undefined } }
-      : { kind: "text", body: draft.trim(), attachment: attach ?? undefined };
+      : isPay
+        ? { kind: "transfer", body: draft.trim(), transfer: { amount: Number(payAmount) } }
+        : { kind: "text", body: draft.trim(), attachment: attach ?? undefined };
     const r = await fetch(`/api/messages/${activeId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).then((x) => x.json()).catch(() => null);
     setBusy(false);
-    if (r?.conversation_id) { setThread(r); setDraft(""); setAttach(null); setOffer({ amount: "", asset: "USDC", terms: "", success_metric: "" }); setMode("text"); loadConvos(); }
+    if (r?.conversation_id) { setThread(r); setDraft(""); setAttach(null); setOffer({ amount: "", asset: "USDC", terms: "", success_metric: "" }); setPayAmount(""); setMode("text"); loadConvos(); }
+    else if (isPay && r?.error) setPayErr(r.error === "insufficient_usdc" ? "Not enough USDC in your wallet." : "Transfer failed — check the amount.");
   }
   async function resolveOffer(message_id: string, accept: boolean) {
     if (!activeId) return;
@@ -239,6 +248,16 @@ export default function MessagesPage() {
                           {m.offer.status === "accepted" && m.offer.result_kind === "agreement" && <div className="mt-2 flex items-center justify-center gap-1 rounded border border-neon/25 bg-neon/[0.06] py-1.5 text-[10px] text-neon"><IconCheck className="h-3 w-3" /> Agreement struck — on both sides&apos; record</div>}
                           <div className="mt-1 text-right text-[9px] text-ink-faint">{m.ago}</div>
                         </div>
+                      ) : m.transfer ? (
+                        <div className={`rounded-lg border p-3 ${m.mine ? "border-cyan/30 bg-cyan/[0.05]" : "border-neon/30 bg-neon/[0.06]"}`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-ink">{m.mine ? "Payment sent" : "Payment received"}</span>
+                            <Mark plain accent="neon" className="!text-[8px]">settled</Mark>
+                          </div>
+                          <div className={`mt-1.5 flex items-center gap-1.5 text-[15px] font-bold ${m.mine ? "text-cyan" : "text-neon"}`}><IconCoins className="h-4 w-4" />${m.transfer.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} {m.transfer.asset}</div>
+                          {m.body && <p className="mt-1 text-[12px] leading-relaxed text-ink-dim">{m.body}</p>}
+                          <div className="mt-1 text-right text-[9px] text-ink-faint">{m.ago}</div>
+                        </div>
                       ) : (
                         <div className={`rounded-lg px-3 py-2 ${m.mine ? "bg-neon/15 text-ink" : "bg-line/40 text-ink-dim"}`}>
                           {m.body && <p className="whitespace-pre-wrap text-[12.5px] leading-snug">{m.body}</p>}
@@ -265,11 +284,21 @@ export default function MessagesPage() {
               {/* composer */}
               <div className="shrink-0 border-t border-line p-2.5">
                 <div className="mb-2 flex gap-1.5">
-                  {(["text", "deal", "hire"] as const).map((k) => (
-                    <button key={k} onClick={() => setMode(k)} className={`rounded px-2.5 py-1 text-[11px] capitalize transition ${mode === k ? "bg-neon/15 text-neon" : "bg-line/40 text-ink-dim hover:text-ink"}`}>{k === "text" ? "Message" : k === "deal" ? "Deal" : "Hire"}</button>
+                  {(["text", "deal", "hire", "pay"] as const).map((k) => (
+                    <button key={k} onClick={() => setMode(k)} className={`rounded px-2.5 py-1 text-[11px] capitalize transition ${mode === k ? "bg-neon/15 text-neon" : "bg-line/40 text-ink-dim hover:text-ink"}`}>{k === "text" ? "Message" : k === "deal" ? "Deal" : k === "hire" ? "Hire" : "Pay"}</button>
                   ))}
                 </div>
-                {mode !== "text" && (
+                {mode === "pay" && (
+                  <div className="mb-2 space-y-1.5 rounded border border-neon/20 bg-neon/[0.04] p-2.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[12px] font-bold text-cyan">$</span>
+                      <input value={payAmount} onChange={(e) => { setPayAmount(e.target.value.replace(/[^0-9.]/g, "")); setPayErr(null); }} inputMode="decimal" placeholder="Amount (USDC)" className="ng-input min-w-0 flex-1 !py-1.5 text-[12px]" />
+                    </div>
+                    <p className="text-[10px] text-ink-faint">Sends instantly from your wallet — not an offer, no accept step.</p>
+                    {payErr && <p className="text-[10px] text-amber">{payErr}</p>}
+                  </div>
+                )}
+                {(mode === "deal" || mode === "hire") && (
                   <div className="mb-2 space-y-1.5 rounded border border-amber/20 bg-amber/[0.04] p-2.5">
                     <div className="flex items-center gap-1.5">
                       <input value={offer.amount} onChange={(e) => setOffer((o) => ({ ...o, amount: e.target.value.replace(/[^0-9.]/g, "") }))} inputMode="decimal" placeholder="Amount" className="ng-input min-w-0 flex-1 !py-1.5 text-[12px]" />
@@ -297,7 +326,7 @@ export default function MessagesPage() {
                     <button onClick={() => fileRef.current?.click()} disabled={busy} title="Attach a file or picture" aria-label="Attach a file" className="ng-btn ng-btn-ghost ng-btn--sm shrink-0 !px-2"><IconPaperclip className="h-3.5 w-3.5" /></button>
                   )}
                   <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && mode === "text") sendMessage(); }} placeholder={mode === "text" ? (attach ? "Add a caption (optional)…" : "Message…") : "Add a note (optional)"} className="ng-input min-w-0 flex-1 !py-2 text-[12px]" />
-                  <button onClick={sendMessage} disabled={busy || (mode === "text" ? !draft.trim() && !attach : !offer.terms.trim())} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-50">{mode === "text" ? "Send" : "Send offer"}</button>
+                  <button onClick={sendMessage} disabled={busy || (mode === "text" ? !draft.trim() && !attach : mode === "pay" ? !(Number(payAmount) > 0) : !offer.terms.trim())} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-50">{mode === "text" ? "Send" : mode === "pay" ? `Send $${payAmount || "0"}` : "Send offer"}</button>
                 </div>
               </div>
             </Panel>

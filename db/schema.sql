@@ -736,10 +736,11 @@ create table if not exists direct_messages (
   message_id      text primary key,
   conversation_id text        not null references conversations(conversation_id) on delete cascade,
   from_id         text        not null,
-  kind            text        not null default 'text', -- text | deal | hire
+  kind            text        not null default 'text', -- text | deal | hire | transfer
   body            text        not null default '',
   offer           jsonb,
   attachment      jsonb,      -- DMAttachment (inline data-URI file/pic, capped)
+  transfer        jsonb,      -- DMTransfer (settled in-chat USDC transfer)
   read_by         text[]      not null default '{}',
   created_at      timestamptz not null default now()
 );

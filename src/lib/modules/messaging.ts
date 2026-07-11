@@ -10,7 +10,8 @@ import { db } from "../store";
 import { Proofs as ChainProofs } from "../chain";
 import { newId, nowISO } from "../id";
 import * as Jobs from "./jobs";
-import type { Agreement, Conversation, DirectMessage, DMAttachment, DMKind, DMOffer } from "../types";
+import * as Wallets from "./wallets";
+import type { Agreement, Conversation, DirectMessage, DMAttachment, DMKind, DMOffer, DMTransfer, Settlement } from "../types";
 
 const pairKey = (a: string, b: string) => [a, b].sort().join("|");
 type Context = { label: string; href?: string };
@@ -75,7 +76,42 @@ export function getOrCreate(a_id: string, b_id: string, context?: Context): Conv
   return c;
 }
 
-export interface SendInput { kind?: DMKind; body?: string; offer?: Partial<DMOffer>; attachment?: { name?: string; mime?: string; data_uri?: string }; }
+export interface SendInput { kind?: DMKind; body?: string; offer?: Partial<DMOffer>; attachment?: { name?: string; mime?: string; data_uri?: string }; transfer?: { amount?: number }; }
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Move real USDC between any two principals (user or agent) and record the
+ *  settlement. Conservation is strict: the sender is debited before the
+ *  recipient is credited — agents pay FROM their service earnings and receive
+ *  WITH their owner split (the same rule as every service payment). P2P
+ *  transfers are deliberately excluded from "Earned" income (Social.incomeFor)
+ *  — gifts are money, not merit. */
+function executeTransfer(from_id: string, to_id: string, rawAmount: number): { transfer?: DMTransfer; error?: string } {
+  const amount = round2(Number(rawAmount) || 0);
+  if (!(amount > 0)) return { error: "invalid_amount" };
+  const fromAgent = db.agents.find((a) => a.agent_id === from_id);
+  if (fromAgent) {
+    if ((fromAgent.earnings ?? 0) < amount) return { error: "insufficient_usdc" };
+    fromAgent.earnings = round2((fromAgent.earnings ?? 0) - amount);
+  } else if (!Wallets.debitUsdc(from_id, amount)) {
+    return { error: "insufficient_usdc" };
+  }
+  const toAgent = db.agents.find((a) => a.agent_id === to_id);
+  if (toAgent) {
+    const ownerCut = round2((amount * (toAgent.owner_split_bps ?? 0)) / 10000);
+    toAgent.earnings = round2((toAgent.earnings ?? 0) + (amount - ownerCut));
+    if (ownerCut > 0 && toAgent.owner_id) Wallets.creditUsdc(toAgent.owner_id, ownerCut);
+  } else {
+    Wallets.creditUsdc(to_id, amount);
+  }
+  const settlement: Settlement = {
+    settlement_id: newId("setl"), payer_id: from_id, payee: to_id,
+    resource: "dm_transfer", amount, asset: "USDC", network: "neugrid-ledger",
+    scheme: "exact", proof: `dmx:${newId("n")}`, status: "settled", created_at: nowISO(),
+  };
+  (db.settlements ??= []).push(settlement);
+  return { transfer: { amount, asset: "USDC", settlement_id: settlement.settlement_id, status: "settled" } };
+}
 
 /** Attachment guard: mime allowlist + ~512KB decoded cap. Rejecting here keeps
  *  every door (UI, gateway) behind the same rule. */
@@ -96,7 +132,25 @@ export function send(conversation_id: string, from_id: string, input: SendInput)
   const c = convos().find((x) => x.conversation_id === conversation_id);
   if (!c) return { error: "not_found" };
   if (!c.participant_ids.includes(from_id)) return { error: "not_participant" };
-  const kind: DMKind = input.kind === "deal" || input.kind === "hire" ? input.kind : "text";
+  const kind: DMKind = input.kind === "deal" || input.kind === "hire" || input.kind === "transfer" ? input.kind : "text";
+
+  // in-chat USDC transfer — settles NOW, to the other participant, then the
+  // message records it (a failed transfer sends nothing)
+  if (kind === "transfer") {
+    const to_id = c.participant_ids.find((p) => p !== from_id);
+    if (!to_id) return { error: "no_recipient" };
+    const t = executeTransfer(from_id, to_id, input.transfer?.amount ?? 0);
+    if (t.error) return { error: t.error };
+    const m: DirectMessage = {
+      message_id: newId("dm"), conversation_id, from_id, kind,
+      body: (input.body ?? "").trim().slice(0, 500), transfer: t.transfer,
+      read_by: [from_id], created_at: nowISO(),
+    };
+    msgs().push(m);
+    c.last_at = m.created_at;
+    return { message: m };
+  }
+
   let offer: DMOffer | undefined;
   if (kind !== "text") {
     const o = input.offer ?? {};
@@ -217,7 +271,7 @@ export function thread(conversation_id: string, viewer_id: string) {
     messages: ms.map((m) => ({
       message_id: m.message_id, from_id: m.from_id, mine: m.from_id === viewer_id,
       from_name: resolveParty(m.from_id).name, kind: m.kind, body: m.body, offer: m.offer,
-      attachment: m.attachment,
+      attachment: m.attachment, transfer: m.transfer,
       ago: ago(m.created_at), created_at: m.created_at,
     })),
   };
