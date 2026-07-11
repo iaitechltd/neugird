@@ -24,7 +24,7 @@ const isSolana = (w: StdWallet) =>
   w.chains?.some((c) => c.startsWith("solana:")) && !!w.features?.["standard:connect"] && !!w.features?.["solana:signMessage"];
 const short = (a: string) => (a.length > 10 ? `${a.slice(0, 4)}…${a.slice(-4)}` : a);
 
-export default function WalletConnect({ onChange, align = "right", className = "" }: { onChange?: () => void; align?: "left" | "right"; className?: string }) {
+export default function WalletConnect({ onChange, align = "right", className = "", redirectTo }: { onChange?: () => void; align?: "left" | "right"; className?: string; redirectTo?: string }) {
   const [wallets, setWallets] = useState<StdWallet[]>([]);
   const [active, setActive] = useState<{ name: string; address: string } | null>(null);
   const [open, setOpen] = useState(false);
@@ -65,12 +65,26 @@ export default function WalletConnect({ onChange, align = "right", className = "
       setActive({ name: w.name, address: wallet }); setOpen(false);
       window.dispatchEvent(new Event("neugrid:refresh-me"));
       onChange?.();
+      if (redirectTo) { window.location.assign(redirectTo); return; }
     } catch (e) {
       const m = (e as Error)?.message ?? "error";
       setMsg(/reject|declin|cancel/i.test(m) ? "Signature declined." : `Couldn't connect — ${m}`);
     }
     setBusy(null);
-  }, [onChange]);
+  }, [onChange, redirectTo]);
+
+  // The door must GUARANTEE a session: a connected browser wallet ≠ signed in
+  // (the cookie may be missing/expired, or a register event set `active` after
+  // a declined signature). Verify first; re-run SIWS when the session is gone.
+  const enterApp = useCallback(async () => {
+    if (!redirectTo) return;
+    setMsg(null);
+    const me = await fetch("/api/me").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    if (me && !me.error) { window.location.assign(redirectTo); return; }
+    const w = wallets.find((x) => x.name === active?.name && x.accounts.length > 0) ?? wallets.find((x) => x.accounts.length > 0);
+    if (w) await connect(w); // full SIWS → redirects on success
+    else { setActive(null); setMsg("Wallet connection was lost — connect again."); }
+  }, [redirectTo, wallets, active, connect]);
 
   const disconnect = useCallback(async () => {
     const w = wallets.find((x) => x.name === active?.name) ?? wallets.find((x) => x.accounts.length > 0);
@@ -94,6 +108,9 @@ export default function WalletConnect({ onChange, align = "right", className = "
           <div className={`absolute top-full z-50 mt-2 w-64 border border-neon/25 bg-black p-2 ${align === "right" ? "right-0" : "left-0"}`}>
             {active ? (
               <div>
+                {redirectTo && (
+                  <button onClick={enterApp} disabled={!!busy} className="ng-btn ng-btn-primary ng-btn--sm ng-btn--block mb-2 disabled:opacity-40">{busy ? "signing…" : "Enter NeuGrid →"}</button>
+                )}
                 <div className="ng-label mb-1 !text-ink-dim">Connected · {active.name}</div>
                 <div className="break-all rounded border border-line bg-black/40 p-2 text-[10.5px] text-ink-dim">{active.address}</div>
                 <button onClick={disconnect} className="ng-btn ng-btn-danger ng-btn--sm ng-btn--block mt-2"><IconConnect className="h-3.5 w-3.5" /> Disconnect</button>

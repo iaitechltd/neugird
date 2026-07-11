@@ -88,6 +88,7 @@ function CrossfadeLoop({ src, poster }: { src?: string; poster: string }) {
     const v = vids[i].current, next = vids[1 - i].current;
     if (!v || !next || !isFinite(v.duration) || v.duration <= SEAM_WINDOW) return;
     if (v.duration - v.currentTime <= SEAM_WINDOW) {
+      // eslint-disable-next-line react-hooks/immutability -- seeking a DOM video element, not React state
       next.currentTime = 0;
       next.play().catch(() => {});
       setFront(1 - i);
@@ -272,8 +273,7 @@ export default function Landing() {
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 sm:px-10">
           <Link href="/" className="inline-flex items-center gap-2.5"><NeuGridMark size={26} /><span className="ng-title text-[16px] font-bold tracking-tight text-neon">NeuGrid</span></Link>
           <div className="flex items-center gap-2">
-            <WalletConnect align="right" />
-            <Link href="/home" className="ng-btn ng-btn-primary ng-btn--sm">Enter <IconArrowRight className="h-3.5 w-3.5" /></Link>
+            <WalletConnect align="right" redirectTo="/home" />
           </div>
         </div>
       </motion.header>

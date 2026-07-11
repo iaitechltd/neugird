@@ -16,7 +16,8 @@ import { MatrixAvatar, MatrixCover } from "@/components/app/MatrixAvatar";
 import Meter from "@/components/app/Meter";
 import { PanelChart, TailLog, type LogLine } from "@/components/app/terminal";
 
-type Comment = { comment_id: string; author_type: "human" | "agent"; author_id: string; author_name: string; body: string; created_at: string };
+type Comment = { comment_id: string; author_type: "human" | "agent"; author_id: string; author_name: string; body: string; created_at: string; likes: number; liked_by_me: boolean };
+type MyAgent = { agent_id: string; name: string };
 type PostDetail = {
   post_id: string; author_type: "human" | "agent"; author_id: string; owner_id?: string;
   topic: string; title?: string; body: string;
@@ -42,21 +43,34 @@ export default function PostDetail({ params }: { params: Promise<{ id: string }>
   const [me, setMe] = useState("");
   const [following, setFollowing] = useState<boolean | null>(null);
 
+  const [myAgents, setMyAgents] = useState<MyAgent[]>([]);
+
   const load = useCallback(() => fetch(`/api/feed/${id}`).then((r) => r.ok ? r.json() : Promise.reject()).then((d) => { setPost(d.post); setMe(d.me ?? ""); }).catch(() => setPost("missing")), [id]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    fetch("/api/agents?mine=1").then((r) => r.ok ? r.json() : Promise.reject()).then((d) => setMyAgents(d.agents ?? [])).catch(() => {});
+  }, []);
   // follow state: derived on first toggle (the follow route is toggle-only);
   // null renders the neutral "Follow" affordance until the user acts
 
 
   const [draft, setDraft] = useState("");
+  const [asAgent, setAsAgent] = useState("");
   const [busy, setBusy] = useState(false);
+  const [sendErr, setSendErr] = useState<string | null>(null);
   async function sendComment() {
     if (!draft.trim() || busy || !post || post === "missing") return;
-    setBusy(true);
-    await fetch(`/api/feed/${post.post_id}/comment`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ body: draft }) }).catch(() => {});
-    setDraft("");
+    setBusy(true); setSendErr(null);
+    const r = await fetch(`/api/feed/${post.post_id}/comment`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(asAgent ? { body: draft, as_agent_id: asAgent } : { body: draft }) }).catch(() => null);
+    if (r?.ok) setDraft(""); // a failed post keeps the typed text
+    else setSendErr("couldn't post — try again");
     await load();
     setBusy(false);
+  }
+  async function toggleCommentLike(commentId: string) {
+    if (!post || post === "missing") return;
+    await fetch(`/api/feed/${post.post_id}/comment`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ comment_id: commentId }) }).catch(() => {});
+    await load();
   }
   async function toggleLike() {
     if (!post || post === "missing") return;
@@ -157,6 +171,7 @@ export default function PostDetail({ params }: { params: Promise<{ id: string }>
                             <span className={`text-[11.5px] font-semibold ${c.author_type === "agent" ? "text-cyan" : "text-ink"}`}>{c.author_name}</span>
                             {c.author_type === "agent" && <IconBot className="h-3 w-3 text-cyan" />}
                             <span className="text-[9px] text-ink-faint">{c.created_at.slice(11, 16)}</span>
+                            <button onClick={() => toggleCommentLike(c.comment_id)} className={`ml-auto text-[10px] transition ${c.liked_by_me ? "text-neon" : "text-ink-dim hover:text-neon"}`}>{c.liked_by_me ? "♥" : "♡"} {c.likes ?? 0}</button>
                           </div>
                           <p className="mt-0.5 text-[11.5px] leading-relaxed text-ink-dim">{c.body}</p>
                         </div>
@@ -165,9 +180,16 @@ export default function PostDetail({ params }: { params: Promise<{ id: string }>
                   </div>
                 ) : <p className="text-[11px] text-ink-faint">No comments yet — say something real.</p>}
                 <div className="mt-4 flex gap-2 border-t border-line pt-3">
+                  {myAgents.length > 0 && (
+                    <select value={asAgent} onChange={(e) => setAsAgent(e.target.value)} aria-label="Reply as" className="shrink-0 rounded-none border border-line bg-black px-1.5 py-1 text-[10px] text-ink-dim focus:outline-none">
+                      <option value="">as: you</option>
+                      {myAgents.map((a) => <option key={a.agent_id} value={a.agent_id}>as: {a.name}</option>)}
+                    </select>
+                  )}
                   <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") sendComment(); }} placeholder="Add to the thread…" className="flex-1 border-b border-line bg-transparent py-1.5 text-[12px] text-ink placeholder:text-ink-faint focus:outline-none" />
                   <button onClick={sendComment} disabled={busy || !draft.trim()} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-40"><IconBolt className="h-3.5 w-3.5" /> Reply</button>
                 </div>
+                {sendErr && <p className="mt-1.5 text-[10px] text-red-400">{"// "}{sendErr}</p>}
               </div>
             </>
           )}

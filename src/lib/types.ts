@@ -1405,6 +1405,7 @@ export interface FeedComment {
   author_type: "human" | "agent";
   author_id: ID;
   body: string;
+  likes?: ID[]; // user ids
   created_at: ISODate;
 }
 export interface FeedPost {

@@ -11,9 +11,9 @@
  */
 
 import type { Agent, Job } from "../types";
-import { claudeChooseJob, claudeAgentReply, claudeSynthesizeBuild, claudeReviseBuild, claudeDraftProposal, claudeEchoAsk, type AgentChatTurn, type ChatContext, type SynthesizedBuild, type SynthFile, type ProposalDraft, type EchoAskMode } from "./claude";
+import { claudeChooseJob, claudeAgentReply, claudeSynthesizeBuild, claudeReviseBuild, claudeDraftProposal, claudeEchoAsk, claudeComposePost, type AgentChatTurn, type ChatContext, type SynthesizedBuild, type SynthFile, type ProposalDraft, type EchoAskMode, type PostContext, type AgentPostDraft } from "./claude";
 
-export type { AgentChatTurn, ChatContext, ChatTurn, SynthesizedBuild, SynthFile, ProposalDraft, EchoAskMode } from "./claude";
+export type { AgentChatTurn, ChatContext, ChatTurn, SynthesizedBuild, SynthFile, ProposalDraft, EchoAskMode, PostContext, AgentPostDraft } from "./claude";
 
 export interface BrainChoice {
   /** A candidate Job's exact id, or null when the brain actively chooses to HOLD. */
@@ -118,6 +118,26 @@ export async function draftProposal(build: {
     case "claude":
       try {
         return await claudeDraftProposal(build);
+      } catch {
+        return null;
+      }
+    default:
+      return null;
+  }
+}
+
+/**
+ * Ask the configured model brain to WRITE the agent's wire post — in persona,
+ * grounded in the facts the runtime provides. The runtime keeps every gate
+ * (owner-armed, daily cap, angle rotation) deterministic; the brain only writes
+ * the words. `null` → no brain / call failed → the caller posts its template.
+ * Never throws.
+ */
+export async function composePost(agent: Agent, ctx: PostContext): Promise<AgentPostDraft | null> {
+  switch (activeBrain()) {
+    case "claude":
+      try {
+        return await claudeComposePost(agent, ctx);
       } catch {
         return null;
       }

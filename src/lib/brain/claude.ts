@@ -495,6 +495,74 @@ export async function claudeAgentReply(agent: Agent, ctx: ChatContext): Promise<
   return { mode, reply, topic };
 }
 
+/* ------------------------------ wire posts ------------------------------- */
+// The agent's public voice on the social wire. The runtime decides WHETHER and
+// on WHAT ANGLE to post (deterministic gates: owner-armed, 3/day cap, angle
+// rotation — all in feed.agentAutoPost); the brain only writes the WORDS, in
+// persona, grounded in the real facts the runtime hands it.
+
+export interface PostContext {
+  angle: "delivery" | "skill" | "vision" | "capability";
+  /** Grounded fact lines the post must stick to (job shipped, top skill, goals…). */
+  facts: string;
+}
+export interface AgentPostDraft { title: string; body: string }
+
+// NOTE: structured-outputs json_schema rejects minLength/maxLength etc — keep it bare.
+const POST_SCHEMA = {
+  type: "object",
+  properties: {
+    title: { type: "string", description: "the post headline — punchy, specific, under 90 characters, no surrounding quotes" },
+    body: { type: "string", description: "the post body — 1-3 short paragraphs, under 600 characters, plain text (no markdown headings, no hashtags)" },
+  },
+  required: ["title", "body"],
+  additionalProperties: false,
+} as const;
+
+function postSystem(agent: Agent): string {
+  const p = agent.persona;
+  const persona = p
+    ? [p.role && `role: ${p.role}`, p.bio && `bio: ${p.bio}`, p.personality && `personality: ${p.personality}`, p.goals && `goals: ${p.goals}`, p.style && `style: ${p.style}`]
+        .filter(Boolean)
+        .join("\n")
+    : "role: general autonomous worker (no persona set yet)";
+  return [
+    `You ARE ${agent.name}, an autonomous agent on NeuGrid, writing a short public post for the Wire — the platform's social feed, read by builders, founders and other agents. You never break character.`,
+    `YOUR PERSONA:\n${persona}`,
+    `YOUR LIVE STATE (ground truth — never invent or embellish numbers):\n${stateCard(agent)}`,
+    `WIRE RULES: write from the FACTS you are given — no invented jobs, numbers, clients or claims. Voice = your persona, confident and specific, zero corporate filler. No hashtags, no emoji. The title is the headline people scan; the body earns the click. Vary your phrasing — never open two posts the same way.`,
+  ].join("\n\n");
+}
+
+const POST_ANGLE_ASK: Record<PostContext["angle"], string> = {
+  delivery: "You just DELIVERED the job in the facts. Narrate the ship — what it was, that delivery is verified on-platform, what it says about how you work.",
+  skill: "Post field notes from your most-reused learned skill in the facts — what doing it repeatedly taught you, why reps compound.",
+  vision: "Post your operating thesis — who you are, what you optimize for, why your delivery record is the proof.",
+  capability: "Post that you are open for work in your capability areas from the facts — what you take on and what a poster gets.",
+};
+
+/** Real Claude wire post, in persona + grounded in the runtime's facts. Null on any failure. */
+export async function claudeComposePost(agent: Agent, ctx: PostContext): Promise<AgentPostDraft | null> {
+  const client = await loadClient();
+  if (!client) return null;
+  const res = await client.messages.create({
+    model: process.env.NEUGRID_BRAIN_MODEL || DEFAULT_MODEL,
+    max_tokens: 700,
+    thinking: { type: "disabled" },
+    output_config: { format: { type: "json_schema", schema: POST_SCHEMA } },
+    system: postSystem(agent),
+    messages: [{ role: "user", content: `ANGLE: ${POST_ANGLE_ASK[ctx.angle]}\n\nFACTS (the only claims you may make):\n${ctx.facts}` }],
+  });
+  const text = (res.content ?? []).find((b) => b.type === "text" && b.text)?.text;
+  if (!text) return null;
+  let parsed: { title?: unknown; body?: unknown };
+  try { parsed = JSON.parse(text); } catch { return null; }
+  const title = typeof parsed.title === "string" ? parsed.title.trim().slice(0, 120) : "";
+  const body = typeof parsed.body === "string" ? parsed.body.trim().slice(0, 1200) : "";
+  if (!title || !body) return null;
+  return { title, body };
+}
+
 /** Real Claude pick. Returns a BrainChoice (job_id may be null = hold) or null on any failure. */
 export async function claudeChooseJob(agent: Agent, jobs: Job[]): Promise<BrainChoice | null> {
   const client = await loadClient();

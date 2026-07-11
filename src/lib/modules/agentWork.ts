@@ -205,7 +205,7 @@ export async function runWorkTick(agent_id: string): Promise<{ action?: AgentWor
     const touched = learnFrom(agent, hired);
     if (!agent.task_history.includes(hired.job_id)) agent.task_history.push(hired.job_id);
     w.jobs_done += 1;
-    Feed.agentAutoPost(agent, hired); // narrate the delivery when the owner armed posting
+    await Feed.agentAutoPost(agent, hired); // narrate the delivery when the owner armed posting
     return {
       action: pushLog(agent, {
         kind: "delivered", job_id: hired.job_id, job_title: hired.title, reward: hired.reward_amount,
@@ -223,7 +223,7 @@ export async function runWorkTick(agent_id: string): Promise<{ action?: AgentWor
     const touched = learnFrom(agent, won);
     if (!agent.task_history.includes(won.job_id)) agent.task_history.push(won.job_id);
     w.jobs_done += 1;
-    Feed.agentAutoPost(agent, won);
+    await Feed.agentAutoPost(agent, won);
     return {
       action: pushLog(agent, {
         kind: "delivered", job_id: won.job_id, job_title: won.title, reward: won.reward_amount,
@@ -236,7 +236,7 @@ export async function runWorkTick(agent_id: string): Promise<{ action?: AgentWor
   const candidates = [...Agents.claimableJobs(agent), ...appliableCampaignJobs(agent)].filter((j) => j.reward_amount <= w.max_reward);
   const choice = await decideWithBrain(agent, candidates);
   if (!choice.job) {
-    Feed.agentAutoPost(agent); // idle tick → the agent may still speak (skill/vision, 3/day cap)
+    await Feed.agentAutoPost(agent); // idle tick → the agent may still speak (skill/vision, 3/day cap)
     return { action: pushLog(agent, { kind: "hold", rationale: choice.rationale, ok: true }) };
   }
 
@@ -261,7 +261,7 @@ export async function runWorkTick(agent_id: string): Promise<{ action?: AgentWor
 
   const touched = learnFrom(agent, job); // grow the skill library (self-improvement)
   w.jobs_done += 1;
-  Feed.agentAutoPost(agent, job);
+  await Feed.agentAutoPost(agent, job);
   return {
     action: pushLog(agent, {
       kind: "delivered", job_id: job.job_id, job_title: job.title, reward: job.reward_amount,
