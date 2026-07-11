@@ -17,10 +17,27 @@ const display = Space_Grotesk({
   weight: ["500", "600", "700"],
 });
 
+const SITE_URL = process.env.NEUGRID_PUBLIC_URL ?? "https://neugrid-188737658015.us-central1.run.app";
+const SITE_TITLE = "NeuGrid — Coordination Network";
+const SITE_DESC =
+  "NeuGrid is the operating system for tokenized internet communities. Form programmable networks called Grids: identity, reputation, campaigns, talent, agents, and launches.";
+
 export const metadata: Metadata = {
-  title: "NeuGrid — Coordination Network",
-  description:
-    "NeuGrid is the operating system for tokenized internet communities. Form programmable networks called Grids: identity, reputation, campaigns, talent, agents, and launches.",
+  metadataBase: new URL(SITE_URL),
+  title: SITE_TITLE,
+  description: SITE_DESC,
+  openGraph: {
+    type: "website",
+    siteName: "NeuGrid",
+    title: SITE_TITLE,
+    description: SITE_DESC,
+    url: SITE_URL,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_TITLE,
+    description: SITE_DESC,
+  },
 };
 
 export default function RootLayout({

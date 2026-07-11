@@ -192,10 +192,10 @@ export default function EchoPage() {
     const rest = text.includes(" ") ? text.slice(text.indexOf(" ") + 1).trim() : "";
     if (cmd("/deploy")) {
       setExecRun(false); setMode("executor");
-      notify(bBuild ? "Launchpad — launch this build" : "Launchpad — resume a build in Builder first");
+      notify(bBuild ? "Launch — deploy this build" : "Launch — resume a build in Builder first");
     } else if (cmd("/fund")) {
-      if (bBuild) { setExecRun(false); setMode("executor"); notify("Launchpad — “Apply to Fund” drafts your raise"); }
-      else { setMode("builder"); notify("Pick a build to fund — Continue one, then open its Launchpad"); }
+      if (bBuild) { setExecRun(false); setMode("executor"); notify("Launch — “Apply to Fund” drafts your raise"); }
+      else { setMode("builder"); notify("Pick a build to fund — Continue one, then open Launch"); }
     } else if (cmd("/analyze") || cmd("/analyst")) {
       setMode("analyst"); setAskMode("analyst");
       if (rest) { setAskQ(rest); void runAsk(rest, "analyst"); }
@@ -677,8 +677,13 @@ export default function EchoPage() {
               <textarea value={bPrompt} onChange={(e) => setBPrompt(e.target.value)} onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") runBuild(); }} rows={2} placeholder="Build a Solana yield vault with auto-compounding and a DAO governance layer…" className="w-full resize-none bg-transparent text-[13px] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-none" />
               <div className="mt-2 flex items-center justify-between gap-3">
                 <span className="text-[10px] text-ink-faint">Compute · <span className="text-neon/80">{BUILD_COST} GRID</span>{gridBal != null ? <span className={gridBal + starterBal < BUILD_COST ? " text-danger" : ""}> · bal {Math.round(gridBal).toLocaleString()}{starterBal > 0 && <span className="text-cyan/80"> +{Math.round(starterBal).toLocaleString()} credit</span>}</span> : null} → real code + proof of build · ⌘↵</span>
-                <button onClick={runBuild} disabled={bBuilding || !bPrompt.trim()} className="ng-btn ng-btn-primary ng-btn--sm disabled:opacity-40">{bBuilding ? <><IconRefresh className="h-3.5 w-3.5 animate-spin" /> Echo is writing your code…</> : <><IconBolt className="h-3.5 w-3.5" /> Build with Echo</>}</button>
+                {gridBal != null && gridBal + starterBal < BUILD_COST
+                  ? <Link href="/me" className="ng-btn ng-btn-ghost ng-btn--sm shrink-0"><IconCoins className="h-3.5 w-3.5" /> Get GRID</Link>
+                  : <button onClick={runBuild} disabled={bBuilding || !bPrompt.trim()} className="ng-btn ng-btn-primary ng-btn--sm disabled:opacity-40">{bBuilding ? <><IconRefresh className="h-3.5 w-3.5 animate-spin" /> Echo is writing your code…</> : <><IconBolt className="h-3.5 w-3.5" /> Build with Echo</>}</button>}
               </div>
+              {gridBal != null && gridBal + starterBal < BUILD_COST && (
+                <p className="mt-2 text-[10px] leading-relaxed text-danger">You hold {Math.round(gridBal + starterBal).toLocaleString()} GRID · a build costs {BUILD_COST} — earn GRID by shipping work, or <Link href="/me" className="underline decoration-danger/40 underline-offset-2 hover:text-neon">acquire it on your profile →</Link></p>
+              )}
               <div className="mt-2 flex flex-wrap gap-1.5">{["a Solana yield vault", "an NFT mint with a candy machine", "an AI research agent"].map((ex) => <button key={ex} onClick={() => setBPrompt("Build " + ex)} disabled={bBuilding} className="ng-btn ng-btn-ghost ng-btn--sm">{ex}</button>)}</div>
             </Card>
 
@@ -699,7 +704,7 @@ export default function EchoPage() {
                     </div>
                   ))}
                 </div>
-                <p className="mt-2 text-[10px] text-ink-faint">Every witnessed build you&apos;ve made — preview it, keep revising, or take it to the Launchpad.</p>
+                <p className="mt-2 text-[10px] text-ink-faint">Every witnessed build you&apos;ve made — preview it, keep revising, or take it to Launch.</p>
               </Card>
             )}
 
@@ -749,7 +754,7 @@ export default function EchoPage() {
                   </div>
                   <div className="mt-2 flex items-center gap-1.5 text-[11px] text-neon"><IconArrowUp className="h-3 w-3" /> Recorded to your track record · +40 builder reputation</div>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <button onClick={() => { setExecRun(false); setMode("executor"); }} className="ng-btn ng-btn-primary ng-btn--sm"><IconRocket className="h-3.5 w-3.5" /> Open Launchpad</button>
+                    <button onClick={() => { setExecRun(false); setMode("executor"); }} className="ng-btn ng-btn-primary ng-btn--sm"><IconRocket className="h-3.5 w-3.5" /> Open Launch</button>
                     {bBuild.artifact.preview_url && <button onClick={() => setOutTab("preview")} className="ng-btn ng-btn-ghost ng-btn--sm"><IconEye className="h-3.5 w-3.5" /> Live Preview</button>}
                   </div>
                 </Card>
@@ -845,7 +850,7 @@ export default function EchoPage() {
           </>}
 
           {/* EXECUTOR toggle */}
-          {mode === "executor" && <Tabs tabs={["Launchpad", "Execution Flow"]} value={execRun ? 1 : 0} onChange={(i) => setExecRun(i === 1)} />}
+          {mode === "executor" && <Tabs tabs={["Launch", "Execution Flow"]} value={execRun ? 1 : 0} onChange={(i) => setExecRun(i === 1)} />}
 
           {/* EXECUTOR (Launch / Deploy) */}
           {mode === "executor" && !execRun && <>
@@ -854,7 +859,7 @@ export default function EchoPage() {
               {bBuild ? (
                 <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]"><Mark><IconShield className="h-3 w-3" />Proof {bBuild.artifact.proof_of_build}</Mark><Tag>{bBuild.artifact.artifact_id}</Tag><button onClick={() => setMode("builder")} className="ng-btn ng-btn-ghost ng-btn--sm ml-auto"><IconCode className="h-3.5 w-3.5" /> Back to Builder</button></div>
               ) : (
-                <p className="mt-3 text-[11px] text-ink-faint">Open the Launchpad from a build in Builder mode to launch it for real.</p>
+                <p className="mt-3 text-[11px] text-ink-faint">Open Launch from a build in Builder mode to launch it for real.</p>
               )}
             </Card>
             {bBuild ? (
@@ -1013,7 +1018,7 @@ export default function EchoPage() {
                 <div className="mt-4 flex items-center gap-2">
                   <button onClick={deployNow} disabled={!canDeploy} className="ng-btn ng-btn-primary ng-btn--sm disabled:opacity-40">{depBusy ? <><IconRefresh className="h-3.5 w-3.5 animate-spin" /> Deploying…</> : <><IconBolt className="h-3.5 w-3.5" /> {dep ? `Redeploy v${bBuild.version ?? 1}` : "Deploy"} · {DEPLOY_COST} GRID</>}</button>
                   {upToDate && <span className="text-[11px] text-neon">This version is already live.</span>}
-                  <button onClick={() => setExecRun(false)} className="ng-btn ng-btn-ghost ng-btn--sm ml-auto">Back to Launchpad</button>
+                  <button onClick={() => setExecRun(false)} className="ng-btn ng-btn-ghost ng-btn--sm ml-auto">Back to Launch</button>
                 </div>
               </Card>
             </>;
@@ -1082,7 +1087,7 @@ export default function EchoPage() {
               <ul className="space-y-1.5 text-[11px] text-ink-dim">
                 <li className="flex gap-2"><IconCheck className="mt-0.5 h-3 w-3 shrink-0 text-neon" />Builder writes real code — files, live preview, sha256 proof</li>
                 <li className="flex gap-2"><IconCheck className="mt-0.5 h-3 w-3 shrink-0 text-neon" />Personal / Analyst / Observer answer from live data</li>
-                <li className="flex gap-2"><IconCheck className="mt-0.5 h-3 w-3 shrink-0 text-neon" />Launchpad ships builds — Grid, GridX, an Echo-drafted raise</li>
+                <li className="flex gap-2"><IconCheck className="mt-0.5 h-3 w-3 shrink-0 text-neon" />Launch ships builds — Grid, GridX, an Echo-drafted raise</li>
                 <li className="flex gap-2"><IconCheck className="mt-0.5 h-3 w-3 shrink-0 text-neon" />Compute is metered in GRID → the protocol treasury</li>
               </ul>
             </Card>
@@ -1203,7 +1208,7 @@ export default function EchoPage() {
             </Card>
           </> : (
             <Card>
-              <SecLabel icon={<IconShield className="h-3.5 w-3.5" />}>LAUNCHPAD</SecLabel>
+              <SecLabel icon={<IconShield className="h-3.5 w-3.5" />}>LAUNCH</SecLabel>
               <p className="text-[11px] leading-relaxed text-ink-dim">Build something in Builder mode — its proof of build and launch options appear here.</p>
               <button onClick={() => setMode("builder")} className="ng-btn ng-btn-primary ng-btn--sm ng-btn--block mt-3"><IconCode className="h-3.5 w-3.5" /> Go to Builder</button>
             </Card>

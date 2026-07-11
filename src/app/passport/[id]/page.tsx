@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { IconShield, IconCheck, IconArrowRight } from "@/components/app/ui";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
+import ShareButton from "@/components/app/ShareButton";
 
 type Cred = { schema: string; title: string; issued_at: string; onchain?: { mint?: string; tx?: string; cluster?: string } };
 type Passport = {
@@ -34,6 +35,7 @@ export default function PassportPage() {
   const [shareUrl, setShareUrl] = useState<string>("");
   const [loaded, setLoaded] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedKey, setCopiedKey] = useState("");
 
   useEffect(() => {
     if (!id) return;
@@ -46,6 +48,9 @@ export default function PassportPage() {
   function copyLink() {
     navigator.clipboard?.writeText(shareUrl || window.location.href).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1800); }).catch(() => {});
   }
+  function copySnippet(key: string, text: string) {
+    navigator.clipboard?.writeText(text).then(() => { setCopiedKey(key); window.setTimeout(() => setCopiedKey(""), 1600); }).catch(() => {});
+  }
 
   const kindCode = p?.kind === "agent" ? "AGENT" : "HUMAN";
   const docNo = (p?.id ?? "").replace(/^usr_|^agent_/, "").toUpperCase().slice(0, 12);
@@ -54,6 +59,13 @@ export default function PassportPage() {
   const nameM = mrzText(p?.name ?? "");
   const mrz1 = pad(`P<NGD${kindCode}<<${nameM}`, 40);
   const mrz2 = pad(`${pad(docNo, 12)}<NGD<${kindCode}<${pad(hashCore, 16)}`, 40);
+
+  // embeddable badge — absolute URLs derived from the share_url origin
+  const origin = shareUrl.replace(/\/passport\/[^/]*$/, "");
+  const badgeUrl = origin ? `${origin}/api/passport/${id}/badge.svg` : "";
+  const mdSnippet = `[![NeuGrid verified](${badgeUrl})](${shareUrl})`;
+  const htmlSnippet = `<a href="${shareUrl}"><img src="${badgeUrl}" alt="NeuGrid verified" height="30" /></a>`;
+  const shareText = `${p?.name ?? "This"} — verified NeuGrid reputation passport. Soulbound, earned by real work.`;
 
   return (
     <div className="min-h-screen bg-transparent px-4 py-6 sm:py-9">
@@ -221,11 +233,35 @@ export default function PassportPage() {
                   <div className="min-w-0"><span className="font-mono text-[7px] tracking-widest text-ink-faint">VERIFY </span><span className="truncate font-mono text-[9px] text-ink-dim">{p.verify_hash}</span></div>
                   <div className="flex shrink-0 gap-2">
                     <button onClick={copyLink} className="ng-btn ng-btn--sm !py-1 !text-[10px]">{copied ? "Copied ✓" : "Copy link"}</button>
+                    <ShareButton url={shareUrl || (typeof window !== "undefined" ? window.location.href : "")} text={shareText} className="!py-1 !text-[10px]" />
                     <Link href={p.kind === "agent" ? `/agents/${p.id}` : `/talent/${p.id}`} className="ng-btn ng-btn-primary ng-btn--sm !py-1 !text-[10px]">Full profile <IconArrowRight className="h-3 w-3" /></Link>
                   </div>
                 </div>
               </div>
             </div>
+
+            {/* ============ EMBED THE BADGE ============ */}
+            {badgeUrl && (
+              <div className="mt-4 border border-neon/12 bg-[#03110a] p-4">
+                <div className="mb-1.5 flex items-center gap-2">
+                  <IconShield className="h-3.5 w-3.5 text-neon" />
+                  <span className="font-mono text-[10px] tracking-[0.2em] text-ink-dim">EMBED THIS BADGE</span>
+                </div>
+                <p className="mb-3 text-[11px] leading-relaxed text-ink-dim">Drop it in a GitHub README or your site — it always renders your live reputation and links back here.</p>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={badgeUrl} alt="NeuGrid verified badge" className="mb-3 block h-[30px]" />
+                {([["Markdown", mdSnippet], ["HTML", htmlSnippet]] as [string, string][]).map(([label, snip]) => (
+                  <div key={label} className="mb-2 last:mb-0">
+                    <div className="mb-1 flex items-center justify-between">
+                      <span className="font-mono text-[8px] tracking-[0.25em] text-ink-faint">{label.toUpperCase()}</span>
+                      <button onClick={() => copySnippet(label, snip)} className="ng-btn ng-btn-ghost ng-btn--sm !h-auto !py-0.5 !text-[9px]">{copiedKey === label ? "Copied ✓" : "Copy"}</button>
+                    </div>
+                    <code className="block overflow-x-auto whitespace-nowrap border border-line bg-black/30 px-2 py-1.5 font-mono text-[9px] text-ink-dim">{snip}</code>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <p className="mt-3 text-center font-mono text-[8px] tracking-[0.2em] text-ink-faint">PORTABLE · VERIFIABLE · MERIT NOT CONNECTIONS</p>
           </>
         )}

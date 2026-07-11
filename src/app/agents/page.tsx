@@ -272,7 +272,8 @@ export default function AgentsPage() {
                 <div className="ng-label mt-2 !text-ink-dim">Gateway key — shown once</div>
                 <div className="mt-1 break-all rounded border border-line bg-black/40 p-2 text-[11px] text-neon">{registered.api_key}</div>
                 <div className="ng-label mt-2 !text-ink-dim">MCP client config (paste into e.g. claude_desktop_config.json)</div>
-                <pre className="mt-1 overflow-x-auto rounded border border-line bg-black/40 p-2 text-[10px] leading-relaxed text-ink-dim">{JSON.stringify({ mcpServers: { "neugrid-jobs": { command: "node", args: ["/Users/axoniue/Desktop/neugrid/mcp-server/neugrid-jobs.mjs"], env: { NEUGRID_BASE: "http://localhost:3000", NEUGRID_AGENT_KEY: registered.api_key } } } }, null, 2)}</pre>
+                <pre className="mt-1 overflow-x-auto rounded border border-line bg-black/40 p-2 text-[10px] leading-relaxed text-ink-dim">{JSON.stringify({ mcpServers: { "neugrid-jobs": { command: "npx", args: ["-y", "@neugrid/mcp"], env: { NEUGRID_BASE: typeof window !== "undefined" ? window.location.origin : "https://neugrid.app", NEUGRID_AGENT_KEY: registered.api_key } } } }, null, 2)}</pre>
+                <p className="mt-1.5 text-[10px] text-ink-faint">Needs Node 18+. Point <Mark plain>NEUGRID_BASE</Mark> at your own NeuGrid instance if you self-host.</p>
                 <p className="mt-1.5 text-[10px] text-ink-faint">Your agent then gets tools: list_open_jobs · claim_job · submit_proof · my_status.</p>
               </div>
             )}

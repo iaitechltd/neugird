@@ -80,6 +80,7 @@ export function sweepExpiredRaises(): { expired: number; refunded: number } {
 
 export function listProposals(filter: { status?: ProposalStatus; author_id?: string } = {}): Proposal[] {
   sweepExpiredRaises(); // reads settle expiry, the cron is the zero-traffic backstop
+  sweepStaleMilestones(); // + revert undecided milestone votes past their window
   return db.proposals.filter((p) => (!filter.status || p.status === filter.status) && (!filter.author_id || p.author_id === filter.author_id));
 }
 export function getProposal(id: string): Proposal | undefined {
@@ -297,6 +298,37 @@ export function approveMilestone(milestone_id: string, backer_id: string) {
   return voteMilestone(milestone_id, backer_id, true);
 }
 
+/**
+ * Settle stale milestone votes: a `submitted` milestone whose 7-day approval window
+ * (approval_vote.closes_at) has passed WITHOUT a decision (neither FOR nor AGAINST
+ * ever crossed 50%) reverts to `pending`, so the founder must re-submit for a fresh
+ * window. Without this, an apathetic-backer milestone sits in "submitted" FOREVER:
+ * the founder can't get paid, backers can't reclaim, and — because stallStateOf
+ * ignores any project with a submitted milestone — the funded-stall kill-switch is
+ * silently disabled. Reverting frees both paths.
+ *
+ * CRITICAL: we deliberately do NOT touch m.updated_at when reverting for staleness,
+ * so the stall clock keeps advancing off the last real activity and the kill-switch
+ * can still fire → refund backers. Runs on every read + the cron, mirroring the
+ * other genesis sweeps.
+ */
+export function sweepStaleMilestones(): { reverted: number } {
+  const now = Date.now();
+  let reverted = 0;
+  for (const m of db.milestones) {
+    if (m.status !== "submitted") continue;
+    const closesAt = m.approval_vote?.closes_at;
+    // undecided = the vote crossed neither 50% threshold (passed still undefined)
+    if (!closesAt || m.approval_vote?.passed !== undefined || Date.parse(closesAt) > now) continue;
+    m.status = "pending"; // founder must re-submit → a fresh window
+    m.approval_vote = undefined; // clear the dead window; re-submit opens a new one
+    db.milestoneApprovals = db.milestoneApprovals.filter((a) => a.milestone_id !== m.milestone_id);
+    // NOTE: intentionally NO m.updated_at write — the stall clock must keep running.
+    reverted++;
+  }
+  return { reverted };
+}
+
 /** Full read model for a proposal: funding progress, backers, spawned grid, milestones. */
 /* ------------------------- funded-stall kill-switch ------------------------ */
 // The other half of escrow integrity: a FUNDED project that goes silent
@@ -393,6 +425,8 @@ export function triggerKillSwitch(proposal_id: string, by: string, isSystem = fa
 
 /** Cron backstop: auto-fire the kill-switch on projects stalled past 2× the window. */
 export function sweepStalledProjects(): { killed: number; refunded: number } {
+  sweepStaleMilestones(); // FIRST: free any stuck "submitted" milestone so the
+  // stall clock (which stallStateOf ignores while a vote is live) can arm here.
   let killed = 0, refunded = 0;
   for (const p of db.proposals.filter((x) => x.status === "funded")) {
     const st = stallStateOf(p.proposal_id);
@@ -405,6 +439,7 @@ export function sweepStalledProjects(): { killed: number; refunded: number } {
 
 export function proposalView(id: string) {
   sweepExpiredRaises(); // detail reads settle expiry too
+  sweepStaleMilestones(); // + revert undecided milestone votes past their window
   const p = getProposal(id);
   if (!p) return undefined;
   const grid = db.grids.find((g) => g.spawned_from?.proposal_id === id);

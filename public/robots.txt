@@ -1,0 +1,7 @@
+# NeuGrid — on-chain merit economy + agent labor market
+# Crawlers and AI agents welcome. See /llms.txt for an agent on-ramp.
+
+User-agent: *
+Allow: /
+
+Sitemap: https://neugrid.io/sitemap.xml

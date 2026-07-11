@@ -24,7 +24,9 @@
      Pure #00ff00 is the voice; ink/dim/faint are its quieter registers. */
   --ng-ink: #41ff41;
   --ng-ink-dim: #2fd32f;
-  --ng-ink-faint: #1e9c1e;
+  /* faint lifted one notch brighter (a11y 2026-07-12): #1e9c1e failed WCAG at
+     9-11px on near-black; same phosphor hue, more lightness, still under dim. */
+  --ng-ink-faint: #2bbf2b;
 
   /* Lines, glows, overlays */
   --ng-line: rgba(0, 255, 0, 0.14);
@@ -365,6 +367,22 @@ body {
   /* side rails (founder 2026-07-09): the biggest text steps down one size */
   .ng-rail .ng-stat__v { font-size: 1.15rem; }
   .ng-stat__k { font-size: 0.625rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ng-ink-faint); }
+}
+
+/* Keyboard focus (a11y 2026-07-12): interactive elements previously responded
+   only to :hover, leaving keyboard users with no visible focus. A terminal-native
+   1px neon outline (offset, square, no glow) — outline doesn't touch the hover
+   background/color rules, so those are unaffected. */
+.ng-btn:focus-visible,
+.ng-tab:focus-visible,
+.thl:focus-visible,
+.ng-input:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 1px solid var(--ng-neon);
+  outline-offset: 2px;
 }
 
 /* Mono helper for inline IDs / wallet addresses / data */

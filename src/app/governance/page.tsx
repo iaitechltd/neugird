@@ -113,9 +113,17 @@ function ProposalCard({ p, me, meta, onChange }: { p: GovView; me: Me | null; me
       </div>
 
       {/* Vote form */}
-      {open && !voted && (
+      {open && !voted && (me && me.grid <= 0 ? (
+        <div className="mt-3 border-t border-line pt-3 text-[10.5px] leading-relaxed text-ink-dim">
+          You hold 0 GRID — lock GRID to vote; earn it by shipping work or <a href="/me" className="text-neon underline decoration-neon/40 underline-offset-2 hover:text-neon">acquire it on your profile →</a>
+        </div>
+      ) : (
         <div className="mt-3 border-t border-line pt-3">
-          <div className="flex gap-1.5">
+          <div className="flex items-center justify-between text-[10px] text-ink-faint">
+            <span className="uppercase tracking-wide">Your vote</span>
+            {me && <span>Balance <span className="text-ink">{grid(me.grid)}</span> GRID</span>}
+          </div>
+          <div className="mt-1.5 flex gap-1.5">
             <button onClick={() => setSupport(true)} className={`flex-1 rounded px-2 py-1.5 text-[11px] font-semibold transition ${support ? "bg-neon/15 text-neon" : "bg-line/40 text-ink-dim hover:text-ink"}`}>For</button>
             <button onClick={() => setSupport(false)} className={`flex-1 rounded px-2 py-1.5 text-[11px] font-semibold transition ${!support ? "bg-[color:var(--ng-danger)]/15 text-[color:var(--ng-danger)]" : "bg-line/40 text-ink-dim hover:text-ink"}`}>Against</button>
           </div>
@@ -126,9 +134,9 @@ function ProposalCard({ p, me, meta, onChange }: { p: GovView; me: Me | null; me
             {[1000, 5000, 10000].map((q) => <button key={q} onClick={() => setAmount(String(q))} className="flex-1 rounded bg-line/40 px-1 py-1 text-[10px] text-ink-dim transition hover:text-neon">{grid(q)}</button>)}
           </div>
           <button onClick={cast} disabled={busy} className="ng-btn ng-btn-primary ng-btn--sm ng-btn--block mt-2 disabled:opacity-50">{busy ? "Locking…" : "Lock & Vote"}</button>
-          {me && <div className="mt-1 text-center text-[10px] text-ink-faint">Balance {grid(me.grid)} GRID · returned on resolve</div>}
+          {me && <div className="mt-1 text-center text-[10px] text-ink-faint">Lock returns on resolve, win or lose</div>}
         </div>
-      )}
+      ))}
       {open && voted && (
         <button onClick={resolve} disabled={busy} className="ng-btn ng-btn--sm ng-btn--block mt-3 disabled:opacity-50">{busy ? "…" : "Resolve now"}</button>
       )}

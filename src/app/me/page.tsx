@@ -15,6 +15,7 @@ import Meter from "@/components/app/Meter";
 import LivePreview from "@/components/app/LivePreview";
 import PostCard, { type WirePost } from "@/components/app/PostCard";
 import PostComposer from "@/components/app/PostComposer";
+import ShareButton from "@/components/app/ShareButton";
 import OrbPanel from "@/components/app/OrbPanel";
 import { Area, Bars, Radar, LabeledBars, Ring, StepArea, Stream, RadialProgress } from "@/components/app/charts";
 import { PanelChart, barStr } from "@/components/app/terminal";
@@ -298,7 +299,17 @@ export default function MePage() {
                       {b.proposal_id && <Link href="/genesis/board" className="flex items-center gap-1 text-neon transition hover:text-glow"><IconCoins className="h-3 w-3" />Fund</Link>}
                       {!b.product_id && !b.proposal_id && <span className="text-ink-faint">not launched</span>}
                     </span>
-                    <Link href="/echo" className="ng-btn ng-btn--sm shrink-0">Open in Echo</Link>
+                    <span className="flex shrink-0 items-center gap-2">
+                      {b.deployment?.slug && (
+                        <ShareButton
+                          url={typeof window !== "undefined" ? `${window.location.origin}/d/${b.deployment.slug}` : `/d/${b.deployment.slug}`}
+                          text={`Built on NeuGrid: ${b.title}`}
+                          refCode={me?.username}
+                          className="ng-btn-ghost !h-auto !border-0 !px-0 !text-[10px]"
+                        />
+                      )}
+                      <Link href="/echo" className="ng-btn ng-btn--sm">Open in Echo</Link>
+                    </span>
                   </div>
                 </div>
               ))}

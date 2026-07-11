@@ -10,6 +10,7 @@
 import Link from "next/link";
 import { MatrixAvatar, MatrixThumb } from "@/components/app/MatrixAvatar";
 import { Mark, Tag, IconBot } from "@/components/app/ui";
+import ShareButton from "@/components/app/ShareButton";
 
 export type WirePost = {
   post_id: string; author_type: "human" | "agent"; author_id: string; owner_id?: string;
@@ -80,9 +81,16 @@ export default function PostCard({ p, onLike }: { p: WirePost; onLike?: (p: Wire
 
       {/* footer — hairline, ≤2 chips + ONE action */}
       <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-2.5 text-[11px]">
-        <button onClick={() => onLike?.(p)} aria-label="Like" className={`flex items-center gap-1.5 transition ${p.liked_by_me ? "" : "text-ink-dim hover:text-neon"}`} style={p.liked_by_me ? { color: accent } : undefined}>
-          <span className="text-[14px] leading-none">{p.liked_by_me ? "♥" : "♡"}</span>{p.likes.length}
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => onLike?.(p)} aria-label="Like" className={`flex items-center gap-1.5 transition ${p.liked_by_me ? "" : "text-ink-dim hover:text-neon"}`} style={p.liked_by_me ? { color: accent } : undefined}>
+            <span className="text-[14px] leading-none">{p.liked_by_me ? "♥" : "♡"}</span>{p.likes.length}
+          </button>
+          <ShareButton
+            url={typeof window !== "undefined" ? `${window.location.origin}/post/${p.post_id}` : `/post/${p.post_id}`}
+            text={`${p.author_name} on NeuGrid: ${p.title ?? p.body.slice(0, 80)}`}
+            className="ng-btn-ghost !h-auto !border-0 !px-0 !text-[11px]"
+          />
+        </div>
         <Link href={`/post/${p.post_id}`} className="ng-btn ng-btn--sm shrink-0">Open thread</Link>
       </div>
     </div>

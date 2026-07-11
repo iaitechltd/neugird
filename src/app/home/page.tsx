@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import NeuHeader from "@/components/app/NeuHeader";
 import {
@@ -50,22 +50,34 @@ export default function HomePage() {
   const [openJobs, setOpenJobs] = useState<Job[]>([]);
   const [grids, setGrids] = useState<Grid[]>([]);
   const [economy, setEconomy] = useState<Economy | null>(null);
+  // loaded flags — hold a neutral placeholder until the first fetch resolves so a real account never flashes empty
+  const [meLoaded, setMeLoaded] = useState(false);
+  const [buildsLoaded, setBuildsLoaded] = useState(false);
+  const [agentsLoaded, setAgentsLoaded] = useState(false);
+  const [jobsLoaded, setJobsLoaded] = useState(false);
+  const [gridsLoaded, setGridsLoaded] = useState(false);
   const [wire, setWire] = useState<WirePost[]>([]);
   const [wireTab, setWireTab] = useState<"following" | "all">("following");
+  const wirePicked = useRef(false); // the user manually chose a wire tab — respect it from then on
   useEffect(() => {
     // the wire — posts from people + agents you follow (or the whole network)
-    fetch(`/api/feed?filter=${wireTab}`).then((r) => r.json()).then((d) => setWire((d.posts ?? []).slice(0, 12))).catch(() => {});
+    fetch(`/api/feed?filter=${wireTab}`).then((r) => r.json()).then((d) => {
+      const posts = (d.posts ?? []).slice(0, 12);
+      // first-run: a brand-new user follows nobody, so Following is empty — fall back to All so the wire is never blank
+      if (wireTab === "following" && posts.length === 0 && !wirePicked.current) { setWireTab("all"); return; }
+      setWire(posts);
+    }).catch(() => {});
   }, [wireTab]);
   async function likeWire(p: WirePost) {
     setWire((cur) => cur.map((x) => x.post_id === p.post_id ? { ...x, liked_by_me: !x.liked_by_me, likes: x.liked_by_me ? x.likes.slice(0, -1) : [...x.likes, "me"] } : x));
     await fetch(`/api/feed/${p.post_id}/like`, { method: "POST" }).catch(() => {});
   }
   useEffect(() => {
-    fetch("/api/me").then((r) => r.json()).then(setMe).catch(() => {});
-    fetch("/api/echo/builds").then((r) => r.json()).then((d) => setBuilds(d.builds ?? [])).catch(() => {});
-    fetch("/api/agents?mine=1").then((r) => r.json()).then((d) => setAgents(d.agents ?? [])).catch(() => {});
-    fetch("/api/jobs?status=open").then((r) => r.json()).then((d) => setOpenJobs(d.jobs ?? [])).catch(() => {});
-    fetch("/api/grids").then((r) => r.json()).then((d) => setGrids(d.grids ?? d ?? [])).catch(() => {});
+    fetch("/api/me").then((r) => r.json()).then(setMe).catch(() => {}).finally(() => setMeLoaded(true));
+    fetch("/api/echo/builds").then((r) => r.json()).then((d) => setBuilds(d.builds ?? [])).catch(() => {}).finally(() => setBuildsLoaded(true));
+    fetch("/api/agents?mine=1").then((r) => r.json()).then((d) => setAgents(d.agents ?? [])).catch(() => {}).finally(() => setAgentsLoaded(true));
+    fetch("/api/jobs?status=open").then((r) => r.json()).then((d) => setOpenJobs(d.jobs ?? [])).catch(() => {}).finally(() => setJobsLoaded(true));
+    fetch("/api/grids").then((r) => r.json()).then((d) => setGrids(d.grids ?? d ?? [])).catch(() => {}).finally(() => setGridsLoaded(true));
     fetch("/api/economy").then((r) => r.json()).then(setEconomy).catch(() => {});
   }, []);
 
@@ -77,6 +89,9 @@ export default function HomePage() {
   const listedCount = builds.filter((b) => b.product_id).length;
   const fundedCount = builds.filter((b) => b.proposal_id).length;
   const agentEarn = agents.reduce((s, a) => s + (a.earnings ?? 0), 0);
+  // first-run = a genuine new account: everything loaded, but zero history to show
+  const firstRun = meLoaded && buildsLoaded && agentsLoaded && rep === 0 && builds.length === 0 && agents.length === 0;
+  const greeting = !meLoaded ? "Welcome to NeuGrid" : firstRun ? `Welcome to NeuGrid, ${me?.username ?? "builder"}` : `Welcome back, ${me?.username ?? "builder"}`;
   const repMax = Math.max(1, ...Object.values(repDims));
   // reputation radar — canonical dimensions, normalized to the strongest
   const RADAR_DIMS = ["builder", "creator", "backer", "reviewer", "agent"] as const;
@@ -101,12 +116,12 @@ export default function HomePage() {
       text: `${b.status === "built" ? "built" : b.status} · ${b.title}`,
       delta: b.status === "built" ? 40 : undefined,
     }));
-  const kpis: { Icon: (p: { className?: string }) => React.JSX.Element; title: string; v: number; sub: string }[] = [
-    { Icon: IconBolt, title: "Reputation", v: rep, sub: "Pulse · soulbound" },
-    { Icon: IconRocket, title: "Builds", v: builds.length, sub: "proof of build" },
-    { Icon: IconBot, title: "Agents", v: agents.length, sub: "economic actors" },
-    { Icon: IconGrid, title: "On GridX", v: listedCount, sub: "products listed" },
-    { Icon: IconActivity, title: "Open Jobs", v: openJobs.length, sub: "to claim" },
+  const kpis: { Icon: (p: { className?: string }) => React.JSX.Element; title: string; v: number; sub: string; loading: boolean }[] = [
+    { Icon: IconBolt, title: "Reputation", v: rep, sub: "Pulse · soulbound", loading: !meLoaded },
+    { Icon: IconRocket, title: "Builds", v: builds.length, sub: "proof of build", loading: !buildsLoaded },
+    { Icon: IconBot, title: "Agents", v: agents.length, sub: "economic actors", loading: !agentsLoaded },
+    { Icon: IconGrid, title: "On GridX", v: listedCount, sub: "products listed", loading: !buildsLoaded },
+    { Icon: IconActivity, title: "Open Jobs", v: openJobs.length, sub: "to claim", loading: !jobsLoaded },
   ];
 
   return (
@@ -129,8 +144,8 @@ export default function HomePage() {
                 </div>
               </div>
               <div className="mt-3 grid grid-cols-4 gap-2 text-center">
-                {([["Rep", rep], ["Builds", builds.length], ["Agents", agents.length], ["Grids", myGrids.length]] as [string, number][]).map(([k, v]) => (
-                  <div key={k}><div className="ng-stat__v !text-base"><CountUp key={v} value={v} /></div><div className="ng-stat__k">{k}</div></div>
+                {([["Rep", rep, meLoaded], ["Builds", builds.length, buildsLoaded], ["Agents", agents.length, agentsLoaded], ["Grids", myGrids.length, gridsLoaded && meLoaded]] as [string, number, boolean][]).map(([k, v, ok]) => (
+                  <div key={k}><div className="ng-stat__v !text-base">{ok ? <CountUp key={v} value={v} /> : <span className="text-ink-faint">—</span>}</div><div className="ng-stat__k">{k}</div></div>
                 ))}
               </div>
             </div>
@@ -152,7 +167,7 @@ export default function HomePage() {
             <Link href="/leaderboard" className="ng-btn ng-btn-ghost ng-btn--sm ng-btn--block mt-2"><IconActivity className="h-3.5 w-3.5" /> Discovery — Leaderboard</Link>
 
             <Section icon={<IconGrid className="h-3.5 w-3.5" />} action={<Link href="/grids/explore" className="text-[11px] text-ink-dim transition hover:text-neon">All</Link>}>Your Grids</Section>
-            {myGrids.length ? (
+            {!(gridsLoaded && meLoaded) ? <p className="text-[11px] text-ink-faint">—</p> : myGrids.length ? (
               <div className="divide-y divide-line">
                 {myGrids.map((g) => (
                   <Link key={g.grid_id} href={`/grid/${g.slug}`} className="group flex items-center justify-between py-2.5 text-xs text-ink transition hover:text-neon">
@@ -164,7 +179,7 @@ export default function HomePage() {
             ) : <p className="text-[11px] text-ink-dim">No grids yet — <Link href="/grids/explore" className="text-neon">explore</Link> or start one.</p>}
 
             <Section icon={<IconBot className="h-3.5 w-3.5" />} action={<Link href="/agents" className="text-[11px] text-ink-dim transition hover:text-neon">Manage</Link>}>Your Agents · ps aux</Section>
-            {agents.length ? (
+            {!agentsLoaded ? <p className="text-[11px] text-ink-faint">—</p> : agents.length ? (
               <div className="ng-card px-2.5 py-1.5">
                 {agents.slice(0, 6).map((a) => (
                   <Link key={a.agent_id} href={`/agents/${a.agent_id}`} className="block">
@@ -186,8 +201,8 @@ export default function HomePage() {
         <main className="@container order-1 space-y-3 lg:order-2 lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
           <Rise>
             <Bracket className="ng-panel p-5">
-              <div className="ng-title text-2xl font-bold text-neon text-glow"><Decrypt text={`Welcome back, ${me?.username ?? "builder"}`} /></div>
-              <p className="text-[12px] text-ink-dim">Your command center — build with Echo, deploy agents, raise on Fund. Everything here is live.</p>
+              <div className="ng-title text-2xl font-bold text-neon text-glow"><Decrypt text={greeting} /></div>
+              <p className="text-[12px] text-ink-dim">{firstRun ? "Start here — connect your wallet, claim your Echo credit, and ship your first proof-of-build. Everything on this page is live." : "Your command center — build with Echo, deploy agents, raise on Fund. Everything here is live."}</p>
             </Bracket>
           </Rise>
 
@@ -229,7 +244,7 @@ export default function HomePage() {
             {kpis.slice(0, 3 + closed).map((s) => (
               <div key={s.title} className="min-w-[110px] flex-1 px-3 py-2 text-center">
                 <div className="ng-tag justify-center !text-[9px]"><s.Icon className="h-3 w-3" />{s.title}</div>
-                <div className="ng-stat__v !text-xl leading-tight"><CountUp key={s.v} value={s.v} /></div>
+                <div className="ng-stat__v !text-xl leading-tight">{s.loading ? <span className="text-ink-faint">—</span> : <CountUp key={s.v} value={s.v} />}</div>
                 <div className="text-[9px] leading-tight text-ink-faint">{s.sub}</div>
               </div>
             ))}
@@ -242,7 +257,7 @@ export default function HomePage() {
             action={
               <span className="flex gap-3 text-[11px]">
                 {(["following", "all"] as const).map((t) => (
-                  <button key={t} onClick={() => setWireTab(t)} className={`capitalize transition ${wireTab === t ? "text-neon" : "text-ink-dim hover:text-neon"}`}>{t}{wireTab === t && <span className="ml-1 text-neon/60">●</span>}</button>
+                  <button key={t} onClick={() => { wirePicked.current = true; setWireTab(t); }} className={`capitalize transition ${wireTab === t ? "text-neon" : "text-ink-dim hover:text-neon"}`}>{t}{wireTab === t && <span className="ml-1 text-neon/60">●</span>}</button>
                 ))}
               </span>
             }
@@ -254,7 +269,7 @@ export default function HomePage() {
             </div>
             </Rise>
           ) : (
-            <p className="text-[11px] text-ink-dim">{wireTab === "following" ? <>Follow builders + agents (from their profiles or any post) and their posts land here — or <button onClick={() => setWireTab("all")} className="text-neon hover:underline">see the whole network</button>.</> : "The wire is quiet — post from your profile."}</p>
+            <p className="text-[11px] text-ink-dim">{wireTab === "following" ? <>Follow builders + agents (from their profiles or any post) and their posts land here — or <button onClick={() => { wirePicked.current = true; setWireTab("all"); }} className="text-neon hover:underline">see the whole network</button>.</> : "The wire is quiet — post from your profile."}</p>
           )}
 
           {/* command center */}
@@ -263,7 +278,7 @@ export default function HomePage() {
           <div className="grid grid-cols-1 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 2 + closed } as React.CSSProperties}>
             <div className="ng-card p-3.5">
               <div className="ng-label mb-2 flex items-center gap-2 !text-ink-dim"><span className="text-neon"><IconRocket className="h-3.5 w-3.5" /></span>Echo Builds</div>
-              {builds[0] ? <><div className="truncate text-[13px] text-ink">{builds[0].title}</div><div className="truncate text-[10px] text-ink-dim">{builds[0].stack.join(" · ")} · {builds[0].artifact.proof_of_build}</div></> : <div className="text-[11px] text-ink-dim">No builds yet — ship your first MVP with Echo.</div>}
+              {!buildsLoaded ? <div className="text-[11px] text-ink-faint">—</div> : builds[0] ? <><div className="truncate text-[13px] text-ink">{builds[0].title}</div><div className="truncate text-[10px] text-ink-dim">{builds[0].stack.join(" · ")} · {builds[0].artifact.proof_of_build}</div></> : <div className="text-[11px] text-ink-dim">No builds yet — ship your first MVP with Echo.</div>}
               <div className="mt-2 text-[11px] text-ink-dim">{builds.length} build{builds.length === 1 ? "" : "s"} · {listedCount} on GridX · {fundedCount} on Fund</div>
               <div className="mt-2 flex flex-wrap gap-2"><Link href="/echo" className="ng-btn ng-btn-primary ng-btn--sm"><IconBolt className="h-3.5 w-3.5" /> Build with Echo</Link><Link href="/me" className="ng-btn ng-btn-ghost ng-btn--sm">Track record</Link></div>
             </div>
@@ -361,7 +376,7 @@ export default function HomePage() {
 
           {/* open jobs — real */}
           <Section icon={<IconActivity className="h-3.5 w-3.5" />} action={<Link href="/jobs" className="text-[11px] text-ink-dim transition hover:text-neon">Job board</Link>}>Open Jobs · {openJobs.length}</Section>
-          {openJobs.length ? (
+          {!jobsLoaded ? <p className="text-[11px] text-ink-faint">—</p> : openJobs.length ? (
             <Rise>
             <div className="grid grid-cols-1 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 2 + closed } as React.CSSProperties}>
               {openJobs.slice(0, 6).map((j) => (
@@ -393,7 +408,7 @@ export default function HomePage() {
           <Panel scroll title="SIGNAL" icon={<IconShield className="h-4 w-4" />} action={<IconChevronDown className="h-4 w-4 text-ink-dim" />} bodyClass="p-3.5">
             <Section icon={<IconBolt className="h-3.5 w-3.5" />}>Reputation</Section>
             <div className="ng-card p-3.5">
-              <div className="flex items-baseline justify-between"><span className="ng-stat__v !text-xl">{rep}</span><span className="text-[11px] text-ink-dim">total Pulse</span></div>
+              <div className="flex items-baseline justify-between"><span className="ng-stat__v !text-xl">{meLoaded ? rep : "—"}</span><span className="text-[11px] text-ink-dim">total Pulse</span></div>
             </div>
 
             {/* two Signal-rail charts — a ratio-ring cluster + a GRID gauge (founder, screenshot-inspired 2026-07-04) */}
@@ -409,7 +424,7 @@ export default function HomePage() {
             </PanelChart>
 
             <Section icon={<IconRocket className="h-3.5 w-3.5" />} action={<Link href="/me" className="text-[11px] text-ink-dim transition hover:text-neon">All</Link>}>Recent Builds · tail -f</Section>
-            {builds.length ? (
+            {!buildsLoaded ? <p className="text-[11px] text-ink-faint">—</p> : builds.length ? (
               <div className="ng-card p-3">
                 <TailLog lines={buildLog} />
               </div>

@@ -17,6 +17,7 @@ import { Panel, Mark, DataRow, IconCoins, IconSparkle, IconUser, IconActivity , 
 import { Area, Bars, StepArea, LabeledBars, Donut, RadialProgress } from "@/components/app/charts";
 import { PanelChart } from "@/components/app/terminal";
 import { CountUp, Decrypt } from "@/components/app/typefx";
+import ShareButton from "@/components/app/ShareButton";
 
 type ScheduleRow = { action: string; pulse: number | null; formula?: string; dimension: string };
 type HumanityState = {
@@ -268,6 +269,7 @@ export default function RewardsPage() {
             <div className="mt-3 flex gap-2">
               <input readOnly value={refLink} className="ng-input flex-1 !text-[10.5px]" />
               <button onClick={copyLink} className="ng-btn ng-btn-primary ng-btn--sm shrink-0">{copied ? "Copied ✓" : "Copy"}</button>
+              {refLink && <ShareButton url={refLink} text="Join me on NeuGrid — reputation you earn by real work, portable and verifiable." className="shrink-0" />}
             </div>
 
             <div className="mt-4 divide-y divide-line">
