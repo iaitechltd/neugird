@@ -30,10 +30,23 @@ import type { Dispute, DisputeVerdict } from "../types";
 const EVALUATOR_MIN_REP = 100; // only proven members adjudicate (same bar as proposing)
 const WINNER_PULSE = 5; // voted WITH the panel → a little reviewer reputation
 const LOSER_PULSE = -12; // voted AGAINST the outcome → faded harder than the reward (skin in the game)
+const MIN_VOTING_WINDOW_MS = 12 * 3_600_000; // a quorum can't settle instantly — the panel must have a chance to form (anti-sybil: a worker can't rush a payout on the first-N aged sockpuppet votes)
 
 const quorum = () => Params.get("dispute_quorum");
+/** The resolution deadline: a dispute must reach quorum within the dispute window,
+ *  else it lapses to the DEFAULT outcome (the original rejection stands) so a
+ *  never-quorate dispute can't strand the payer's escrow forever. */
+const resolutionWindowMs = () => Params.get("dispute_window_days") * 86_400_000;
+const windowElapsed = (d: Dispute) => Date.now() - Date.parse(d.created_at) >= MIN_VOTING_WINDOW_MS;
+
 export function reputationOf(user_id: string): number {
   return db.users.find((u) => u.id === user_id)?.reputation?.total ?? 0;
+}
+
+/** Any actor's human principal — an agent resolves to its owner, else itself.
+ *  Independence compares principals so a party can't evaluate via an owned agent. */
+function principalOf(id: string): string {
+  return db.agents.find((a) => a.agent_id === id)?.owner_id ?? id;
 }
 
 export function getDispute(id: string): Dispute | undefined {
@@ -90,7 +103,8 @@ export function openDispute(job_id: string, raised_by: string, reason: string): 
 /** Is `user_id` allowed to evaluate this dispute? (independent + proven + hasn't voted). */
 export function eligibleEvaluator(dispute: Dispute, user_id: string): { ok: boolean; reason?: string } {
   if (dispute.status !== "open") return { ok: false, reason: "not_open" };
-  if (user_id === dispute.raised_by || user_id === dispute.against) return { ok: false, reason: "not_independent" };
+  const evaluator = principalOf(user_id);
+  if (evaluator === principalOf(dispute.raised_by) || evaluator === principalOf(dispute.against)) return { ok: false, reason: "not_independent" }; // exclude both parties AND any agent they own
   if (reputationOf(user_id) < EVALUATOR_MIN_REP) return { ok: false, reason: "insufficient_reputation" };
   if (dispute.votes.some((v) => v.evaluator_id === user_id)) return { ok: false, reason: "already_voted" };
   return { ok: true };
@@ -109,7 +123,7 @@ export function castVerdict(dispute_id: string, evaluator_id: string, forWorker:
     reason: (reason ?? "").trim().slice(0, 400) || undefined,
     at: nowISO(),
   });
-  if (dispute.votes.length >= dispute.quorum) return { dispute, resolved: resolve(dispute) };
+  if (dispute.votes.length >= dispute.quorum) return { dispute, resolved: resolve(dispute) }; // no-ops until the voting window elapses (see resolve)
   return { dispute, resolved: false };
 }
 
@@ -117,6 +131,8 @@ export function castVerdict(dispute_id: string, evaluator_id: string, forWorker:
  *  the panel. Returns true when it resolved. */
 export function resolve(dispute: Dispute): boolean {
   if (dispute.status !== "open") return false;
+  if (dispute.votes.length < dispute.quorum) return false; // never settle below quorum
+  if (!windowElapsed(dispute)) return false; // let the panel form — a bare first-N quorum can't force an instant payout (anti-sybil)
   const forWorker = dispute.votes.filter((v) => v.verdict === "for_worker").reduce((s, v) => s + v.weight, 0);
   const forCreator = dispute.votes.filter((v) => v.verdict === "for_creator").reduce((s, v) => s + v.weight, 0);
   const workerWins = forWorker > forCreator; // a tie favors the payer's original call (rejection stands)
@@ -167,10 +183,31 @@ export function sweepExpired(): { finalized: number; resolved: number } {
       finalized++;
     }
   }
+  const lapseAfterMs = resolutionWindowMs();
   for (const d of db.disputes) {
-    if (d.status === "open" && d.votes.length >= d.quorum && resolve(d)) resolved++;
+    if (d.status !== "open") continue;
+    if (d.votes.length >= d.quorum) {
+      if (resolve(d)) resolved++; // quorum reached (settles once the voting window has elapsed)
+    } else if (now - Date.parse(d.created_at) >= lapseAfterMs) {
+      lapseToDefault(d); // never reached quorum in the window → the original rejection stands (refund the payer; escrow never stranded)
+      resolved++;
+    }
   }
   return { finalized, resolved };
+}
+
+/** A dispute that lapsed without ever reaching quorum settles to the DEFAULT
+ *  outcome: the payer's original rejection stands. Refunds the payer + fades the
+ *  worker via the same path a dismissal takes. No panel reward/slash — no binding
+ *  verdict was ever reached, so the partial voters keep their stake. */
+function lapseToDefault(dispute: Dispute): void {
+  const forWorker = dispute.votes.filter((v) => v.verdict === "for_worker").reduce((s, v) => s + v.weight, 0);
+  const forCreator = dispute.votes.filter((v) => v.verdict === "for_creator").reduce((s, v) => s + v.weight, 0);
+  dispute.status = "dismissed";
+  dispute.outcome = { for_worker: forWorker, for_creator: forCreator };
+  dispute.resolved_at = nowISO();
+  dispute.resolution = "Dispute lapsed without a quorum — the original rejection stands by default.";
+  Jobs.applyRejectionEffects(dispute.subject_id, dispute.against); // refund payer + fade worker (final)
 }
 
 /** A dispute enriched for the UI (identities + subject job). */

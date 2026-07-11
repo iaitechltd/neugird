@@ -439,7 +439,6 @@ export default function EchoPage() {
               {bBuild ? (
                 <>
                   <div className="mt-2 break-all text-[11px] text-ink-dim">Proof: <Mark plain>{bBuild.artifact.proof_of_build}</Mark></div>
-                  <div className="mt-3 grid grid-cols-3 gap-1.5">{["Rename", "Category", "Metadata"].map((b) => <button key={b} onClick={() => notify(b)} className="ng-btn ng-btn--sm">{b}</button>)}</div>
                 </>
               ) : (
                 <button onClick={() => setMode("builder")} className="ng-btn ng-btn-primary ng-btn--sm ng-btn--block mt-3"><IconCode className="h-3.5 w-3.5" /> Go to Builder</button>

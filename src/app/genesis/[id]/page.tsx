@@ -98,30 +98,31 @@ export default function ProposalDetail() {
     return () => { alive = false; };
   }, [id]);
 
-  async function act(url: string, body: object | undefined, msg: string) {
-    if (busy) return; setBusy(true);
+  async function act(url: string, body: object | undefined, msg: string): Promise<boolean> {
+    if (busy) return false; setBusy(true);
     try {
       const r = await fetch(url, { method: "POST", headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
       const d = await r.json().catch(() => null);
       if (!r.ok) {
         notify(d?.error === "insufficient_usdc" ? "Not enough USDC in your wallet" : d?.error === "self_backing" ? "You can't back your own raise" : "Something went wrong");
         setBusy(false);
-        return;
+        return false;
       }
       notify(d?.spawned_grid_id ? "Fully funded — project Grid spawned ✓" : d?.minted?.length ? `${msg} · soulbound credential minted` : msg);
       window.dispatchEvent(new Event("neugrid:refresh-me"));
       await reload();
-    } catch { notify("Something went wrong"); }
+    } catch { notify("Something went wrong"); setBusy(false); return false; }
     setBusy(false);
+    return true;
   }
 
-  function fund(e: React.FormEvent<HTMLFormElement>) {
+  async function fund(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
     const amt = Number(new FormData(form).get("amt") ?? 0);
     if (!(amt > 0)) { notify("Enter an amount to back"); return; }
-    form.reset();
-    act(`/api/proposals/${id}/fund`, { amount: amt }, "Backed ✓");
+    const ok = await act(`/api/proposals/${id}/fund`, { amount: amt }, "Backed ✓");
+    if (ok) form.reset();
   }
 
   const backBar = (

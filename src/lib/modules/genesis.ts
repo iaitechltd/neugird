@@ -335,14 +335,17 @@ export function stallStateOf(proposal_id: string): StallState | undefined {
 }
 
 /** Pull the kill-switch: return the unreleased treasury to backers pro-rata.
- *  `by` must be a backer (or "system:stall-sweep" from the cron backstop). */
-export function triggerKillSwitch(proposal_id: string, by: string): { refunded?: number; backers?: number; error?: string } {
+ *  `by` must be a backer; only the internal cron backstop passes `isSystem`. */
+export function triggerKillSwitch(proposal_id: string, by: string, isSystem = false): { refunded?: number; backers?: number; error?: string } {
   const p = getProposal(proposal_id);
   if (!p) return { error: "not_found" };
   const st = stallStateOf(proposal_id);
   if (!st) return { error: "not_applicable" };
   if (!st.stalled) return { error: "not_stalled" };
-  const isSystem = by.startsWith("system:");
+  // 'system:'/'neugrid:' are reserved internal actors. `isSystem` is trust the
+  // caller passes explicitly (cron only) — NEVER derived from `by`, which for the
+  // route path is the raw session cookie and could be spoofed to skip the gate.
+  if (!isSystem && (by.startsWith("system:") || by.startsWith("neugrid:"))) return { error: "forbidden_actor" };
   if (!isSystem && !hasBacked(proposal_id, by)) return { error: "not_a_backer" };
 
   const grid = db.grids.find((g) => g.spawned_from?.proposal_id === proposal_id)!;
@@ -350,9 +353,19 @@ export function triggerKillSwitch(proposal_id: string, by: string): { refunded?:
   const backings = db.backings.filter((b) => b.round_id === proposal_id && !b.refunded);
   const totalBacked = backings.reduce((s, b) => s + b.amount, 0);
   const pot = tre.balance;
+  // pro-rata shares floored to whole cents; the sub-cent rounding remainder goes to
+  // the last paid backer so the credited total equals the pot (nothing stranded).
+  const shares = backings.map((b) => (totalBacked > 0 ? Math.floor((pot * b.amount) / totalBacked * 100) / 100 : 0));
+  let lastPaid = -1;
+  for (let i = 0; i < shares.length; i++) if (shares[i] > 0) lastPaid = i;
+  if (lastPaid >= 0) {
+    const remainder = Math.round((pot - shares.reduce((s, x) => s + x, 0)) * 100) / 100;
+    if (remainder > 0) shares[lastPaid] = Math.round((shares[lastPaid] + remainder) * 100) / 100;
+  }
   let paid = 0;
-  for (const b of backings) {
-    const share = totalBacked > 0 ? Math.floor((pot * b.amount) / totalBacked * 100) / 100 : 0;
+  for (let i = 0; i < backings.length; i++) {
+    const b = backings[i];
+    const share = shares[i];
     if (share <= 0) continue;
     // escrow-era raises have the money in the sink; legacy ones stay accounting-only
     if (Wallets.debitUsdc(GENESIS_ESCROW, share)) {
@@ -362,10 +375,13 @@ export function triggerKillSwitch(proposal_id: string, by: string): { refunded?:
         resource: `genesis_killswitch_refund:${proposal_id}`, amount: share, asset: "USDC",
         network: "neugrid", scheme: "exact", proof: `genesis:${b.backing_id}`, status: "settled", created_at: nowISO(),
       });
+      paid += share; // count only what actually left escrow
     }
-    paid += share;
   }
-  tre.balance = 0;
+  // drain exactly what was released; the escrow debit total now equals the credited
+  // total, so no sub-cent remainder is orphaned. Legacy accounting-only raises
+  // (nothing in the sink) still zero the on-paper treasury.
+  tre.balance = paid > 0 ? Math.round((pot - paid) * 100) / 100 : 0;
   p.status = "refunded";
   grid.lifecycle_stage = "failed";
   void Vault.kill(p); // chain mirror
@@ -381,7 +397,7 @@ export function sweepStalledProjects(): { killed: number; refunded: number } {
   for (const p of db.proposals.filter((x) => x.status === "funded")) {
     const st = stallStateOf(p.proposal_id);
     if (!st?.stalled || Date.parse(st.auto_at) > Date.now()) continue;
-    const r = triggerKillSwitch(p.proposal_id, "system:stall-sweep");
+    const r = triggerKillSwitch(p.proposal_id, "system:stall-sweep", true);
     if (!r.error) { killed++; refunded += r.refunded ?? 0; }
   }
   return { killed, refunded };

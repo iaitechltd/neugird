@@ -82,7 +82,10 @@ export async function runBuild(input: RunBuildInput): Promise<{ build?: Build; c
     // REAL codegen — the model writes the project; a failure refunds, never fakes.
     const synth = await Brain.synthesizeBuild(prompt);
     if (!synth) {
-      if (charge) Wallets.refundCompute(input.owner_id, { starter: charge.starter, grid: charge.grid > 0 && Wallets.debitGrid(Wallets.TREASURY, charge.grid) ? charge.grid : 0 }); // refund each bucket
+      if (charge) {
+        if (charge.grid > 0) Wallets.debitGrid(Wallets.TREASURY, charge.grid); // reclaim the credited GRID from the treasury (best-effort reconcile)
+        Wallets.refundCompute(input.owner_id, charge); // the user ALWAYS gets their GRID + starter back — never gated on the treasury
+      }
       return { error: "synthesis_failed", cost };
     }
     title = (input.title?.trim() || synth.title || deriveTitle(prompt)).slice(0, 60);
@@ -194,7 +197,10 @@ export async function reviseBuild(input: ReviseBuildInput): Promise<{ build?: Bu
 
   const revised = await Brain.reviseBuild({ title: build.title, summary: build.summary, stack: build.stack, files }, instruction);
   if (!revised) {
-    if (charge) Wallets.refundCompute(input.owner_id, { starter: charge.starter, grid: charge.grid > 0 && Wallets.debitGrid(Wallets.TREASURY, charge.grid) ? charge.grid : 0 }); // refund
+    if (charge) {
+      if (charge.grid > 0) Wallets.debitGrid(Wallets.TREASURY, charge.grid); // reclaim the credited GRID from the treasury (best-effort reconcile)
+      Wallets.refundCompute(input.owner_id, charge); // the user ALWAYS gets their GRID + starter back — never gated on the treasury
+    }
     return { error: "synthesis_failed", cost };
   }
 
@@ -350,7 +356,10 @@ export async function askEcho(mode: EchoAskMode, user_id: string, question: stri
   const { context } = askSnapshot(mode, user_id);
   const answer = await Brain.echoAsk(mode, q, context);
   if (!answer) {
-    if (charge) Wallets.refundCompute(user_id, { starter: charge.starter, grid: charge.grid > 0 && Wallets.debitGrid(Wallets.TREASURY, charge.grid) ? charge.grid : 0 }); // refund
+    if (charge) {
+      if (charge.grid > 0) Wallets.debitGrid(Wallets.TREASURY, charge.grid); // reclaim the credited GRID from the treasury (best-effort reconcile)
+      Wallets.refundCompute(user_id, charge); // the user ALWAYS gets their GRID + starter back — never gated on the treasury
+    }
     return { error: "synthesis_failed", cost };
   }
   return { answer, cost };
@@ -370,7 +379,13 @@ function slugify(title: string, build_id: string): string {
   const base = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "app";
   const taken = (s: string) => db.builds.some((b) => b.deployment?.slug === s && b.build_id !== build_id);
   if (!taken(base)) return base;
-  return `${base}-${build_id.slice(-4)}`;
+  // Fallback: append the build id (widening the slice until unique) — the raw
+  // `-4` suffix could itself collide, serving the wrong app on /d/<slug>.
+  for (let n = 4; n <= build_id.length; n++) {
+    const candidate = `${base}-${build_id.slice(-n)}`;
+    if (!taken(candidate)) return candidate;
+  }
+  return `${base}-${build_id}`;
 }
 
 /** Publish (or republish) a build's standalone app to NeuGrid hosting. */

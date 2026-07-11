@@ -77,7 +77,22 @@ export interface IncomeView {
 export function incomeFor(user_id: string): IncomeView {
   const rows = incomeRows(user_id).sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
   const direct = rows.reduce((a, s) => a + s.amount, 0);
-  const agents_total = db.agents.filter((a) => a.owner_id === user_id).reduce((a, x) => a + (x.earnings ?? 0), 0);
+  // Owned agents' retained earnings (service/x402/trading) — but EXCLUDE the
+  // job-payout split already surfaced in `direct`: an agent's job pay routes to
+  // the owner as a `job_payout:` settlement (counted in `direct`), and jobs.ts
+  // ALSO adds the agent's split (basis − ownerCut) to `agent.earnings`. Counting
+  // both double-counts, so we subtract the job-split portion back out.
+  const owned = db.agents.filter((a) => a.owner_id === user_id);
+  const ownedIds = new Set(owned.map((a) => a.agent_id));
+  const jobSplitInDirect = rows
+    .filter((s) => s.resource.startsWith("job_payout:"))
+    .reduce((acc, s) => {
+      const job = db.jobs.find((j) => j.job_id === s.resource.slice("job_payout:".length));
+      if (!job || job.assignee_type !== "agent" || !job.assignee_id || !ownedIds.has(job.assignee_id)) return acc;
+      const bps = Math.min(10000, Math.max(0, owned.find((a) => a.agent_id === job.assignee_id)?.owner_split_bps ?? 0));
+      return acc + Math.max(0, s.amount - Math.round((s.amount * bps) / 10000));
+    }, 0);
+  const agents_total = Math.max(0, owned.reduce((a, x) => a + (x.earnings ?? 0), 0) - jobSplitInDirect);
   // cumulative curve (fixed-width so the chart reads even with few events)
   let run = 0;
   const series = rows.map((s) => (run += s.amount));

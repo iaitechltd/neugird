@@ -380,10 +380,10 @@ export function canGraduate(market_id: string): GraduationStatus {
   if (m.stage === "futures") return { ok: false, reason: "max_stage" };
   const prog = stageProgress(m);
   const next = prog.next as Staking.StageTarget; // "spot" | "futures"
-  const marketGate = prog.capPct >= 100 && prog.liqOk;
+  const marketGate = prog.marketcap >= prog.capTarget && prog.liqOk;
   const stakeGate = Staking.stakeMet(m.grid_id, next);
   if (!marketGate) {
-    const reason = prog.capPct < 100 ? `reach $${prog.capTarget.toLocaleString()} market cap (${prog.capPct}%)` : "needs a deeper liquidity floor";
+    const reason = prog.marketcap < prog.capTarget ? `reach $${prog.capTarget.toLocaleString()} market cap (${prog.capPct}%)` : "needs a deeper liquidity floor";
     return { ok: false, next, reason, marketGate, stakeGate, progress: prog };
   }
   if (!stakeGate) {
@@ -421,6 +421,9 @@ export function flagFraud(market_id: string, reviewer_id: string, reason?: strin
   const m = getMarket(market_id);
   if (!m) return { error: "no_market" };
   if (m.status === "paused") return { error: "already_flagged" };
+  // Identity gate: only a REAL, distinct user counts toward the quorum — reject
+  // unknown/reserved ids so arbitrary cookie identities can't stack fraud flags.
+  if (!reviewer_id || reviewer_id.startsWith("system:") || reviewer_id.startsWith("neugrid:") || !db.users.some((u) => u.id === reviewer_id)) return { error: "invalid_reviewer" };
   const grid = db.grids.find((g) => g.grid_id === m.grid_id);
   if (grid && grid.owner_id === reviewer_id) return { error: "founder_cannot_flag" };
   const flags = (m.fraud_flags ??= []);
@@ -650,7 +653,13 @@ export function placeLimit(market_id: string, user_id: string, side: "buy" | "se
     // rest the remainder (true marketable-limit, not a market order in disguise)
     const take = Math.min(qty, qtyWithinLimit(m, side, price));
     if (take > 1e-6) {
-      const r = side === "buy" ? executeSwap(m, user_id, "buy", quoteInForBase(m, user_id, take)) : executeSwap(m, user_id, "sell", take);
+      // CIRCUIT BREAKER (audit F2): the immediate marketable fill goes through the
+      // curve just like a market order, so it gets the SAME impact cap as trade().
+      // (The resting non-marketable remainder is exempt — bounded by its limit price.)
+      const swapAmount = side === "buy" ? quoteInForBase(m, user_id, take) : take;
+      const capBps = Params.get("max_trade_impact_bps");
+      if (capBps > 0 && Math.abs(priceImpactOf(m, side, swapAmount)) * 10000 > capBps) return { error: "price_impact" };
+      const r = executeSwap(m, user_id, side, swapAmount);
       if (r.error) return { error: r.error };
       filledNow = side === "buy" ? (r.filled ?? take) : take;
       Perps.settle(market_id);

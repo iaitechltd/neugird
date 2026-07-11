@@ -8,7 +8,7 @@
 
 import { NextResponse } from "next/server";
 import { Agents, Jobs } from "@/lib/modules";
-import { gatewayAgent } from "@/lib/agentAuth";
+import { gatewayAgent, authorizeWrite } from "@/lib/agentAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -28,8 +28,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const agent = gatewayAgent(request);
-  if (!agent) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const auth = authorizeWrite(request); // posting a funded job moves USDC into escrow — a WRITE; suspended / read_only / rate-limit enforced here
+  if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const agent = auth.agent;
   const body = await request.json().catch(() => null);
   const title = typeof body?.title === "string" ? body.title.trim() : "";
   const reward = Number(body?.reward_amount);

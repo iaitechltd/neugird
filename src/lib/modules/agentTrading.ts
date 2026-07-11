@@ -26,7 +26,7 @@ import * as Perps from "./perps";
 import * as Agents from "./agents";
 import * as Wallets from "./wallets";
 import * as Params from "./params";
-import type { AgentAction, AgentActionKind, Mandate, MandateStrategy, MarketStage, Position, TradeRiskGrade } from "../types";
+import type { AgentAction, AgentActionKind, Mandate, MandateStrategy, Market, MarketStage, Position, TradeRiskGrade } from "../types";
 
 /* --- tunables (the native playbooks; deterministic off live market state) --- */
 const MIN_TICK_SECONDS = 6; // rate-limit: at most one action per ~6s of polling
@@ -372,7 +372,8 @@ export function tickAll(): { scanned: number; acted: number; traded: number; ski
  *  spot, dump the agent's bag if its value has fallen past the stop-loss. Returns
  *  the action if one fired (one breaker per tick). */
 function enforceStopLoss(m: Mandate): AgentAction | undefined {
-  const mark = Markets.priceOf(Markets.getMarket(m.market_id)!);
+  const market = Markets.getMarket(m.market_id)!;
+  const mark = Markets.priceOf(market);
   for (const p of agentPositions(m)) {
     if (Perps.pnlOf(p, mark) <= -m.stop_loss_pct * p.margin) {
       const a = closeAgentPosition(m, p, `Stop-loss — ${p.side} down past ${(m.stop_loss_pct * 100).toFixed(0)}%, closed`);
@@ -382,10 +383,33 @@ function enforceStopLoss(m: Mandate): AgentAction | undefined {
   if (m.position_base > 1e-9 && m.deployed_usdc > 0) {
     const value = m.position_base * mark;
     if (value <= (1 - m.stop_loss_pct) * m.deployed_usdc) {
-      return execute(m, { kind: "sell", side: "sell", amount: m.position_base, notional: value, rationale: `Stop-loss — bag down past ${(m.stop_loss_pct * 100).toFixed(0)}%, exiting` });
+      // De-risk WITHIN the AMM circuit breaker: a large bag can't be dumped in one
+      // order (Markets.trade rejects it with `price_impact`, so the stop never
+      // fires). Clip the sell to a breaker-safe size and exit across ticks — the
+      // stop stays tripped each tick until the position is drained.
+      const sell = Math.min(m.position_base, breakerSafeSell(market, m.position_base));
+      if (sell > 1e-9) {
+        return execute(m, { kind: "sell", side: "sell", amount: sell, notional: sell * mark, rationale: `Stop-loss — bag down past ${(m.stop_loss_pct * 100).toFixed(0)}%, de-risking $${(sell * mark).toFixed(0)}` });
+      }
     }
   }
   return undefined;
+}
+
+/** Largest base qty the agent can SELL in one order without tripping the AMM
+ *  circuit breaker (Markets caps single-order |price impact| at
+ *  max_trade_impact_bps). Inverts the sell-impact curve — impact = 1 −
+ *  (base/(base+q))² ≤ cap ⇒ q ≤ base·(1/√(1−cap) − 1) — then shaves a hair so a
+ *  rounding wobble can't land on the wrong side of the cap. Returns the full qty
+ *  when there's no cap, so behavior is unchanged for shallow positions. */
+function breakerSafeSell(market: Market, wantBase: number): number {
+  const capBps = Params.get("max_trade_impact_bps");
+  if (!(capBps > 0)) return wantBase; // breaker off — no clip
+  const base = market.base_reserve ?? 0;
+  const cap = capBps / 10000;
+  if (!(base > 0) || cap >= 1) return wantBase;
+  const qMax = base * (1 / Math.sqrt(1 - cap) - 1) * 0.999;
+  return Math.max(0, Math.min(wantBase, qMax));
 }
 
 /** Close one of the agent's perp positions and book its realized PnL into the mandate. */
@@ -410,9 +434,14 @@ function bookPosition(m: Mandate, p: Position, rationale: string): AgentAction {
   if (pnl > 0 && agent && agent.owner_id && agent.owner_id !== m.owner_id) {
     const fee = Math.round(pnl * Params.get("agent_perf_fee_bps")) / 10000;
     if (fee > 0 && Wallets.debitUsdc(m.owner_id, fee)) {
-      const ownerCut = Math.round((fee * (agent.owner_split_bps ?? 0)) / 10000);
+      // The FULL fee moves to the agent's owner wallet (the economic principal);
+      // `earnings` is the post-split take-home STAT. Crediting only ownerCut here
+      // (while debiting the full fee) burned or, on a rounding-up split, MINTED
+      // wallet USDC — the same asymmetry fixed in x402.payAgent / messaging.
+      const bps = Math.min(10000, Math.max(0, agent.owner_split_bps ?? 0));
+      const ownerCut = Math.round((fee * bps) / 10000);
       agent.earnings = (agent.earnings ?? 0) + Math.max(0, fee - ownerCut);
-      if (ownerCut > 0) Wallets.creditUsdc(agent.owner_id, ownerCut);
+      Wallets.creditUsdc(agent.owner_id, fee);
       feeNote = ` · perf fee $${fee.toFixed(2)} → ${agent.name}`;
     }
   }
@@ -692,8 +721,21 @@ export function externalTrade(agent_id: string, market_id: string, body: Externa
 
 const BREACH_LIMIT = 3; // blocked attempts on one mandate before it's a breach
 
+// Only TRUE boundary violations count toward a breach — an external agent that
+// keeps ASKING to cross a mandate limit is signaling bad faith. Benign no-ops
+// (selling with no position, a missing market, a bad amount, an already-inactive
+// mandate) are blocked too, but they harm no one and must NOT slash trust.
+const BREACH_REASONS = new Set([
+  "over_max_position", // asked to exceed the position cap
+  "over_budget", // asked to spend past the budget
+  "over_max_leverage", // asked for leverage past the cap
+  "stage_not_allowed", // asked to trade a disallowed stage
+  "risk_critical", // pre-trade sim graded the fill critical
+  "daily_loss_cap", // asked to trade past the daily-loss kill
+]);
+
 function maybeSlashBreach(m: Mandate): AgentAction | undefined {
-  const violations = actions().filter((a) => a.mandate_id === m.mandate_id && a.ok === false).length;
+  const violations = actions().filter((a) => a.mandate_id === m.mandate_id && a.ok === false && BREACH_REASONS.has(a.detail ?? "")).length;
   if (violations < BREACH_LIMIT) return undefined;
   const agent = db.agents.find((a) => a.agent_id === m.agent_id);
   if (agent) {

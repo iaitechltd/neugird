@@ -346,7 +346,7 @@ export function Stat({ label, value, prefix = "", suffix = "", decimals = 0, acc
   return (
     <div className={align === "center" ? "text-center" : ""}>
       <div className="ng-stat__v" style={{ color }}>
-        {typeof value === "number" ? <CountUp value={value} prefix={prefix} suffix={suffix} decimals={decimals} /> : <>{prefix}{value}{suffix}</>}
+        {typeof value === "number" ? <CountUp key={value} value={value} prefix={prefix} suffix={suffix} decimals={decimals} /> : <>{prefix}{value}{suffix}</>}
       </div>
       <div className="ng-stat__k">{label}</div>
     </div>

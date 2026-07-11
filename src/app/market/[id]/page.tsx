@@ -121,7 +121,7 @@ type ChatMsg = { message_id: string; user_id: string; username: string; reputati
 const ROLE_CHIP: Record<string, string> = { founder: "bg-neon/15 text-neon", backer: "bg-cyan/15 text-cyan", holder: "bg-neon/10 text-neon", member: "bg-neon/[0.06] text-ink-dim", guest: "bg-neon/[0.04] text-ink-faint" };
 
 /* Per-Grid community thread — reputation-tagged messages + composer. */
-function ChatPanel({ messages, onSend, onLike, busy }: { messages: ChatMsg[]; onSend: (t: string) => void; onLike: (id: string) => void; busy: boolean }) {
+function ChatPanel({ messages, onSend, onLike, busy }: { messages: ChatMsg[]; onSend: (t: string) => Promise<boolean>; onLike: (id: string) => void; busy: boolean }) {
   const [text, setText] = useState("");
   return (
     <div>
@@ -140,7 +140,7 @@ function ChatPanel({ messages, onSend, onLike, busy }: { messages: ChatMsg[]; on
           </div>
         ))}
       </div>
-      <form onSubmit={(e) => { e.preventDefault(); const t = text.trim(); if (t) { onSend(t); setText(""); } }} className="sticky bottom-0 mt-3 flex gap-1.5 border-t border-line bg-black/85 pt-2 backdrop-blur">
+      <form onSubmit={async (e) => { e.preventDefault(); const t = text.trim(); if (t) { const ok = await onSend(t); if (ok) setText(""); } }} className="sticky bottom-0 mt-3 flex gap-1.5 border-t border-line bg-black/85 pt-2 backdrop-blur">
         <input value={text} onChange={(e) => setText(e.target.value)} maxLength={500} placeholder="Share what you think…" className="ng-input !py-1.5 text-xs" />
         <button type="submit" disabled={busy || !text.trim()} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-40">Send</button>
       </form>
@@ -424,13 +424,15 @@ export default function MarketTerminal() {
     return () => { alive = false; clearInterval(iv); };
   }, [id, agentActive]);
 
-  async function act(url: string, body: object, msg?: string, errMap?: Record<string, string>) {
-    if (busy) return; setBusy(true);
-    try { const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); const j = await r.json(); if (!r.ok) throw new Error(j?.error); if (msg) notify(msg); window.dispatchEvent(new Event("neugrid:refresh-me")); setTick((t) => t + 1); }
+  async function act(url: string, body: object, msg?: string, errMap?: Record<string, string>): Promise<boolean> {
+    if (busy) return false; setBusy(true);
+    let ok = false;
+    try { const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); const j = await r.json(); if (!r.ok) throw new Error(j?.error); if (msg) notify(msg); window.dispatchEvent(new Event("neugrid:refresh-me")); setTick((t) => t + 1); ok = true; }
     catch (e) { const code = e instanceof Error && e.message ? e.message : "Failed"; notify(errMap?.[code] ?? code); }
     setBusy(false);
+    return ok;
   }
-  const tradeMkt = (s: "buy" | "sell", amt: number, msg: string) => { if (amt > 0) act(`/api/markets/${id}/trade`, { side: s, amount: amt }, msg); };
+  const tradeMkt = (s: "buy" | "sell", amt: number, msg: string): Promise<boolean> => amt > 0 ? act(`/api/markets/${id}/trade`, { side: s, amount: amt }, msg) : Promise.resolve(false);
   const CHAT_ERR: Record<string, string> = {
     reputation_gate: "Posting here needs 25+ reputation — or a stake in this project (hold, back, or join)",
     rate_limited: "Slow down — one message every 5 seconds",
@@ -818,8 +820,8 @@ export default function MarketTerminal() {
                       <span className="shrink-0 text-ink-dim tnum">~{((1 / lev - 0.005) * 100).toFixed(1)}% to liq</span>
                     </div>
                     <div className="mt-2.5 grid grid-cols-2 gap-1.5">
-                      <button onClick={() => { const lp = Number(limitPrice); act(`/api/markets/${id}/perp`, { action: "open", side: "long", collateral, leverage: lev, ...(lp > 0 ? { limit_price: lp } : {}), ...(Number(tpIn) > 0 ? { take_profit: Number(tpIn) } : {}), ...(Number(slIn) > 0 ? { stop_loss: Number(slIn) } : {}), ...(Number(trailIn) > 0 ? { trailing_pct: Number(trailIn) } : {}) }, lp > 0 ? "Long entry resting" : "Long opened"); setAmount(""); setLimitPrice(""); setTpIn(""); setSlIn(""); setTrailIn(""); }} disabled={busy || !(collateral > 0)} className="ng-btn ng-btn-primary !py-2.5 !text-[13px] font-bold disabled:opacity-40">{Number(limitPrice) > 0 ? "Limit Long ↗" : "Long ↗"}</button>
-                      <button onClick={() => { const lp = Number(limitPrice); act(`/api/markets/${id}/perp`, { action: "open", side: "short", collateral, leverage: lev, ...(lp > 0 ? { limit_price: lp } : {}), ...(Number(tpIn) > 0 ? { take_profit: Number(tpIn) } : {}), ...(Number(slIn) > 0 ? { stop_loss: Number(slIn) } : {}), ...(Number(trailIn) > 0 ? { trailing_pct: Number(trailIn) } : {}) }, lp > 0 ? "Short entry resting" : "Short opened"); setAmount(""); setLimitPrice(""); setTpIn(""); setSlIn(""); setTrailIn(""); }} disabled={busy || !(collateral > 0)} className="ng-btn ng-btn-danger !py-2.5 !text-[13px] font-bold disabled:opacity-40">{Number(limitPrice) > 0 ? "Limit Short ↘" : "Short ↘"}</button>
+                      <button onClick={async () => { const lp = Number(limitPrice); const ok = await act(`/api/markets/${id}/perp`, { action: "open", side: "long", collateral, leverage: lev, ...(lp > 0 ? { limit_price: lp } : {}), ...(Number(tpIn) > 0 ? { take_profit: Number(tpIn) } : {}), ...(Number(slIn) > 0 ? { stop_loss: Number(slIn) } : {}), ...(Number(trailIn) > 0 ? { trailing_pct: Number(trailIn) } : {}) }, lp > 0 ? "Long entry resting" : "Long opened"); if (ok) { setAmount(""); setLimitPrice(""); setTpIn(""); setSlIn(""); setTrailIn(""); } }} disabled={busy || !(collateral > 0)} className="ng-btn ng-btn-primary !py-2.5 !text-[13px] font-bold disabled:opacity-40">{Number(limitPrice) > 0 ? "Limit Long ↗" : "Long ↗"}</button>
+                      <button onClick={async () => { const lp = Number(limitPrice); const ok = await act(`/api/markets/${id}/perp`, { action: "open", side: "short", collateral, leverage: lev, ...(lp > 0 ? { limit_price: lp } : {}), ...(Number(tpIn) > 0 ? { take_profit: Number(tpIn) } : {}), ...(Number(slIn) > 0 ? { stop_loss: Number(slIn) } : {}), ...(Number(trailIn) > 0 ? { trailing_pct: Number(trailIn) } : {}) }, lp > 0 ? "Short entry resting" : "Short opened"); if (ok) { setAmount(""); setLimitPrice(""); setTpIn(""); setSlIn(""); setTrailIn(""); } }} disabled={busy || !(collateral > 0)} className="ng-btn ng-btn-danger !py-2.5 !text-[13px] font-bold disabled:opacity-40">{Number(limitPrice) > 0 ? "Limit Short ↘" : "Short ↘"}</button>
                     </div>
                     <details className="mt-2">
                       <summary className="cursor-pointer list-none text-[9px] text-ink-faint transition hover:text-neon">ⓘ how margin works</summary>
@@ -842,11 +844,12 @@ export default function MarketTerminal() {
                     {stage === "spot" && ot === "limit" && <div className="mt-2 flex items-center justify-between text-[10px] text-ink-faint"><span>Total</span><span className="text-ink">{money((Number(limitPrice) || 0) * (Number(amount) || 0))} USDC</span></div>}
                     <div className="mt-2 flex items-center justify-between text-[10px] text-ink-faint"><span>Trading fee</span><span>1.00%</span></div>
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         const a = Number(amount);
-                        if (stage === "spot" && ot === "limit") { const p = Number(limitPrice); if (p > 0 && a > 0) act(`/api/markets/${id}/order`, { action: "place", side, price: p, qty: a }, "Order placed"); }
-                        else tradeMkt(side, a, side === "buy" ? "Bought" : "Sold");
-                        setAmount("");
+                        let ok = false;
+                        if (stage === "spot" && ot === "limit") { const p = Number(limitPrice); if (p > 0 && a > 0) ok = await act(`/api/markets/${id}/order`, { action: "place", side, price: p, qty: a }, "Order placed"); }
+                        else ok = await tradeMkt(side, a, side === "buy" ? "Bought" : "Sold");
+                        if (ok) setAmount("");
                       }}
                       disabled={busy || !(Number(amount) > 0)}
                       className={`ng-btn ng-btn--block mt-2 disabled:opacity-40 ${side === "buy" ? "ng-btn-primary" : "ng-btn-danger"}`}

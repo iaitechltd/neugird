@@ -18,6 +18,8 @@ import type { Grid, Product, ProductEvent, ProductReview, Settlement } from "../
 
 /** Reputation a GridX listing is worth (creator dimension). Tunable. */
 export const LIST_REPUTATION = 20;
+/** Free-product reviews only count from an established reviewer (anti sock-puppet). */
+const FREE_REVIEW_MIN_REP = 10;
 const TREASURY = "neugrid:treasury";
 const DAY = 24 * 3600 * 1000;
 
@@ -45,6 +47,41 @@ export function revenueFor(product_id: string): number {
   return Math.round((db.settlements ?? [])
     .filter((s) => s.resource === `product_purchase:${product_id}` && s.status === "settled")
     .reduce((a, s) => a + s.amount, 0) * 100) / 100;
+}
+
+/**
+ * Does this buyer have economic history INDEPENDENT of `owner`? A wallet whose
+ * only footprint is buying this owner's products (a sock puppet the owner funded
+ * and paid himself) has none; a real user has either received value from someone
+ * else, or bought a DIFFERENT owner's product. Opens don't count — they're free.
+ */
+function hasIndependentHistory(buyer: string, owner?: string): boolean {
+  return (db.settlements ?? []).some((s) => {
+    if (s.status !== "settled") return false;
+    // received value from someone other than the owner → a genuine earner
+    if (s.payee === buyer && s.payer_id !== owner) return true;
+    // spent on ANOTHER owner's product → a real buyer, not a single-target puppet
+    if (s.payer_id === buyer && s.resource.startsWith("product_purchase:")) {
+      const other = getProduct(s.resource.slice("product_purchase:".length));
+      if (other && ownerOf(other) !== owner) return true;
+    }
+    return false;
+  });
+}
+
+/**
+ * Wash-resistant revenue for the trust signal: purchases from buyers with no
+ * history independent of the owner (self-funded sock puppets) are discounted.
+ * The raw revenueFor stays intact for the owner's own accounting.
+ */
+export function verifiedRevenueFor(product_id: string): number {
+  const product = getProduct(product_id);
+  if (!product) return 0;
+  const owner = ownerOf(product);
+  const total = (db.settlements ?? [])
+    .filter((s) => s.resource === `product_purchase:${product_id}` && s.status === "settled")
+    .reduce((a, s) => (hasIndependentHistory(s.payer_id, owner) ? a + s.amount : a), 0);
+  return Math.round(total * 100) / 100;
 }
 
 export function hasPurchased(product_id: string, user_id: string): boolean {
@@ -135,10 +172,21 @@ export function canReview(product_id: string, user_id: string): { ok: boolean; r
   if (ownerOf(product) === user_id) return { ok: false, reason: "own_product" };
   if (reviewsFor(product_id).some((r) => r.user_id === user_id)) return { ok: false, reason: "already_reviewed" };
   const paid = (product.price_usdc ?? 0) > 0;
-  const used = (db.productEvents ?? []).some(
-    (e) => e.product_id === product_id && e.user_id === user_id && (paid ? e.kind === "purchase" : true),
+  if (paid) {
+    // paid product: a real purchase (USDC moved) is the proof-of-use.
+    if (!hasPurchased(product_id, user_id)) return { ok: false, reason: "not_purchased" };
+    return { ok: true };
+  }
+  // free product: an "open" alone is trivially self-served, so a verified free
+  // review needs BOTH a real usage signal AND an established reviewer — otherwise
+  // a freshly-minted wallet could mint creator reputation at will.
+  const opened = (db.productEvents ?? []).some(
+    (e) => e.product_id === product_id && e.user_id === user_id && e.kind === "open",
   );
-  if (!used) return { ok: false, reason: paid ? "not_purchased" : "not_used" };
+  if (!opened) return { ok: false, reason: "not_used" };
+  const reviewer = db.users.find((u) => u.id === user_id);
+  const rep = reviewer?.reputation?.total ?? reviewer?.pulse_score ?? 0;
+  if (rep < FREE_REVIEW_MIN_REP) return { ok: false, reason: "insufficient_reputation" };
   return { ok: true };
 }
 
@@ -157,14 +205,18 @@ export function addReview(product_id: string, user_id: string, rating: number, t
   (db.productReviews ??= []).unshift(review);
 
   const owner = ownerOf(product);
+  const paidProduct = (product.price_usdc ?? 0) > 0;
   if (owner && r !== 3) {
     Pulse.recordEvent({
       target_type: "user", target_id: owner, user_id,
       action_type: "product_reviewed",
       weight: r >= 4 ? 3 : -2,
-      reason: `"${product.name}" rated ${r}★ by a verified ${((product.price_usdc ?? 0) > 0) ? "buyer" : "user"}`,
+      reason: `"${product.name}" rated ${r}★ by a verified ${paidProduct ? "buyer" : "user"}`,
       verification_source: `gridx:${product_id}`,
       dimension: "creator",
+      // Free-product reviews grant creator REPUTATION only — no GRID allocation
+      // (mirrors the campaign_completed hardening; kills a free-review GRID farm).
+      reward_excluded: !paidProduct,
     });
   }
   return { review };
@@ -187,7 +239,8 @@ export function enrich(product: Product) {
   const { rating, count } = ratingFor(product.product_id);
   return {
     ...product,
-    onchain_revenue: revenueFor(product.product_id),
+    onchain_revenue: verifiedRevenueFor(product.product_id), // wash-resistant trust signal
+    raw_revenue: revenueFor(product.product_id),             // owner accounting (undiscounted)
     active_users: usage.active_users,
     opens_30d: usage.opens,
     purchases: usage.purchases,

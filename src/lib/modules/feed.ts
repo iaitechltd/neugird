@@ -91,8 +91,14 @@ export function create(input: {
   // never GRID allocation. Agent posts credit the OWNER.
   const beneficiary = owner_id ?? input.user_id;
   const today = nowISO().slice(0, 10);
-  const postsToday = store().filter((p) => (p.owner_id ?? p.author_id) === beneficiary && p.created_at.slice(0, 10) === today).length;
-  if (postsToday <= REWARDED_POSTS_PER_DAY) {
+  // Durable anti-farm cap: count today's feed_post Pulse EVENTS for the
+  // beneficiary (the immutable ledger), NOT the live post count — deleting a
+  // post never removes its Pulse event, so delete+repost can't reset the cap
+  // and re-mint post reputation.
+  const rewardedToday = Pulse.forTarget("user", beneficiary).filter(
+    (e) => e.action_type === "feed_post" && e.timestamp.slice(0, 10) === today,
+  ).length;
+  if (rewardedToday < REWARDED_POSTS_PER_DAY) {
     Pulse.recordEvent({
       target_type: "user", target_id: beneficiary, user_id: beneficiary,
       action_type: "feed_post", weight: POST_PULSE_WEIGHT,

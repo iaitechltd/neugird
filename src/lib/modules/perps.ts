@@ -20,6 +20,7 @@ import type { LimitOrder, Position, PositionSide } from "../types";
 
 export const MAX_LEVERAGE = 10;
 const MMR = 0.005; // maintenance-margin buffer baked into the liquidation price
+const LIQ_PENALTY = 0.005; // liquidation penalty (fraction of notional) → insurance, on top of the MMR buffer
 
 function store(): Position[] {
   return (db.positions ??= []);
@@ -240,16 +241,24 @@ export function settle(market_id: string): void {
     accrueFunding(p, mark, rate, now);
     const liqHit = (p.side === "long" ? mark <= p.liquidation_price : mark >= p.liquidation_price) || p.margin <= 1e-9;
     if (liqHit) {
-      // INSURANCE FUND (audit F4): the remaining margin at the liquidation mark
-      // (≈ collateral·MMR·lev) goes to the fund instead of vanishing; a gapped
-      // mark whose loss EXCEEDS margin draws the shortfall FROM the fund (bad
-      // debt absorbed — the trader never owes more than margin; a negative fund
-      // balance reads "underwater" and is the signal to recapitalize).
-      const remainder = p.margin + pnlOf(p, mark);
-      Wallets.get(Wallets.INSURANCE).usdc += remainder;
-      p.status = "liquidated"; p.pnl = -p.margin; p.close_reason = "liquidation"; p.closed_at = nowISO();
-      // T2/T3 mirror: remainder → the real insurance vault; a gapped loss draws it down
-      void PerpChain.close(p, 0, Math.max(0, remainder), Math.max(0, -remainder), mark);
+      // INSURANCE FUND (audit F4 + funding-exhaustion fix): the fund keeps only
+      // the maintenance buffer + liquidation penalty (≈ collateral·MMR·lev); any
+      // POSITIVE equity beyond that is RETURNED to the trader — a position closed
+      // by funding-drain (margin→0) or a late-but-favorable trigger never forfeits
+      // its equity to the fund. A gapped mark whose loss EXCEEDS margin (equity<0)
+      // draws the shortfall FROM the fund (bad debt absorbed — the trader never
+      // owes more than margin; a negative fund balance reads "underwater" and is
+      // the signal to recapitalize).
+      const equity = p.margin + pnlOf(p, mark);
+      const notional = p.size * mark;
+      const insuranceTake = Math.min(Math.max(0, equity), notional * (MMR + LIQ_PENALTY));
+      const traderReturn = Math.max(0, equity - insuranceTake);
+      const badDebt = Math.max(0, -equity); // equity<0 ⇒ the fund covers the shortfall
+      Wallets.creditUsdc(p.user_id, traderReturn);
+      Wallets.get(Wallets.INSURANCE).usdc += insuranceTake - badDebt;
+      p.status = "liquidated"; p.pnl = traderReturn - p.margin; p.close_reason = "liquidation"; p.closed_at = nowISO();
+      // T2/T3 mirror: buffer+penalty → the real insurance vault; a gapped loss draws it down
+      void PerpChain.close(p, traderReturn, insuranceTake, badDebt, mark);
       continue;
     }
     const tpHit = p.take_profit != null && (p.side === "long" ? mark >= p.take_profit : mark <= p.take_profit);

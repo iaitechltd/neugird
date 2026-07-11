@@ -9,14 +9,15 @@
 
 import { NextResponse } from "next/server";
 import { X402, Echo, GridMarket } from "@/lib/modules";
-import { gatewayAgent } from "@/lib/agentAuth";
+import { authorizeWrite } from "@/lib/agentAuth";
 import { publicRequestUrl } from "@/lib/publicUrl";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const agent = gatewayAgent(request);
-  if (!agent) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const auth = authorizeWrite(request); // running a paid build is a WRITE — suspended / read_only / rate-limit enforced here
+  if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const agent = auth.agent;
 
   const body = await request.json().catch(() => null);
   const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";

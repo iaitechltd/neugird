@@ -47,8 +47,37 @@ export function bind(user_id: string, refCode: string): boolean {
 }
 
 /**
+ * Has the referee taken a first action that CONSUMED REAL VALUE and wasn't
+ * self-directed? We confirm the evidence from the ledger rather than trust the
+ * trigger's caller — otherwise a referred sockpuppet farms the bonus by backing
+ * the referrer's own raise for a cent, refunded the moment the raise expires. A
+ * bare backing only counts once it can no longer be refunded (its raise funded)
+ * and never when it bets on the referrer's (or the referee's own) raise.
+ */
+function hasQualifyingFirstAction(user_id: string, referrer_id: string): boolean {
+  // A delivered, paid job — money (or a delivery credit) actually settled.
+  if (db.jobs.some((j) => j.assignee_id === user_id && j.assignee_type !== "agent" && j.status === "paid")) return true;
+  // A completed purchase — a settled receipt paid by the referee for real value,
+  // never one directed back at the referrer or themselves.
+  if ((db.settlements ?? []).some((s) => s.payer_id === user_id && s.status === "settled" && s.amount > 0 && s.payee !== referrer_id && s.payee !== user_id)) return true;
+  // A funded Echo build paid with real GRID / x402 — a free starter build is
+  // reputation-only (reward_excluded) and never qualifies.
+  if (db.pulseEvents.some((e) => e.target_id === user_id && e.action_type === "build_completed" && e.reward_excluded !== true)) return true;
+  // A backing that can no longer be refunded (its raise reached "funded") and is
+  // NOT a bet on the referrer's or the referee's own raise.
+  if (db.backings.some((b) => {
+    if (b.backer_id !== user_id || b.refunded) return false;
+    const raise = db.proposals.find((p) => p.proposal_id === b.round_id);
+    return !!raise && raise.status === "funded" && raise.author_id !== referrer_id && raise.author_id !== user_id;
+  })) return true;
+  return false;
+}
+
+/**
  * The verification trigger — called from the four first-economic-action sites
- * (job payout, raise backing, product purchase, Echo build). Pays ONCE.
+ * (job payout, raise backing, product purchase, Echo build). Pays ONCE, and only
+ * on a real, non-self-directed action confirmed from the ledger (idempotent, so a
+ * refundable/self-directed trigger simply verifies later once real value lands).
  */
 export function checkVerify(user_id: string): void {
   const user = db.users.find((u) => u.id === user_id);
@@ -60,6 +89,9 @@ export function checkVerify(user_id: string): void {
   if (!Humanity.rewardsGateOk(user_id)) return;
   const referrer = db.users.find((u) => u.id === user.referred_by);
   if (!referrer) return;
+  // The action must have consumed real value and not been self-directed — a
+  // refundable self-backing of the referrer's own raise never verifies.
+  if (!hasQualifyingFirstAction(user_id, referrer.id)) return;
   user.referral_verified_at = nowISO();
   Pulse.recordEvent({
     target_type: "user", target_id: referrer.id, user_id: user.id,

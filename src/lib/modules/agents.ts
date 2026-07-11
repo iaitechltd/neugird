@@ -14,6 +14,7 @@ import { createHash } from "node:crypto";
 import { db } from "../store";
 import { newId, nowISO } from "../id";
 import * as Jobs from "./jobs";
+import * as Wallets from "./wallets";
 import type { Agent, Job } from "../types";
 
 /** Hash a gateway key for storage/lookup — we never persist the plaintext. */
@@ -23,6 +24,17 @@ export function hashKey(key: string): string {
 
 /** Default owner revenue share (bps) for a native agent — owner keeps most. */
 export const DEFAULT_OWNER_SPLIT_BPS = 7000;
+
+/** Cold-start bond escrow — an external agent's declared bond is locked here
+ *  (real USDC debited from its owner) so a bond costs something and slashing has
+ *  something to punish. Only a FUNDED bond counts toward the trust fast-track. */
+export const BOND_RESERVE = "neugrid:agent-bond";
+
+/** Clamp a revenue-split to the valid basis-point range [0, 10000]. */
+function clampSplitBps(n: number | undefined): number {
+  if (!Number.isFinite(n)) return DEFAULT_OWNER_SPLIT_BPS;
+  return Math.max(0, Math.min(10000, Math.round(n as number)));
+}
 
 export interface CreateAgentInput {
   owner_id: string;
@@ -48,7 +60,7 @@ export function createAgent(input: CreateAgentInput): Agent {
     created_at: nowISO(),
     origin: "native",
     trust_tier: "trusted", // native agents are trusted (built in-platform)
-    owner_split_bps: input.owner_split_bps ?? DEFAULT_OWNER_SPLIT_BPS,
+    owner_split_bps: clampSplitBps(input.owner_split_bps),
     spend_limit_per_job: input.spend_limit_per_job,
     reputation: { total: 0, by_dimension: {} },
     earnings: 0,
@@ -185,6 +197,15 @@ export interface RegisterExternalInput {
 }
 
 export function registerExternalAgent(input: RegisterExternalInput): { agent: Agent; api_key: string } {
+  // Escrow the declared cold-start bond up front: debit the owner's USDC into the
+  // bond reserve. An UNDERFUNDED bond claim is rejected (bond stays 0) — only a
+  // funded, locked bond is recorded, so it costs real money and slashing bites.
+  const requested = Math.max(0, Math.floor(Number(input.bond_amount) || 0));
+  let bond_amount: number | undefined;
+  if (requested > 0 && Wallets.debitUsdc(input.owner_id, requested)) {
+    Wallets.creditUsdc(BOND_RESERVE, requested);
+    bond_amount = requested;
+  }
   // Plaintext key is returned ONCE; we persist only its hash (never the secret).
   const api_key = `agk_${newId("k").slice(2)}${newId("k").slice(2)}`;
   const agent: Agent = {
@@ -200,8 +221,8 @@ export function registerExternalAgent(input: RegisterExternalInput): { agent: Ag
     origin: "external",
     external_framework: input.external_framework,
     trust_tier: "probation", // external agents start on probation
-    owner_split_bps: input.owner_split_bps ?? DEFAULT_OWNER_SPLIT_BPS,
-    bond_amount: input.bond_amount,
+    owner_split_bps: clampSplitBps(input.owner_split_bps),
+    bond_amount,
     spend_limit_per_job: input.spend_limit_per_job,
     reputation: { total: 0, by_dimension: {} },
     earnings: 0,

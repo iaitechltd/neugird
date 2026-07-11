@@ -9,14 +9,15 @@
 
 import { NextResponse } from "next/server";
 import { X402, Agents } from "@/lib/modules";
-import { gatewayAgent } from "@/lib/agentAuth";
+import { authorizeWrite } from "@/lib/agentAuth";
 import { publicRequestUrl } from "@/lib/publicUrl";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const from = gatewayAgent(request);
-  if (!from) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const auth = authorizeWrite(request); // paying another agent is a WRITE — suspended / read_only / rate-limit enforced here
+  if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const from = auth.agent;
 
   const body = await request.json().catch(() => null);
   const to_id = typeof body?.to === "string" ? body.to : "";
