@@ -11,9 +11,10 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import NeuGridMark from "@/components/NeuGridMark";
+import SiteFooter from "@/components/app/SiteFooter";
 import { Cursor } from "@/components/app/typefx";
 import WalletConnect from "@/components/app/WalletConnect";
-import { IconArrowRight, IconChevronDown, IconExternal } from "@/components/app/ui";
+import { IconArrowRight, IconChevronDown } from "@/components/app/ui";
 
 const DECODE_GLYPHS = "アイウエオカキクケコサシスセソタチツテトナニヌネノ01<>/=+*#$%&@";
 const randGlyph = () => DECODE_GLYPHS[Math.floor(Math.random() * DECODE_GLYPHS.length)];
@@ -261,20 +262,8 @@ export default function Landing() {
         }
       />
 
-      {/* ── slim footer ── */}
-      <footer className="relative z-10 border-t border-neon/15 bg-black">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-6 py-6 text-[11px] text-ink-faint sm:flex-row sm:px-10">
-          <span className="flex items-center gap-2"><NeuGridMark size={20} /><span className="text-ink-dim">NeuGrid — earned, not bought</span></span>
-          <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5">
-            <Link href="/markets" className="transition hover:text-neon">Markets</Link>
-            <Link href="/echo" className="transition hover:text-neon">Echo</Link>
-            <Link href="/genesis/board" className="transition hover:text-neon">Fund</Link>
-            <Link href="/leaderboard" className="transition hover:text-neon">Leaderboard</Link>
-            <Link href="/home" className="inline-flex items-center gap-1 text-neon/80 transition hover:text-neon">Enter <IconExternal className="h-3 w-3" /></Link>
-          </nav>
-          <span>© 2026 NeuGrid</span>
-        </div>
-      </footer>
+      {/* ── the proper footer (shared with /about, /terms, /privacy) ── */}
+      <SiteFooter />
     </div>
   );
 }

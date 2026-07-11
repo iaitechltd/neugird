@@ -76,7 +76,9 @@ export default function NeuGridDock() {
     return () => window.removeEventListener("keydown", onKey);
   }, [router]);
 
-  if (pathname === "/" || pathname.startsWith("/d/")) return null;
+  // hidden on the public surfaces: the landing, hosted /d/ apps, and the
+  // footer-linked static pages (they scroll and carry the SiteFooter instead)
+  if (pathname === "/" || pathname.startsWith("/d/") || pathname === "/about" || pathname === "/terms" || pathname === "/privacy") return null;
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-[60] border-t border-neon/20 bg-black">
