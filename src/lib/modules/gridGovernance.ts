@@ -113,6 +113,10 @@ export function resolve(proposal_id: string, by_user_id?: string): { proposal?: 
   if (!p) return { error: "not_found" };
   if (p.status !== "open") return { error: "already_resolved" };
   if (by_user_id && !isAdmin(p.grid_id, by_user_id) && p.proposer_id !== by_user_id) return { error: "not_allowed" };
+  // Only a grid ADMIN may force an early close; the proposer must wait out the
+  // window (else a proposer could snipe-pass with sockpuppet votes before other
+  // members vote against). Once closes_at passes, the proposer can resolve too.
+  if (p.closes_at && Date.parse(p.closes_at) > Date.now() && !(by_user_id && isAdmin(p.grid_id, by_user_id))) return { error: "not_yet_closed" };
   p.status = p.voters >= p.quorum_votes && p.for_weight > p.against_weight ? "passed" : "rejected";
   p.resolved_at = nowISO();
   if (p.status === "passed") p.execution_note = enact(p);

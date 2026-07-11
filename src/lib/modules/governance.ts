@@ -112,7 +112,10 @@ export function createProposal(proposer_id: string, input: CreateGovInput): { pr
   const p: GovProposal = {
     proposal_id: newId("gov"), kind, title: title.slice(0, 120), summary: (input.summary ?? "").trim().slice(0, 400),
     proposer_id, status: "open", for_grid: 0, against_grid: 0,
-    quorum_grid: input.quorum && input.quorum > 0 ? input.quorum : quorum(),
+    // A proposer may RAISE the bar but never lower it below the protocol quorum —
+    // otherwise anyone could set quorum:1, vote for their own binding proposal,
+    // and single-handedly move treasury funds or flip a protocol parameter.
+    quorum_grid: Math.max(quorum(), input.quorum && input.quorum > 0 ? input.quorum : 0),
     action,
     closes_at: new Date(Date.now() + VOTE_WINDOW_DAYS * 86_400_000).toISOString(), created_at: nowISO(),
   };
@@ -129,7 +132,7 @@ export function vote(proposal_id: string, voter_id: string, support: boolean, gr
   if (!(grid > 0)) return { error: "bad_amount" };
   if (myVote(proposal_id, voter_id)) return { error: "already_voted" };
   if (!Wallets.debitGrid(voter_id, grid)) return { error: "insufficient_grid" };
-  votes().push({ proposal_id, voter_id, support, grid, at: nowISO() });
+  votes().push({ proposal_id, voter_id, support, grid, released: false, at: nowISO() });
   if (support) p.for_grid += grid; else p.against_grid += grid;
   void ChainGov.vote(proposal_id, support, grid); // chain mirror
   return { proposal: p };
@@ -171,10 +174,16 @@ export function sweepExpired(): { settled: number } {
 }
 
 /** Manually resolve a proposal (early close). Expired ones settle on read anyway. */
-export function resolve(proposal_id: string): { proposal?: GovProposal; passed?: boolean; returned?: number; error?: string } {
+export function resolve(proposal_id: string, opts?: { allowEarly?: boolean }): { proposal?: GovProposal; passed?: boolean; returned?: number; error?: string } {
   const p = getProposal(proposal_id);
   if (!p) return { error: "not_found" };
   if (p.status !== "open") return { error: "already_resolved" };
+  // Manual resolve may only settle a proposal whose voting window has ALREADY
+  // closed — never force an early close (which, with a low quorum, would let an
+  // attacker snipe a passage before others can vote against it). Open proposals
+  // still auto-resolve at closes_at via sweepExpired. `allowEarly` is the demo-mode
+  // convenience only (the route passes demoMode()); production enforces the window.
+  if (!opts?.allowEarly && Date.parse(p.closes_at) > Date.now()) return { error: "not_yet_closed" };
   const { passed, returned } = settle(p);
   return { proposal: p, passed, returned };
 }

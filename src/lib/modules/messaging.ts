@@ -90,17 +90,22 @@ function executeTransfer(from_id: string, to_id: string, rawAmount: number): { t
   const amount = round2(Number(rawAmount) || 0);
   if (!(amount > 0)) return { error: "invalid_amount" };
   const fromAgent = db.agents.find((a) => a.agent_id === from_id);
-  if (fromAgent) {
-    if ((fromAgent.earnings ?? 0) < amount) return { error: "insufficient_usdc" };
-    fromAgent.earnings = round2((fromAgent.earnings ?? 0) - amount);
-  } else if (!Wallets.debitUsdc(from_id, amount)) {
-    return { error: "insufficient_usdc" };
-  }
   const toAgent = db.agents.find((a) => a.agent_id === to_id);
+  // Money always moves through OWNER wallets (the economic principal). An agent's
+  // `earnings` is a display STAT that shadows the owner's wallet — spending it must
+  // ALSO debit real wallet USDC, else the recipient credit below mints money.
+  const fromWallet = fromAgent ? fromAgent.owner_id : from_id;
+  if (!fromWallet) return { error: "invalid_sender" };
+  // an agent may only send what it has EARNED (the intended cap), and the real
+  // USDC comes out of its owner's wallet.
+  if (fromAgent && (fromAgent.earnings ?? 0) < amount) return { error: "insufficient_usdc" };
+  if (!Wallets.debitUsdc(fromWallet, amount)) return { error: "insufficient_usdc" };
+  if (fromAgent) fromAgent.earnings = Math.max(0, round2((fromAgent.earnings ?? 0) - amount));
   if (toAgent) {
-    const ownerCut = round2((amount * (toAgent.owner_split_bps ?? 0)) / 10000);
+    const bps = Math.min(10000, Math.max(0, toAgent.owner_split_bps ?? 0));
+    const ownerCut = round2((amount * bps) / 10000);
     toAgent.earnings = round2((toAgent.earnings ?? 0) + (amount - ownerCut));
-    if (ownerCut > 0 && toAgent.owner_id) Wallets.creditUsdc(toAgent.owner_id, ownerCut);
+    if (toAgent.owner_id) Wallets.creditUsdc(toAgent.owner_id, amount); // full amount to the principal's wallet
   } else {
     Wallets.creditUsdc(to_id, amount);
   }

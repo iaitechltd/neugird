@@ -110,11 +110,16 @@ export function payWorkerOnUpheld(job_id: string): Job | undefined {
 const UNFUNDED_DELIVERY_PULSE = 5; // flat rep for delivering an unbacked (Pulse) job
 
 /** The economic principal behind a job's worker (an agent's owner, else the user). */
+/** Resolve any actor id to its HUMAN principal: an agent → its owner, else itself.
+ *  Both sides of a self-deal check must be principals — the agent-gateway review
+ *  route passes an AGENT id as the reviewer, so comparing raw ids let an owner
+ *  farm reputation across their own poster + worker agents. */
+function principalOf(id: string): string {
+  return db.agents.find((a) => a.agent_id === id)?.owner_id ?? id;
+}
 function workerPrincipalOf(job: Job): string | undefined {
   if (!job.assignee_id) return undefined;
-  return job.assignee_type === "agent"
-    ? db.agents.find((a) => a.agent_id === job.assignee_id)?.owner_id ?? job.assignee_id
-    : job.assignee_id;
+  return job.assignee_type === "agent" ? principalOf(job.assignee_id) : job.assignee_id;
 }
 /** How many times this exact (creator → worker principal) pair has already been paid. */
 function priorApprovedBetween(creator_id: string, worker_principal: string, except_job: string): number {
@@ -218,7 +223,7 @@ export function postFundedJob(input: CreateJobInput, funder_id: string): { job?:
 export function claimJob(id: string, user_id: string, type: ExecutorType = "user"): Job | undefined {
   const job = getJob(id);
   if (!job || job.status !== "open") return undefined;
-  if (job.created_by === user_id) return undefined; // can't claim your own posting (self-review farm) — boundary guard
+  if (principalOf(job.created_by) === principalOf(user_id)) return undefined; // can't claim your own posting (self-review farm) — principal-resolved so a same-owner agent can't either
   job.assignee_id = user_id;
   job.assignee_type = type;
   job.status = "in_progress";
@@ -242,11 +247,10 @@ export function applyToJob(job_id: string, applicant_id: string, applicant_type:
   const job = getJob(job_id);
   if (!job) return { error: "job_not_found" };
   if (job.status !== "open") return { error: "not_open" };
-  if (job.created_by === applicant_id) return { error: "cannot_apply_own" };
-  // An agent may not apply to its own owner's posting (self-dealing would let a
-  // project farm employer trust + worker reputation by hiring itself).
-  if (applicant_type === "agent" && db.agents.find((a) => a.agent_id === applicant_id)?.owner_id === job.created_by)
-    return { error: "cannot_apply_own" };
+  // No self-dealing: resolve BOTH sides to their human principal (an agent → its
+  // owner) so neither an applicant agent nor a same-owner poster agent can hire
+  // itself and farm employer trust + worker reputation.
+  if (principalOf(job.created_by) === principalOf(applicant_id)) return { error: "cannot_apply_own" };
   const kind = job.executor_kind ?? "any";
   if (kind === "human" && applicant_type !== "user") return { error: "humans_only" };
   if (kind === "agent" && applicant_type !== "agent") return { error: "agents_only" };
@@ -365,7 +369,7 @@ export function reviewJob(id: string, input: ReviewInput): Job | undefined {
   // delivery credit; decayed by prior same-pair deliveries; ZERO if self-dealt.
   const escrowHeld = heldEscrow(job.job_id); // read BEFORE the payout settles it
   const worker_principal = workerPrincipalOf(job);
-  const self_dealt = !!worker_principal && worker_principal === input.reviewer_id;
+  const self_dealt = !!worker_principal && worker_principal === principalOf(input.reviewer_id);
   const basis = (escrowHeld?.amount ?? 0) > 0 ? (escrowHeld as { amount: number }).amount : 0;
   const earned = basis > 0
     ? Pulse.weightForApproval(basis, quality)
@@ -435,15 +439,20 @@ export function reviewJob(id: string, input: ReviewInput): Job | undefined {
 
   // V6 — employer trust: a project that pays fairly on delivery earns reputation for
   // its Grid. (The down-side — ghosting a delivery — is applied by the reputation sweep.)
-  if (job.context === "campaign_task" && job.grid_id && !input.reviewer_id.startsWith("system")) {
+  if (job.context === "campaign_task" && job.grid_id && !self_dealt && !input.reviewer_id.startsWith("system")) {
     Pulse.recordEvent({
       target_type: "grid",
       target_id: job.grid_id,
       user_id: input.reviewer_id,
       action_type: "campaign_completed",
-      weight: Math.max(8, Math.round(job.reward_amount / 300)),
+      // weight from the REAL settled escrow, never the TYPED reward_amount, and
+      // reward_excluded = employer-trust REPUTATION only, never GRID allocation.
+      // Without both, a poster typed a huge reward + self-approved a sockpuppet
+      // delivery to mint unbounded ownership at zero cost.
+      weight: Math.max(8, Math.round(basis / 300)),
       reason: `Paid a promotional job on delivery: "${job.title}"`,
       verification_source: "auto",
+      reward_excluded: true,
     });
   }
   return job;

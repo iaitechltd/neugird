@@ -134,6 +134,10 @@ export function payAgent(from_id: string, to_id: string, amount: number, memo?: 
   if (to_id === from_id) return { error: "cannot_pay_self" };
   if (!(amount > 0)) return { error: "invalid_amount" };
   if (amount > Agents.effectiveCap(from)) return { error: "over_spend_limit" };
+  // The paying agent's OWNER funds this from their USDC wallet — the economic
+  // principal (agents don't hold wallet balances). WITHOUT this debit the
+  // recipient credit below mints USDC: every a2a payment inflated the ledger.
+  if (!from.owner_id || !Wallets.debitUsdc(from.owner_id, amount)) return { error: "insufficient_usdc" };
 
   const proof = proofToken(from_id, `a2a:${to_id}`, newId("n"));
   const settlement: Settlement = {
@@ -142,7 +146,13 @@ export function payAgent(from_id: string, to_id: string, amount: number, memo?: 
     amount, asset: ASSET, network: NETWORK, scheme: "exact", proof, status: "settled", created_at: nowISO(),
   };
   ledger().push(settlement);
-  creditRecipient(to, amount);
+  // Recipient: the full amount lands in the owner's wallet (the principal, exactly
+  // like a Jobs payout); `earnings` is the post-split take-home STAT. This inlines
+  // the recipient side rather than reusing creditRecipient (that helper stays for
+  // the on-chain facilitator path, where the USDC already moved on Solana).
+  const bps = Math.min(10000, Math.max(0, to.owner_split_bps ?? 0));
+  to.earnings = (to.earnings ?? 0) + Math.max(0, amount - Math.round((amount * bps) / 10000));
+  if (to.owner_id) Wallets.creditUsdc(to.owner_id, amount);
   return { settlement, proof };
 }
 

@@ -114,6 +114,7 @@ export function stakeForListing(
     stage_target,
     locked_until: new Date(Date.now() + LOCK_MS).toISOString(),
     released: false,
+    fees_earned: 0,
     created_at: nowISO(),
   };
   store().push(stake);

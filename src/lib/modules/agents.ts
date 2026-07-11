@@ -246,8 +246,11 @@ export function selfView(agent: Agent) {
 export function claimableJobs(agent: Agent): Job[] {
   evaluateTrust(agent);
   const cap = effectiveCap(agent);
+  // resolve the poster to its human principal (agent-posted jobs carry an agent id
+  // as created_by) so an agent never sees its OWNER's postings as claimable.
+  const posterPrincipal = (id: string) => db.agents.find((a) => a.agent_id === id)?.owner_id ?? id;
   return db.jobs.filter(
-    (j) => j.status === "open" && j.executor_kind !== "human" && j.context !== "campaign_task" && j.created_by !== agent.owner_id && j.reward_amount <= cap,
+    (j) => j.status === "open" && j.executor_kind !== "human" && j.context !== "campaign_task" && posterPrincipal(j.created_by) !== agent.owner_id && j.reward_amount <= cap,
   );
 }
 
@@ -262,7 +265,7 @@ export function agentClaim(agent_id: string, job_id: string): { job?: Job; error
   if (job.status !== "open") return { error: "job_not_open" };
   if (job.context === "campaign_task") return { error: "use_apply" }; // campaign jobs hire via apply→select
   if (job.executor_kind === "human") return { error: "human_only" };
-  if (job.created_by === agent.owner_id) return { error: "cannot_claim_own_job" };
+  if ((db.agents.find((a) => a.agent_id === job.created_by)?.owner_id ?? job.created_by) === agent.owner_id) return { error: "cannot_claim_own_job" };
   if (job.reward_amount > effectiveCap(agent)) return { error: job.reward_amount > rewardCap(agent) ? "over_probation_limit" : "over_spend_limit" };
   Jobs.claimJob(job_id, agent_id, "agent");
   agent.status = "active";

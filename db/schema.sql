@@ -76,6 +76,9 @@ create table if not exists subgrids (
   job_ids           text[]      not null default '{}',
   contributor_splits jsonb      default '[]', -- ContributorSplit[] ownership agreement
   pulse_score       numeric     not null default 0,
+  access            text,                     -- open | invite | reputation | token (absent = open)
+  min_reputation    numeric,                  -- for the "reputation" gate
+  min_grid          numeric,                  -- GRID a joiner must hold, for the "token" gate
   created_at        timestamptz not null default now()
 );
 
@@ -526,6 +529,9 @@ create table if not exists listing_stakes (
   locked_until timestamptz,
   released     boolean     not null default false,
   fees_earned  numeric     not null default 0, -- USDC trade-fee share accrued to this stake
+  slashed      boolean,                         -- forfeited on a fraud/audit-fail finding
+  slashed_at   timestamptz,
+  slash_reason text,
   created_at   timestamptz not null default now()
 );
 
@@ -646,6 +652,9 @@ create table if not exists gov_proposals (
   for_grid     numeric     not null default 0,
   against_grid numeric     not null default 0,
   quorum_grid  numeric     not null default 0,
+  action       jsonb,                 -- GovAction enacted on pass (absent = advisory)
+  executed     boolean,               -- the action ran (or was attempted) at resolve
+  execution_note text,                -- human-readable outcome of the enactment
   closes_at    timestamptz not null,
   created_at   timestamptz not null default now(),
   resolved_at  timestamptz
@@ -728,7 +737,7 @@ create table if not exists agreements (
 -- User→user follow graph (activity of followees surfaces in the bell).
 create table if not exists follows (
   follower_id text        not null references users(id) on delete cascade,
-  followee_id text        not null references users(id) on delete cascade,
+  followee_id text        not null, -- a user id OR an agent id (agents are followable), so no FK
   created_at  timestamptz not null default now(),
   primary key (follower_id, followee_id)
 );

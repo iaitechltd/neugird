@@ -53,7 +53,7 @@ export const META: Record<ParamKey, { label: string; unit: ParamUnit; min: numbe
   echo_revision_cost_grid: { label: "Echo revision cost", unit: "grid", min: 0, max: 5_000 },
   echo_ask_cost_grid: { label: "Echo question cost", unit: "grid", min: 0, max: 500 },
   echo_deploy_cost_grid: { label: "Echo deploy cost", unit: "grid", min: 0, max: 5_000 },
-  fraud_flag_quorum: { label: "Fraud-flag quorum", unit: "count", min: 1, max: 7 },
+  fraud_flag_quorum: { label: "Fraud-flag quorum", unit: "count", min: 2, max: 7 }, // ≥2 distinct reporters — never a single-caller halt+slash
   agent_perf_fee_bps: { label: "Agent performance fee", unit: "bps", min: 0, max: 5_000 }, // ≤50% of positive PnL
   genesis_raise_days: { label: "Fund raise window", unit: "days", min: 7, max: 120 },
   genesis_stall_days: { label: "Fund stall deadline", unit: "days", min: 14, max: 365 },

@@ -107,6 +107,15 @@ export interface CreateProposalInput {
 export function createProposal(input: CreateProposalInput): { proposal?: Proposal; error?: string } {
   if (!canPropose(input.author_id)) return { error: "insufficient_reputation" };
   if (!input.title || !(input.ask_amount > 0)) return { error: "bad_input" };
+  // Milestone tranches must each be positive and never sum to MORE than the ask —
+  // an over-allocated roadmap is the input that lets a release try to draw past
+  // the raise. (Summing to LESS is allowed; the stall/refund path reclaims the
+  // remainder. An empty roadmap becomes one full-ask milestone below.)
+  if (input.roadmap.length) {
+    if (input.roadmap.some((m) => !(m.amount > 0))) return { error: "bad_milestone_amount" };
+    const sum = input.roadmap.reduce((s, m) => s + m.amount, 0);
+    if (sum > input.ask_amount + 0.01) return { error: "milestones_exceed_ask" };
+  }
   const proposal: Proposal = {
     proposal_id: newId("prop"),
     author_id: input.author_id,
@@ -251,15 +260,20 @@ export function voteMilestone(milestone_id: string, voter_id: string, support: b
   if (forPct >= 0.5) {
     m.status = "released";
     const tre = db.treasuries.find((t) => t.treasury_id === m.treasury_id);
-    if (tre) { tre.total_released += m.amount; tre.balance = Math.max(0, tre.balance - m.amount); }
+    // Cap the payout at THIS proposal's own remaining escrow. GENESIS_ESCROW is a
+    // shared pool holding every proposal's backer USDC; without this cap a
+    // founder-controlled milestone amount larger than its own treasury would
+    // drain OTHER proposals' escrowed funds.
+    const payable = tre ? Math.min(m.amount, Math.max(0, tre.balance)) : m.amount;
+    if (tre) { tre.total_released += payable; tre.balance = Math.max(0, tre.balance - payable); }
     const grid = db.grids.find((g) => g.grid_id === m.grid_id);
     // the tranche is real money: escrowed backer USDC pays out to the founder
     // (legacy pre-escrow treasuries have nothing in the sink — they stay accounting-only)
-    if (grid && Wallets.debitUsdc(GENESIS_ESCROW, m.amount)) {
-      Wallets.creditUsdc(grid.owner_id, m.amount);
+    if (grid && payable > 0 && Wallets.debitUsdc(GENESIS_ESCROW, payable)) {
+      Wallets.creditUsdc(grid.owner_id, payable);
       db.settlements.push({
         settlement_id: newId("setl"), payer_id: GENESIS_ESCROW, payee: grid.owner_id,
-        resource: `milestone_release:${m.milestone_id}`, amount: m.amount, asset: "USDC",
+        resource: `milestone_release:${m.milestone_id}`, amount: payable, asset: "USDC",
         network: "neugrid", scheme: "exact", proof: `genesis:${m.milestone_id}`, status: "settled", created_at: nowISO(),
       });
     }

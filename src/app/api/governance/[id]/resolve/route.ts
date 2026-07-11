@@ -4,16 +4,17 @@
 
 import { NextResponse } from "next/server";
 import { Governance, Wallets } from "@/lib/modules";
-import { getCurrentUserId } from "@/lib/session";
+import { getCurrentUserId, demoMode } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-const STATUS: Record<string, number> = { not_found: 404, already_resolved: 409 };
+const STATUS: Record<string, number> = { not_found: 404, already_resolved: 409, not_yet_closed: 409 };
 
 export async function POST(_request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const uid = await getCurrentUserId();
-  const r = Governance.resolve(id);
+  // Early manual resolve is a demo-only convenience; production settles at closes_at.
+  const r = Governance.resolve(id, { allowEarly: demoMode() });
   if (r.error) return NextResponse.json({ error: r.error }, { status: STATUS[r.error] ?? 400 });
   return NextResponse.json({ proposal: Governance.proposalView(r.proposal!, uid), passed: r.passed, returned: r.returned, grid: Wallets.balances(uid).grid });
 }
