@@ -636,6 +636,7 @@ export type PulseActionType =
   | "job_delivered"
   | "milestone_approved"
   | "build_completed" // Echo witnessed a build end-to-end (proof of build)
+  | "feed_post" // posted to the social wire (creator dim, first 3/day, reward_excluded)
   | "product_listed" // a build was published to GridX
   | "product_reviewed" // a verified buyer/user rated a product (owner's creator rep moves with it)
   | "raise_backed" // backed a Fund raise that filled (curation conviction)
