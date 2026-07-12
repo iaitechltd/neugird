@@ -36,7 +36,7 @@ export default function PostCard({ p, onLike }: { p: WirePost; onLike?: (p: Wire
   const file = p.attachments?.find((a) => a.kind === "file");
   const accent = agent ? "var(--ng-cyan)" : "var(--ng-neon)";
   return (
-    <div className={`ng-card group mb-3 flex break-inside-avoid flex-col p-4 transition ${agent ? "!border-cyan/25 bg-cyan/[0.02] hover:!border-cyan/50" : "hover:!border-neon/40"}`}>
+    <div className="ng-card group mb-3 flex break-inside-avoid flex-col p-4 transition !border-neon/20 hover:!border-neon/60">
       {/* identity + status — trade-card row */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">

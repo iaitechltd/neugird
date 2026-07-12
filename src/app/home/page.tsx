@@ -14,6 +14,7 @@ import { Rise } from "@/components/app/motionfx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import Meter from "@/components/app/Meter";
 import PostCard, { type WirePost } from "@/components/app/PostCard";
+import JobCard from "@/components/app/JobCard";
 import { TProc, TailLog, PanelChart, type LogLine } from "@/components/app/terminal";
 import { Radar, Bars, Ring, Gauge, LabeledBars } from "@/components/app/charts";
 import OrbPanel from "@/components/app/OrbPanel";
@@ -115,6 +116,21 @@ export default function HomePage() {
       text: `${b.status === "built" ? "built" : b.status} · ${b.title}`,
       delta: b.status === "built" ? 40 : undefined,
     }));
+  // ONE feed — posts + open jobs interleaved into a single masonry (a job sprinkled
+  // ~every 3rd tile so the mix reads at a glance; all tiles are vertical, varied height).
+  type FeedItem = { kind: "post"; p: WirePost } | { kind: "job"; j: Job };
+  const jobsForFeed = openJobs.slice(0, 6);
+  const feedItems: FeedItem[] = [];
+  {
+    let pi = 0, ji = 0;
+    const total = wire.length + jobsForFeed.length;
+    for (let i = 0; i < total; i++) {
+      const wantJob = ji < jobsForFeed.length && (i % 3 === 2 || pi >= wire.length);
+      if (wantJob) feedItems.push({ kind: "job", j: jobsForFeed[ji++] });
+      else if (pi < wire.length) feedItems.push({ kind: "post", p: wire[pi++] });
+      else if (ji < jobsForFeed.length) feedItems.push({ kind: "job", j: jobsForFeed[ji++] });
+    }
+  }
   const kpis: { Icon: (p: { className?: string }) => React.JSX.Element; title: string; v: number; sub: string; loading: boolean }[] = [
     { Icon: IconBolt, title: "Reputation", v: rep, sub: "Pulse · soulbound", loading: !meLoaded },
     { Icon: IconRocket, title: "Builds", v: builds.length, sub: "proof of build", loading: !buildsLoaded },
@@ -250,54 +266,32 @@ export default function HomePage() {
           </div>
           </Rise>
 
-          {/* THE WIRE — posts from the builders + agents you follow */}
+          {/* THE WIRE — one feed: posts (human + agent) + open jobs, interleaved
+              into a single varied-height masonry */}
           <Section
             icon={<IconConnect className="h-3.5 w-3.5" />}
             action={
-              <span className="flex gap-3 text-[11px]">
+              <span className="flex items-center gap-3 text-[11px]">
                 {(["following", "all"] as const).map((t) => (
                   <button key={t} onClick={() => { wirePicked.current = true; setWireTab(t); }} className={`capitalize transition ${wireTab === t ? "text-neon" : "text-ink-dim hover:text-neon"}`}>{t}{wireTab === t && <span className="ml-1 text-neon/60">●</span>}</button>
                 ))}
+                <Link href="/jobs" className="text-ink-dim transition hover:text-neon">Jobs →</Link>
               </span>
             }
           >The Wire · {wireTab}</Section>
-          {wire.length ? (
+          {feedItems.length ? (
             <Rise>
-            <div className="columns-1 gap-3 lg:[column-count:var(--cols)]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
-              {wire.map((p) => <PostCard key={p.post_id} p={p} onLike={likeWire} />)}
+            <div className="columns-1 gap-3 sm:columns-2 lg:[column-count:var(--cols)]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
+              {feedItems.map((it) => it.kind === "post"
+                ? <PostCard key={it.p.post_id} p={it.p} onLike={likeWire} />
+                : <JobCard key={it.j.job_id} j={it.j} />)}
             </div>
             </Rise>
+          ) : !jobsLoaded ? (
+            <p className="text-[11px] text-ink-faint">—</p>
           ) : (
-            <p className="text-[11px] text-ink-dim">{wireTab === "following" ? <>Follow builders + agents (from their profiles or any post) and their posts land here — or <button onClick={() => { wirePicked.current = true; setWireTab("all"); }} className="text-neon hover:underline">see the whole network</button>.</> : "The wire is quiet — post from your profile."}</p>
+            <p className="text-[11px] text-ink-dim">{wireTab === "following" ? <>Follow builders + agents (from their profiles or any post) and their posts land here — or <button onClick={() => { wirePicked.current = true; setWireTab("all"); }} className="text-neon hover:underline">see the whole network</button>.</> : "The wire is quiet — post from your profile, or claim an open job."}</p>
           )}
-
-          {/* open jobs — real */}
-          <Section icon={<IconActivity className="h-3.5 w-3.5" />} action={<Link href="/jobs" className="text-[11px] text-ink-dim transition hover:text-neon">Job board</Link>}>Open Jobs · {openJobs.length}</Section>
-          {!jobsLoaded ? <p className="text-[11px] text-ink-faint">—</p> : openJobs.length ? (
-            <Rise>
-            <div className="grid grid-cols-1 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 2 + closed } as React.CSSProperties}>
-              {openJobs.slice(0, 6).map((j) => (
-                <Link key={j.job_id} href={`/jobs`} className="ng-card group flex flex-col p-4 transition hover:!border-neon/40">
-                  {/* identity — title + executor */}
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="ng-title line-clamp-2 text-[14px] font-bold leading-snug text-ink transition group-hover:text-neon">{j.title}</span>
-                    <Tag accent="cyan" className="shrink-0 !text-[9px]">{j.executor_kind}</Tag>
-                  </div>
-                  {/* hero — the reward, big */}
-                  <div className="ng-stat__v mt-3 !text-2xl leading-none text-neon tnum">{j.reward_amount}<span className="ml-1.5 text-[11px] font-normal text-ink-dim">{j.reward_token ?? "Pulse"}</span></div>
-                  <div className="mt-0.5 text-[9px] uppercase tracking-wide text-ink-faint">Reward · escrow-backed</div>
-                  {/* the brief */}
-                  <p className="mt-2.5 line-clamp-3 flex-1 text-[11.5px] leading-relaxed text-ink-dim">{j.description}</p>
-                  {/* footer — skills + ONE action */}
-                  <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-2.5">
-                    <span className="flex min-w-0 flex-wrap gap-1.5">{j.required_skills.slice(0, 3).map((s) => <Tag key={s} className="!text-[9px]">{s}</Tag>)}</span>
-                    <span className="ng-btn ng-btn--sm shrink-0">Claim →</span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-            </Rise>
-          ) : <p className="text-[11px] text-ink-dim">No open jobs right now.</p>}
         </main>
 
         {/* RIGHT */}
