@@ -425,6 +425,11 @@ a:focus-visible {
      reserve into the zoomed frame's units. */
   .lg-frame-h { height: calc((100dvh - 30px) / 0.9); }
 }
+/* Mobile: the whole page scrolls and the keybar is fixed at the bottom — reserve
+   clearance so the last content is never hidden behind it. */
+@media (max-width: 1023px) {
+  .lg-frame-h { padding-bottom: 3.25rem; }
+}
 
 /* Wide-centre reflow (founder 2026-07-09): card grids USE the expanded width
    (more columns) — but a full-width ROW LIST reads stretched. Mark those

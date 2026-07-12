@@ -82,7 +82,7 @@ export default function NeuGridDock() {
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-[60] border-t border-neon/20 bg-black">
-      <div className="flex flex-wrap items-center justify-center gap-x-3.5 gap-y-0.5 px-3 py-1 font-mono text-[10px]">
+      <div className="flex flex-nowrap items-center justify-start gap-x-3.5 overflow-x-auto px-3 py-1.5 font-mono text-[10px] [-ms-overflow-style:none] [scrollbar-width:none] lg:flex-wrap lg:justify-center lg:gap-y-0.5 lg:py-1 [&::-webkit-scrollbar]:hidden">
         {NAV.map((it) => {
           const active = pathname === it.href || pathname.startsWith(it.href + "/");
           return (

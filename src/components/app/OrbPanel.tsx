@@ -44,6 +44,7 @@ export default function OrbPanel({
 }) {
   const [internal, setInternal] = useState(defaultOpen);
   const open = openProp ?? internal;
+  const [mobileShown, setMobileShown] = useState(false); // rails collapse by default on phones — the center leads
   const ord = order ?? (side === "left" ? "order-2 lg:order-1" : "order-3");
 
   function toggle(v: boolean) {
@@ -74,7 +75,15 @@ export default function OrbPanel({
       >
         <Chevron dir={side === "left" ? "left" : "right"} />
       </button>
-      <div className={`lg:h-full lg:min-h-0 ${className}`}>{children}</div>
+      {/* mobile: collapse the rail to a tappable header so the center leads (desktop shows it inline) */}
+      <button
+        onClick={() => setMobileShown((v) => !v)}
+        className="ng-label flex w-full items-center justify-between border border-neon/20 bg-neon/[0.03] px-3 py-2 !text-ink-dim transition hover:border-neon/40 lg:hidden"
+      >
+        <span>[ {label} ]</span>
+        <span className={`text-[10px] transition-transform ${mobileShown ? "rotate-90 text-neon" : "text-ink-faint"}`}>▸</span>
+      </button>
+      <div className={`${mobileShown ? "mt-2 block" : "hidden"} lg:mt-0 lg:block lg:h-full lg:min-h-0 ${className}`}>{children}</div>
     </div>
   );
 }
