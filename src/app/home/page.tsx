@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import NeuHeader from "@/components/app/NeuHeader";
 import {
-  Panel, Mark, Tag, Bracket,
+  Panel, Tag, Bracket,
   IconConnect, IconChevronDown, IconArrowRight,
   IconGrid, IconUser, IconBot, IconBolt, IconActivity, IconShield,
   IconRocket, IconTarget, IconCoins, IconLayers,
@@ -15,7 +15,7 @@ import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import Meter from "@/components/app/Meter";
 import PostCard, { type WirePost } from "@/components/app/PostCard";
 import { TProc, TailLog, PanelChart, type LogLine } from "@/components/app/terminal";
-import { Radar, Bars, Ring, Gauge } from "@/components/app/charts";
+import { Radar, Bars, Ring, Gauge, LabeledBars } from "@/components/app/charts";
 import OrbPanel from "@/components/app/OrbPanel";
 import type { Agent, Build, Grid, Job } from "@/lib/types";
 
@@ -88,7 +88,6 @@ export default function HomePage() {
   const recommendedGrids = grids.filter((g) => !joined.has(g.grid_id)).slice(0, 5);
   const listedCount = builds.filter((b) => b.product_id).length;
   const fundedCount = builds.filter((b) => b.proposal_id).length;
-  const agentEarn = agents.reduce((s, a) => s + (a.earnings ?? 0), 0);
   // first-run = a genuine new account: everything loaded, but zero history to show
   const firstRun = meLoaded && buildsLoaded && agentsLoaded && rep === 0 && builds.length === 0 && agents.length === 0;
   const greeting = !meLoaded ? "Welcome to NeuGrid" : firstRun ? `Welcome to NeuGrid, ${me?.username ?? "builder"}` : `Welcome back, ${me?.username ?? "builder"}`;
@@ -272,108 +271,6 @@ export default function HomePage() {
             <p className="text-[11px] text-ink-dim">{wireTab === "following" ? <>Follow builders + agents (from their profiles or any post) and their posts land here — or <button onClick={() => { wirePicked.current = true; setWireTab("all"); }} className="text-neon hover:underline">see the whole network</button>.</> : "The wire is quiet — post from your profile."}</p>
           )}
 
-          {/* command center */}
-          <Section icon={<IconTarget className="h-3.5 w-3.5" />}>Your Command Center</Section>
-          <Rise>
-          <div className="grid grid-cols-1 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 2 + closed } as React.CSSProperties}>
-            <div className="ng-card p-3.5">
-              <div className="ng-label mb-2 flex items-center gap-2 !text-ink-dim"><span className="text-neon"><IconRocket className="h-3.5 w-3.5" /></span>Echo Builds</div>
-              {!buildsLoaded ? <div className="text-[11px] text-ink-faint">—</div> : builds[0] ? <><div className="truncate text-[13px] text-ink">{builds[0].title}</div><div className="truncate text-[10px] text-ink-dim">{builds[0].stack.join(" · ")} · {builds[0].artifact.proof_of_build}</div></> : <div className="text-[11px] text-ink-dim">No builds yet — ship your first MVP with Echo.</div>}
-              <div className="mt-2 text-[11px] text-ink-dim">{builds.length} build{builds.length === 1 ? "" : "s"} · {listedCount} on GridX · {fundedCount} on Fund</div>
-              <div className="mt-2 flex flex-wrap gap-2"><Link href="/echo" className="ng-btn ng-btn-primary ng-btn--sm"><IconBolt className="h-3.5 w-3.5" /> Build with Echo</Link><Link href="/me" className="ng-btn ng-btn-ghost ng-btn--sm">Track record</Link></div>
-            </div>
-            <div className="ng-card p-3.5">
-              <div className="ng-label mb-2 flex items-center gap-2 !text-ink-dim"><span className="text-neon"><IconBot className="h-3.5 w-3.5" /></span>Your Agents</div>
-              <div className="flex items-baseline gap-2"><span className="ng-stat__v !text-xl">{agents.length}</span><span className="text-[11px] text-ink-dim">agents · {agentEarn.toLocaleString()} Pulse earned</span></div>
-              <div className="mt-1 text-[10px] text-ink-dim">{agents.filter((a) => a.origin === "external").length} external · {agents.filter((a) => a.trust_tier === "trusted").length} trusted</div>
-              <div className="mt-2 flex flex-wrap gap-2"><Link href="/agents" className="ng-btn ng-btn-primary ng-btn--sm"><IconBot className="h-3.5 w-3.5" /> Manage agents</Link><Link href="/jobs" className="ng-btn ng-btn-ghost ng-btn--sm">Job board</Link></div>
-            </div>
-          </div>
-          </Rise>
-
-          {/* protocol economy — ONE slim strip: x402 rails + SAS + agents */}
-          <Section icon={<IconCoins className="h-3.5 w-3.5" />} action={<span className="text-[10px] text-ink-faint">HTTP-402 · USDC on Solana · swap-ready</span>}>Protocol Economy</Section>
-          <Rise>
-          <div className="ng-panel flex flex-wrap divide-x divide-line">
-            <div className="min-w-[120px] flex-1 px-3 py-2 text-center">
-              <div className="ng-tag justify-center !text-[9px]"><IconCoins className="h-3 w-3" />Revenue</div>
-              <div className="ng-stat__v !text-lg leading-tight tnum"><CountUp key={economy?.x402.revenue ?? 0} value={economy?.x402.revenue ?? 0} decimals={2} /> <span className="text-[10px] font-normal text-ink-dim">USDC</span></div>
-              <div className="text-[9px] leading-tight text-ink-faint">{economy?.x402.settlements ?? 0} payments → treasury</div>
-            </div>
-            <div className="min-w-[120px] flex-1 px-3 py-2 text-center">
-              <div className="ng-tag justify-center !text-[9px]"><IconConnect className="h-3 w-3" />Agent→Agent</div>
-              <div className="ng-stat__v !text-lg leading-tight tnum"><CountUp key={economy?.x402.a2a.volume ?? 0} value={economy?.x402.a2a.volume ?? 0} decimals={2} /> <span className="text-[10px] font-normal text-ink-dim">USDC</span></div>
-              <div className="text-[9px] leading-tight text-ink-faint">{economy?.x402.a2a.count ?? 0} settlements</div>
-            </div>
-            <div className="min-w-[120px] flex-1 px-3 py-2 text-center">
-              <div className="ng-tag justify-center !text-[9px]"><IconLayers className="h-3 w-3" />Resources</div>
-              <div className="ng-stat__v !text-lg leading-tight"><CountUp key={economy?.x402.resources.length ?? 0} value={economy?.x402.resources.length ?? 0} /></div>
-              <div className="text-[9px] leading-tight text-ink-faint">pay-per-call · GRID −25%</div>
-            </div>
-            <div className="min-w-[120px] flex-1 px-3 py-2 text-center">
-              <div className="ng-tag justify-center !text-[9px]"><IconShield className="h-3 w-3" />Credentials</div>
-              <div className="ng-stat__v !text-lg leading-tight"><CountUp key={economy?.credentials.issued ?? 0} value={economy?.credentials.issued ?? 0} /></div>
-              <div className="text-[9px] leading-tight text-ink-faint">{economy?.credentials.holders ?? 0} holders · SAS</div>
-            </div>
-            <div className="min-w-[120px] flex-1 px-3 py-2 text-center">
-              <div className="ng-tag justify-center !text-[9px]"><IconBot className="h-3 w-3" />Agents</div>
-              <div className="ng-stat__v !text-lg leading-tight"><CountUp key={economy?.agents.total ?? 0} value={economy?.agents.total ?? 0} /></div>
-              <div className="text-[9px] leading-tight text-ink-faint">{economy?.agents.trusted ?? 0} trusted · {(economy?.agents.earnings ?? 0).toLocaleString()} earned</div>
-            </div>
-          </div>
-          </Rise>
-          <Rise>
-          <div className="ng-card mt-3 p-3.5">
-            <div className="ng-label mb-3 flex items-center justify-between !text-ink-dim">
-              <span className="flex items-center gap-2"><span className="text-neon"><IconLayers className="h-3.5 w-3.5" /></span>Metered Resource Catalogue</span>
-              <span className="hidden text-[10px] text-ink-faint sm:inline">discoverable · GET /api/x402/discovery</span>
-            </div>
-            <div className="ng-2col-wide space-y-1.5">
-              {(economy?.x402.resources ?? []).map((r) => (
-                <div key={r.name} className="flex items-center justify-between gap-3 border-b border-neon/10 pb-1.5 text-[11px] last:border-0 last:pb-0">
-                  <div className="flex min-w-0 items-baseline gap-2">
-                    <span className="ng-title shrink-0 font-bold text-ink">{r.name}</span>
-                    <span className="truncate text-ink-faint">{r.description}</span>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-4 tabular-nums text-ink-dim">
-                    <span title="price">${r.price}</span>
-                    <span title="paid calls">{r.count}×</span>
-                    <Meter value={r.revenue} max={Math.max(0.01, ...(economy?.x402.resources ?? []).map((x) => x.revenue))} w={40} />
-                    <span className="w-12 text-right text-neon" title="revenue">${r.revenue.toFixed(2)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          </Rise>
-
-          {/* GRID economy — earned, not sold: allocation → utility sinks → liquid market */}
-          <Section icon={<IconCoins className="h-3.5 w-3.5" />} action={<span className="text-[10px] text-ink-faint">earned, not sold · Option A</span>}>GRID Economy</Section>
-          <Rise>
-          <div className="ng-panel flex flex-wrap divide-x divide-line">
-            <div className="min-w-[120px] flex-1 px-3 py-2 text-center">
-              <div className="ng-tag justify-center !text-[9px]"><IconCoins className="h-3 w-3" />GRID Token</div>
-              <div className="ng-stat__v !text-lg leading-tight tnum">${(economy?.grid?.price ?? 0).toFixed(4)}</div>
-              <div className="text-[9px] leading-tight text-ink-faint">${((economy?.grid?.liquidity ?? 0) / 1e6).toFixed(2)}M pool · {economy?.grid?.tge_executed ? "TGE live" : "pre-TGE"}</div>
-            </div>
-            <div className="min-w-[120px] flex-1 px-3 py-2 text-center">
-              <div className="ng-tag justify-center !text-[9px]"><IconBolt className="h-3 w-3" />Allocation</div>
-              <div className="ng-stat__v !text-lg leading-tight"><CountUp key={economy?.grid?.allocation_issued ?? 0} value={economy?.grid?.allocation_issued ?? 0} /></div>
-              <div className="text-[9px] leading-tight text-ink-faint">{economy?.grid?.recipients ?? 0} contributors · {economy?.grid?.tge_executed ? "vesting" : "vests at TGE"}</div>
-            </div>
-            <div className="min-w-[120px] flex-1 px-3 py-2 text-center">
-              <div className="ng-tag justify-center !text-[9px]"><IconShield className="h-3 w-3" />Sinks → Treasury</div>
-              <div className="ng-stat__v !text-lg leading-tight"><CountUp key={economy?.grid?.treasury_grid ?? 0} value={economy?.grid?.treasury_grid ?? 0} /></div>
-              <div className="text-[9px] leading-tight text-ink-faint">{economy?.grid?.compute_builds ?? 0} builds · {(economy?.grid?.staked ?? 0).toLocaleString()} staked</div>
-            </div>
-            <Link href="/governance" className="group min-w-[120px] flex-1 px-3 py-2 text-center transition hover:bg-neon/[0.04]">
-              <div className="ng-tag justify-center !text-[9px]"><IconTarget className="h-3 w-3" />Governance</div>
-              <div className="ng-stat__v !text-lg leading-tight"><CountUp key={economy?.grid?.gov_locked ?? 0} value={economy?.grid?.gov_locked ?? 0} /></div>
-              <div className="text-[9px] leading-tight text-ink-faint">{economy?.grid?.gov_open ?? 0} open · {economy?.grid?.gov_passed ?? 0} passed · <span className="text-neon group-hover:underline">vote →</span></div>
-            </Link>
-          </div>
-          </Rise>
-
           {/* open jobs — real */}
           <Section icon={<IconActivity className="h-3.5 w-3.5" />} action={<Link href="/jobs" className="text-[11px] text-ink-dim transition hover:text-neon">Job board</Link>}>Open Jobs · {openJobs.length}</Section>
           {!jobsLoaded ? <p className="text-[11px] text-ink-faint">—</p> : openJobs.length ? (
@@ -411,17 +308,92 @@ export default function HomePage() {
               <div className="flex items-baseline justify-between"><span className="ng-stat__v !text-xl">{meLoaded ? rep : "—"}</span><span className="text-[11px] text-ink-dim">total Pulse</span></div>
             </div>
 
-            {/* two Signal-rail charts — a ratio-ring cluster + a GRID gauge (founder, screenshot-inspired 2026-07-04) */}
-            <PanelChart title="Agent economy · ratios" read={`${economy?.agents.total ?? 0} agents`}>
-              <div className="flex items-end justify-around gap-1 py-1.5">
-                <Ring percent={trustedPct} label="trusted" size={66} stroke={5} />
-                <Ring percent={externalPct} label="external" size={66} stroke={5} color="var(--ng-cyan)" />
-                <Ring percent={govApprovalPct} label="gov" size={66} stroke={5} color="var(--ng-amber)" />
+            {/* COMMAND CENTER — your footprint (moved out of the middle so it scrolls here) */}
+            <Section icon={<IconTarget className="h-3.5 w-3.5" />} action={<Link href="/me" className="text-[11px] text-ink-dim transition hover:text-neon">Track record</Link>}>Command Center</Section>
+            <Rise>
+            <div className="ng-card p-3.5">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="ng-stat__v !text-2xl leading-none text-neon"><CountUp key={builds.length} value={builds.length} /></span>
+                <span className="ng-tag !text-[9px]"><IconRocket className="h-3 w-3" />builds shipped</span>
               </div>
-            </PanelChart>
-            <PanelChart title="GRID · sink share" read={`${(economy?.grid?.treasury_grid ?? 0).toLocaleString()} GRID`}>
-              <div className="flex justify-center py-0.5"><Gauge percent={gridSinkPct} value={`${gridSinkPct}%`} w={152} /></div>
-            </PanelChart>
+              {buildsLoaded && builds[0] && <div className="mt-1 truncate text-[10px] text-ink-dim">latest · {builds[0].title}</div>}
+              <div className="mt-2.5">
+                <LabeledBars w={286} rowH={13} gap={7} data={[
+                  { label: "Builds", value: builds.length },
+                  { label: "Agents", value: agents.length },
+                  { label: "On GridX", value: listedCount, color: "var(--ng-cyan)" },
+                  { label: "On Fund", value: fundedCount, color: "var(--ng-cyan)" },
+                ]} />
+              </div>
+            </div>
+            </Rise>
+
+            {/* PROTOCOL ECONOMY — the x402 rails, with the trust-ratio rings as the visual */}
+            <Section icon={<IconCoins className="h-3.5 w-3.5" />} action={<span className="text-[10px] text-ink-faint">HTTP-402 · USDC</span>}>Protocol Economy</Section>
+            <Rise>
+            <div className="ng-card p-3.5">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="ng-stat__v !text-2xl leading-none tnum text-neon"><CountUp key={economy?.x402.revenue ?? 0} value={economy?.x402.revenue ?? 0} decimals={2} /><span className="ml-1 text-[11px] font-normal text-ink-dim">USDC</span></span>
+                <span className="ng-tag !text-[9px]">→ treasury</span>
+              </div>
+              <div className="mt-0.5 text-[10px] text-ink-faint">{economy?.x402.settlements ?? 0} payments settled</div>
+              <div className="my-2.5 flex items-end justify-around gap-1 border-y border-line py-2.5">
+                <Ring percent={trustedPct} label="trusted" size={60} stroke={5} />
+                <Ring percent={externalPct} label="external" size={60} stroke={5} color="var(--ng-cyan)" />
+                <Ring percent={govApprovalPct} label="gov" size={60} stroke={5} color="var(--ng-amber)" />
+              </div>
+              <div className="divide-y divide-line text-[11px]">
+                <div className="ng-row flex items-center !py-1.5"><span className="ng-row__k flex items-center gap-2 text-ink"><IconConnect className="h-3.5 w-3.5 text-neon/70" />Agent → Agent</span><span className="ng-row__v tnum text-ink-dim">${(economy?.x402.a2a.volume ?? 0).toFixed(2)} · {economy?.x402.a2a.count ?? 0}</span></div>
+                <div className="ng-row flex items-center !py-1.5"><span className="ng-row__k flex items-center gap-2 text-ink"><IconLayers className="h-3.5 w-3.5 text-neon/70" />Resources</span><span className="ng-row__v text-ink-dim">{economy?.x402.resources.length ?? 0} · GRID −25%</span></div>
+                <div className="ng-row flex items-center !py-1.5"><span className="ng-row__k flex items-center gap-2 text-ink"><IconShield className="h-3.5 w-3.5 text-neon/70" />Credentials</span><span className="ng-row__v text-ink-dim">{economy?.credentials.issued ?? 0} · {economy?.credentials.holders ?? 0} holders</span></div>
+              </div>
+            </div>
+            </Rise>
+
+            {/* METERED RESOURCES — pay-per-call catalogue, revenue bars */}
+            <Section icon={<IconLayers className="h-3.5 w-3.5" />} action={<span className="text-[10px] text-ink-faint">pay-per-call</span>}>Metered Resources</Section>
+            <Rise>
+            <div className="ng-card p-3.5">
+              {(economy?.x402.resources ?? []).length ? (
+                <div className="space-y-2.5">
+                  {(economy?.x402.resources ?? []).map((r) => (
+                    <div key={r.name} className="text-[11px]">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="ng-title truncate font-bold text-ink">{r.name}</span>
+                        <span className="shrink-0 tnum text-[10px] text-ink-faint">${r.price} · {r.count}×</span>
+                      </div>
+                      <div className="mt-1 flex items-center gap-2">
+                        <Meter value={r.revenue} max={Math.max(0.01, ...(economy?.x402.resources ?? []).map((x) => x.revenue))} w={190} />
+                        <span className="ml-auto shrink-0 tnum text-neon">${r.revenue.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : <p className="text-[11px] text-ink-dim">No metered calls yet.</p>}
+            </div>
+            </Rise>
+
+            {/* GRID ECONOMY — earned, not sold; the sink-share gauge as the visual */}
+            <Section icon={<IconCoins className="h-3.5 w-3.5" />} action={<span className="text-[10px] text-ink-faint">earned, not sold</span>}>GRID Economy</Section>
+            <Rise>
+            <div className="ng-card p-3.5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="ng-stat__v !text-2xl leading-none tnum text-neon">${(economy?.grid?.price ?? 0).toFixed(4)}</div>
+                  <div className="ng-tag mt-1 !text-[9px]"><IconCoins className="h-3 w-3" />${((economy?.grid?.liquidity ?? 0) / 1e6).toFixed(2)}M pool · {economy?.grid?.tge_executed ? "TGE live" : "pre-TGE"}</div>
+                </div>
+                <div className="shrink-0 text-center">
+                  <Gauge percent={gridSinkPct} value={`${gridSinkPct}%`} w={106} />
+                  <div className="mt-0.5 text-[9px] text-ink-faint">sink share</div>
+                </div>
+              </div>
+              <div className="mt-2.5 divide-y divide-line text-[11px]">
+                <div className="ng-row flex items-center !py-1.5"><span className="ng-row__k flex items-center gap-2 text-ink"><IconBolt className="h-3.5 w-3.5 text-neon/70" />Allocation</span><span className="ng-row__v tnum text-ink-dim">{(economy?.grid?.allocation_issued ?? 0).toLocaleString()} · {economy?.grid?.tge_executed ? "vesting" : "vests @ TGE"}</span></div>
+                <div className="ng-row flex items-center !py-1.5"><span className="ng-row__k flex items-center gap-2 text-ink"><IconShield className="h-3.5 w-3.5 text-neon/70" />Sinks → Treasury</span><span className="ng-row__v tnum text-ink-dim">{(economy?.grid?.treasury_grid ?? 0).toLocaleString()} · {economy?.grid?.compute_builds ?? 0} builds</span></div>
+                <Link href="/governance" className="ng-row group flex items-center !py-1.5 transition hover:text-neon"><span className="ng-row__k flex items-center gap-2 text-ink"><IconTarget className="h-3.5 w-3.5 text-neon/70" />Governance</span><span className="ng-row__v flex items-center gap-1.5 tnum text-ink-dim">{economy?.grid?.gov_open ?? 0} open · {economy?.grid?.gov_passed ?? 0} passed <span className="text-neon group-hover:underline">vote →</span></span></Link>
+              </div>
+            </div>
+            </Rise>
 
             <Section icon={<IconRocket className="h-3.5 w-3.5" />} action={<Link href="/me" className="text-[11px] text-ink-dim transition hover:text-neon">All</Link>}>Recent Builds · tail -f</Section>
             {!buildsLoaded ? <p className="text-[11px] text-ink-faint">—</p> : builds.length ? (
@@ -444,15 +416,6 @@ export default function HomePage() {
                 ))}
               </div>
             ) : <p className="text-[11px] text-ink-dim">You&#39;re in every grid already.</p>}
-
-            <Section icon={<IconCoins className="h-3.5 w-3.5" />}>Pipeline</Section>
-            <div className="ng-card p-3.5">
-              <div className="divide-y divide-line text-[12px]">
-                {([["On GridX", listedCount, "/gridx", IconLayers], ["On Fund", fundedCount, "/genesis/board", IconCoins], ["Agents earning", agents.filter((a) => (a.earnings ?? 0) > 0).length, "/agents", IconBot]] as [string, number, string, (p: { className?: string }) => React.JSX.Element][]).map(([k, v, href, Ico]) => (
-                  <Link key={k} href={href} className="ng-row flex items-center !py-2 transition hover:text-neon"><span className="ng-row__k flex items-center gap-2 text-ink"><Ico className="h-3.5 w-3.5 text-neon/70" />{k}</span><span className="ng-row__v flex items-center gap-2"><Meter value={v} max={Math.max(1, listedCount, fundedCount, agents.filter((a) => (a.earnings ?? 0) > 0).length)} w={36} /><Mark plain>{v}</Mark></span></Link>
-                ))}
-              </div>
-            </div>
           </Panel>
         </OrbPanel>
       </div>
