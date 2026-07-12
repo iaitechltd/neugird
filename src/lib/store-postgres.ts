@@ -117,7 +117,7 @@ const SPECS: Spec[] = [
     cols: ["milestone_id", "treasury_id", "grid_id", "title", "description", "amount", "order", "status", "deliverable", "verification", "approval_vote", "released_tx", "due_at", "updated_at", "created_at"],
     num: ["amount", "order"], ts: ["due_at", "updated_at", "created_at"], json: ["deliverable", "verification", "approval_vote"] },
   { key: "backings", table: "backings",
-    cols: ["backing_id", "round_id", "grid_id", "backer_id", "amount", "token_allocation", "vesting", "refunded", "created_at"],
+    cols: ["backing_id", "round_id", "grid_id", "backer_id", "amount", "token_allocation", "vesting", "refunded", "escrowed", "created_at"],
     num: ["amount", "token_allocation"], ts: ["created_at"], json: ["vesting"] },
   { key: "milestoneApprovals", table: "milestone_approvals",
     cols: ["milestone_id", "backer_id", "support"] },

@@ -774,6 +774,7 @@ export interface Backing {
   token_allocation?: number; // project tokens owed
   vesting?: Vesting;
   refunded?: boolean;
+  escrowed?: boolean; // true = a real deposit sits in GENESIS_ESCROW (gates the refund path)
   created_at: ISODate;
 }
 

@@ -323,6 +323,7 @@ create table if not exists backings (
   token_allocation numeric,
   vesting          jsonb,      -- Vesting
   refunded         boolean     default false,
+  escrowed         boolean,    -- true = a real deposit sits in GENESIS_ESCROW (gates the refund path)
   created_at       timestamptz not null default now()
 );
 

@@ -155,8 +155,15 @@ export async function mirrorOpen(p: Position): Promise<void> {
  *  debt to absorb (capped at the fund's real balance — never negative). */
 export async function mirrorClose(p: Position, toTrader: number, toInsurance: number, insuranceToLp: number, exitPrice: number): Promise<void> {
   const cfg = perpConfig();
-  if (!cfg || !p.onchain?.position) return;
+  if (!cfg) return;
   const c = await client(cfg);
+  // Derive the position PDA deterministically (it does NOT depend on the open
+  // mirror having set p.onchain) so a close that races ahead of its own open
+  // mirror still targets the right account. If the position was never actually
+  // opened on-chain there is nothing to close — skip gracefully.
+  const position = c.posPda(posIdOf(p.position_id));
+  if (!(await c.connection.getAccountInfo(position))) return;
+  if (!p.onchain?.position) p.onchain = { position: position.toBase58(), program: cfg.programId, cluster: cfg.cluster, txs: [] };
   const myQuote = await ensureQuote(c, BigInt(0));
   let insLp = units(insuranceToLp);
   if (insLp > BigInt(0)) {
@@ -176,7 +183,7 @@ export async function mirrorClose(p: Position, toTrader: number, toInsurance: nu
     .accounts({
       authority: c.payer.publicKey,
       engine: c.engine,
-      position: new c.web3.PublicKey(p.onchain.position),
+      position,
       markOracle: oracleExists ? oracle : null,
       lpVault: c.vault("lp"),
       insuranceVault: c.vault("insurance"),

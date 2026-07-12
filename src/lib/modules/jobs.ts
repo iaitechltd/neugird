@@ -121,12 +121,40 @@ function workerPrincipalOf(job: Job): string | undefined {
   if (!job.assignee_id) return undefined;
   return job.assignee_type === "agent" ? principalOf(job.assignee_id) : job.assignee_id;
 }
-/** How many times this exact (creator → worker principal) pair has already been paid. */
+/** Distinct OTHER creator-principals who have paid this worker principal — the
+ *  worker's income diversity. 0 = this worker only ever earns from one creator
+ *  (the sybil-ring signature). */
+function otherPayersOf(worker_principal: string, creatorPrincipal: string, except_job: string): number {
+  const payers = new Set<string>();
+  for (const j of db.jobs) {
+    if (j.job_id === except_job || j.status !== "paid") continue;
+    if (workerPrincipalOf(j) !== worker_principal) continue;
+    const cp = principalOf(j.created_by);
+    if (cp !== creatorPrincipal) payers.add(cp);
+  }
+  return payers.size;
+}
+/** The decay basis for a (creator → worker) approval. Normally the count of prior
+ *  paid jobs on this exact pair (so repeat business with ONE worker decays). But a
+ *  farmer evades that by rotating fresh sockpuppet WORKERS — so when the worker has
+ *  NO independent income (its only payer is this creator = the ring signature), we
+ *  ALSO decay by how many such single-payer workers this creator already paid. A
+ *  worker with any other real client is treated as legit and only pair-decayed, so
+ *  a genuine employer of many independent freelancers is never penalised. */
 function priorApprovedBetween(creator_id: string, worker_principal: string, except_job: string): number {
-  return db.jobs.filter((j) =>
-    j.job_id !== except_job && j.status === "paid" && j.created_by === creator_id &&
-    workerPrincipalOf(j) === worker_principal,
+  const creatorPrincipal = principalOf(creator_id);
+  const pair = db.jobs.filter((j) =>
+    j.job_id !== except_job && j.status === "paid" &&
+    principalOf(j.created_by) === creatorPrincipal && workerPrincipalOf(j) === worker_principal,
   ).length;
+  if (otherPayersOf(worker_principal, creatorPrincipal, except_job) > 0) return pair; // independent income → legit
+  const ring = new Set<string>();
+  for (const j of db.jobs) {
+    if (j.job_id === except_job || j.status !== "paid" || principalOf(j.created_by) !== creatorPrincipal) continue;
+    const wp = workerPrincipalOf(j);
+    if (wp && wp !== worker_principal && otherPayersOf(wp, creatorPrincipal, except_job) === 0) ring.add(wp);
+  }
+  return Math.max(pair, ring.size);
 }
 const pairwiseDecay = (priorPaid: number) => 1 / (1 + priorPaid); // 1, ½, ⅓, ¼ …
 

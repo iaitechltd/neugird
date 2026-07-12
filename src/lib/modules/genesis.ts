@@ -59,9 +59,11 @@ export function sweepExpiredRaises(): { expired: number; refunded: number } {
     p.status = "expired";
     expired++;
     for (const b of db.backings.filter((x) => x.round_id === p.proposal_id && !x.refunded)) {
-      // pre-escrow (legacy) backings have nothing in the sink — mark them refunded
-      // without a wallet movement so they can't double-count later.
-      if (Wallets.debitUsdc(GENESIS_ESCROW, b.amount)) {
+      // Refund ONLY backings that actually deposited into the escrow (escrowed).
+      // A non-escrowed (legacy/phantom) backing is marked refunded WITHOUT a wallet
+      // movement — gating on escrowed instead of on debit-success stops it from
+      // draining another proposal's USDC just because the shared pool has funds.
+      if (b.escrowed !== false && Wallets.debitUsdc(GENESIS_ESCROW, b.amount)) {
         Wallets.creditUsdc(b.backer_id, b.amount);
         db.settlements.push({
           settlement_id: newId("setl"), payer_id: GENESIS_ESCROW, payee: b.backer_id,
@@ -157,7 +159,10 @@ export function fundProposal(proposal_id: string, backer_id: string, amount: num
   if (!Wallets.debitUsdc(backer_id, amount)) return { error: "insufficient_usdc" };
   Wallets.creditUsdc(GENESIS_ESCROW, amount);
 
-  db.backings.push({ backing_id: newId("back"), round_id: proposal_id, grid_id: "", backer_id, amount, created_at: nowISO() });
+  // escrowed:true marks this backing as having a real deposit in GENESIS_ESCROW,
+  // so the expiry-refund path only ever debits escrow for money that was put in
+  // (never a phantom/legacy backing draining another proposal's escrowed USDC).
+  db.backings.push({ backing_id: newId("back"), round_id: proposal_id, grid_id: "", backer_id, amount, escrowed: true, created_at: nowISO() });
   Referrals.checkVerify(backer_id); // a real backing = a verified first action
   void Vault.back(p, amount); // chain mirror
   const raised = raisedFor(proposal_id);
@@ -204,6 +209,12 @@ export function submitMilestone(milestone_id: string, user_id: string, proof?: s
   const grid = db.grids.find((g) => g.grid_id === m.grid_id);
   if (!grid || grid.owner_id !== user_id) return { error: "only_founder" };
   if (m.status !== "pending" && m.status !== "rejected") return { error: "bad_state" };
+  // Milestones release strictly in order (the on-chain vault requires m0-first, so
+  // an out-of-order release would silently fail the chain mirror while the ledger
+  // paid out). A milestone can only be submitted once every lower-order milestone
+  // in its treasury is released.
+  if (db.milestones.some((x) => x.treasury_id === m.treasury_id && x.order < m.order && x.status !== "released"))
+    return { error: "prior_milestone_pending" };
   m.status = "submitted";
   m.updated_at = nowISO(); // milestone activity — resets the stall clock
   if (proof) m.deliverable = { kind: "link", payload: proof, submitted_at: nowISO() };
