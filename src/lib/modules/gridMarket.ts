@@ -17,8 +17,15 @@ const SEED_GRID = 5_000_000; // protocol-owned liquidity (treasury-seeded at the
 const SEED_USDC = 500_000; // → opening price 0.10 USDC / GRID
 const feeBps = () => Params.get("grid_market_fee_bps"); // GOVERNABLE swap fee (default 100 = 1%) → treasury
 
-function pool() {
-  return (db.gridPool ??= { grid_reserve: SEED_GRID, usdc_reserve: SEED_USDC });
+type Pool = { grid_reserve: number; usdc_reserve: number; burned: number };
+
+function pool(): Pool {
+  // burned tracks cumulative GRID removed from supply by buyback-and-burn.
+  // The store type predates the field, so widen here and lazily init to 0
+  // (pools rehydrated from persistence may not carry it yet).
+  const p = (db.gridPool ??= { grid_reserve: SEED_GRID, usdc_reserve: SEED_USDC }) as Pool;
+  p.burned ??= 0;
+  return p;
 }
 
 /** USDC per GRID. */
@@ -83,11 +90,42 @@ export function swap(user_id: string, side: Side, amount: number): { out?: numbe
   return { out, fee, price: price() };
 }
 
+/**
+ * Buyback-and-burn: the treasury BUYS GRID off the pool with its USDC and BURNS
+ * it (removes it from supply — the GRID is never credited to any wallet). Runs a
+ * constant-product USDC→GRID swap with NO fee (the treasury is the buyer, so a
+ * fee back to itself is a no-op). Conservation: treasury USDC → pool; pool GRID →
+ * burned (supply shrinks); price (usdc_reserve/grid_reserve) rises.
+ */
+export function buybackAndBurn(usdcAmount: number): { usdc_spent?: number; grid_burned?: number; price?: number; error?: string } {
+  if (!(usdcAmount > 0)) return { error: "bad_amount" };
+  if (!Wallets.debitUsdc(Wallets.TREASURY, usdcAmount)) return { error: "insufficient_treasury_usdc" };
+  const p = pool();
+  const k = p.grid_reserve * p.usdc_reserve;
+  const gridOut = p.grid_reserve - k / (p.usdc_reserve + usdcAmount);
+  p.usdc_reserve += usdcAmount;
+  p.grid_reserve -= gridOut;
+  p.burned += gridOut; // BURNED — not credited to any wallet; cumulative supply reduction
+  return { usdc_spent: usdcAmount, grid_burned: gridOut, price: price() };
+}
+
+/**
+ * Scheduled buyback tick: spend `buyback_bps` of the treasury's USDC balance on a
+ * buy-and-burn. Default buyback_bps = 0 ⇒ skipped ⇒ the treasury is never spent by
+ * surprise; only a passed governance proposal arming buyback_bps > 0 turns it on.
+ */
+export function runBuyback(): { usdc_spent?: number; grid_burned?: number; price?: number; skipped?: boolean; error?: string } {
+  const usdcAmount = Math.round((Wallets.balances(Wallets.TREASURY).usdc * Params.get("buyback_bps")) / 10000);
+  if (usdcAmount >= 1) return buybackAndBurn(usdcAmount);
+  return { skipped: true };
+}
+
 /** Pool + the caller's balances + their fee-discount opt-in, for the swap UI. */
 export function state(user_id: string) {
   const p = pool();
   return {
     grid_reserve: p.grid_reserve, usdc_reserve: p.usdc_reserve, price: price(), liquidity_usd: 2 * p.usdc_reserve,
+    burned: p.burned,
     balances: Wallets.balances(user_id),
     pay_fees_in_grid: Wallets.get(user_id).pay_fees_in_grid ?? false,
     fee_discount_bps: Params.get("grid_fee_discount_bps"),
@@ -97,5 +135,5 @@ export function state(user_id: string) {
 /** Pool stats without any user context (for the protocol-economy rollup). */
 export function summary() {
   const p = pool();
-  return { price: price(), liquidity_usd: 2 * p.usdc_reserve, grid_reserve: p.grid_reserve, usdc_reserve: p.usdc_reserve };
+  return { price: price(), liquidity_usd: 2 * p.usdc_reserve, grid_reserve: p.grid_reserve, usdc_reserve: p.usdc_reserve, burned: p.burned };
 }

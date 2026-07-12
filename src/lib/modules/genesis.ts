@@ -185,7 +185,10 @@ export function fundProposal(proposal_id: string, backer_id: string, amount: num
 
   Pulse.recordEvent({ target_type: "grid", target_id: grid.grid_id, action_type: "campaign_completed", weight: 50, reason: `Funded: raised ${raised} for "${p.title}"`, verification_source: "auto" });
   for (const b of backersFor(proposal_id)) {
-    Pulse.recordEvent({ target_type: "user", target_id: b.backer_id, action_type: "raise_backed", weight: 10, reason: `Backed "${p.title}" to a full raise`, verification_source: "auto", dimension: "backer" });
+    // Small conviction acknowledgment ONLY — a raise filling proves nothing about
+    // delivery. The real backer merit is minted on milestone release (backer_delivery),
+    // so backing 10 duds that fill can't rival backing one project that ships.
+    Pulse.recordEvent({ target_type: "user", target_id: b.backer_id, action_type: "raise_backed", weight: 2, reason: `Backed "${p.title}" to a full raise`, verification_source: "auto", dimension: "backer" });
   }
   return { proposal: p, raised, spawned_grid_id: grid.grid_id };
 }
@@ -293,6 +296,29 @@ export function voteMilestone(milestone_id: string, voter_id: string, support: b
       Pulse.recordEvent({ target_type: "user", target_id: grid.owner_id, action_type: "milestone_approved", weight: 30, reason: `Milestone "${m.title}" released by backer vote`, verification_source: "backers", dimension: "builder" });
       Pulse.recordEvent({ target_type: "grid", target_id: grid.grid_id, action_type: "milestone_approved", weight: 20, reason: `Milestone "${m.title}" released`, verification_source: "backers" });
       const prop = grid.spawned_from?.proposal_id ? getProposal(grid.spawned_from.proposal_id) : undefined;
+      // BACKER MERIT — backing a project that ACTUALLY delivers is the reputation
+      // signal (this is the backer flywheel/moat). On each real release, every backer
+      // earns reputation + GRID allocation weighted by their share of the grid's
+      // backing × how much of the raise this tranche paid out. A filled-but-stalled
+      // project never reaches this branch, so it confers almost nothing; a project
+      // that delivers ALL its milestones sums to ~8×share (≈ the old flat +10 for a
+      // sole backer, once the +2 conviction ack is added). NOT reward_excluded —
+      // backing winners IS the merit. Self-backing is already blocked upstream, but
+      // guard the author anyway; guard the zero-backing divide too.
+      if (prop && payable > 0 && prop.ask_amount > 0) {
+        const gridBackings = db.backings.filter((b) => b.grid_id === m.grid_id && !b.refunded);
+        const gridTotal = gridBackings.reduce((s, b) => s + b.amount, 0);
+        if (gridTotal > 0) {
+          const byBacker = new Map<string, number>();
+          for (const b of gridBackings) byBacker.set(b.backer_id, (byBacker.get(b.backer_id) ?? 0) + b.amount);
+          for (const [backer_id, backed] of byBacker) {
+            if (backer_id === prop.author_id) continue; // no self-reward
+            const backerShare = backed / gridTotal;
+            const weight = Math.max(1, Math.round(8 * backerShare * (payable / prop.ask_amount)));
+            Pulse.recordEvent({ target_type: "user", target_id: backer_id, action_type: "backer_delivery", weight, reason: `Backed "${prop.title}" — milestone "${m.title}" delivered`, verification_source: "backers", dimension: "backer" });
+          }
+        }
+      }
       if (prop) void Vault.release(prop, m.order); // chain mirror
     }
     return { milestone: m, released: true, for_pct: forPct, against_pct: againstPct };

@@ -36,6 +36,8 @@ export async function GET() {
       // GRID is EARNED (allocation), SPENT on utility (compute/stake), and LIQUID (market).
       price: gm.price,
       liquidity: gm.liquidity_usd,
+      burned: gm.burned, // cumulative GRID removed from supply by buyback-and-burn
+
       allocation_issued: issued.allocation,
       recipients: issued.recipients,
       tge_executed: Rewards.tgeState().executed,

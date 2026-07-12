@@ -30,6 +30,7 @@ const REWARDABLE = new Set<PulseEvent["action_type"]>([
   "campaign_completed",
   "referral_verified",
   "raise_backed",
+  "backer_delivery", // backing WINNERS earns allocation as milestones deliver
   "job_delivered",
   "milestone_approved",
   "build_completed",
@@ -46,7 +47,8 @@ export const SCHEDULE: { action: string; pulse: number | null; formula?: string;
   { action: "Milestone released by backers", pulse: 30, dimension: "builder" },
   { action: "Publish a product on GridX", pulse: 20, dimension: "creator" },
   { action: "Your product earns a 4–5★ verified review", pulse: 3, dimension: "creator" },
-  { action: "Back a raise that fills", pulse: 10, dimension: "backer" },
+  { action: "Back a raise that fills", pulse: 2, dimension: "backer" },
+  { action: "A project you backed delivers a milestone", pulse: null, formula: "share-scaled — back winners, earn more", dimension: "backer" },
   { action: "Verify an audit / review a milestone", pulse: 15, dimension: "reviewer" },
   { action: "Create a Grid", pulse: 25, dimension: "creator" },
   { action: "Referral verified (you referred them)", pulse: 15, dimension: "creator" },

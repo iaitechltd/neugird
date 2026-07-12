@@ -640,6 +640,7 @@ export type PulseActionType =
   | "product_listed" // a build was published to GridX
   | "product_reviewed" // a verified buyer/user rated a product (owner's creator rep moves with it)
   | "raise_backed" // backed a Fund raise that filled (curation conviction)
+  | "backer_delivery" // a backed project actually delivered a milestone (backer merit — backing winners)
   | "decay" // periodic rebalance so old activity doesn't dominate
   | "campaign_ghosted" // a project left a delivery unreviewed past the deadline (V6 employer fade)
   | "dispute_evaluated" // staked-evaluator voted WITH the panel's verdict (reviewer rep, no allocation)

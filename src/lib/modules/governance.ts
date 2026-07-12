@@ -87,12 +87,33 @@ function ensureSeeded() {
   );
 }
 
+/** Idempotently push the founder-locked "arming" proposals onto the board so they
+ *  appear on the EXISTING live store (not only fresh seeds). Each is added ONLY if a
+ *  proposal with that exact id is not already present — safe to run on every read.
+ *  These do NOT flip any param: they stage the gates for a normal FOR/AGAINST vote. */
+function ensureStandingProposals() {
+  const ps = proposals();
+  const at = nowISO();
+  const closes = new Date(Date.now() + VOTE_WINDOW_DAYS * 86_400_000).toISOString();
+  const q = quorum();
+  const standing: GovProposal[] = [
+    { proposal_id: "gov_poh_starter", kind: "param", title: "Arm proof-of-humanity on the starter grant (T1)", summary: "Require an established wallet (>=30 days old + >=25 transactions) to claim the one-time starter Echo credit — stops bot farms claiming free compute. Existing users are unaffected.", proposer_id: "usr_neo", status: "open", for_grid: 0, against_grid: 0, quorum_grid: q, action: { type: "set_param", key: "starter_gate_tier", value: 1 }, closes_at: closes, created_at: at },
+    { proposal_id: "gov_poh_rewards", kind: "param", title: "Arm proof-of-humanity on reward-counting (T2)", summary: "Only count GRID reward allocation for verified-human (Civic-passed) accounts — the strongest anti-sybil. Pass this ONLY after Civic passes are live and QA'd, or rewards stop counting for everyone.", proposer_id: "usr_neo", status: "open", for_grid: 0, against_grid: 0, quorum_grid: q, action: { type: "set_param", key: "rewards_gate_tier", value: 2 }, closes_at: closes, created_at: at },
+    { proposal_id: "gov_grid_buyback", kind: "param", title: "Turn on GRID buyback-and-burn (5%)", summary: "Let the treasury spend 5% of its USDC balance each cycle to buy GRID off the market and burn it — deflationary, so earned GRID gains a reason to be held rather than dumped.", proposer_id: "usr_neo", status: "open", for_grid: 0, against_grid: 0, quorum_grid: q, action: { type: "set_param", key: "buyback_bps", value: 500 }, closes_at: closes, created_at: at },
+  ];
+  for (const p of standing) {
+    if (!ps.some((x) => x.proposal_id === p.proposal_id)) ps.push(p);
+  }
+}
+
 export function listProposals(): GovProposal[] {
   sweepExpired(); // reads settle anything past its vote window (auto-resolve at close)
+  ensureStandingProposals(); // stage the founder-locked gate/buyback proposals on the live board
   return [...proposals()].sort((a, b) => (a.status === "open" ? 0 : 1) - (b.status === "open" ? 0 : 1) || Date.parse(b.created_at) - Date.parse(a.created_at));
 }
 export function getProposal(id: string): GovProposal | undefined {
   sweepExpired(); // also closes the late-vote hole: an expired proposal settles before vote() sees it
+  ensureStandingProposals(); // stage the founder-locked gate/buyback proposals on the live board
   return proposals().find((p) => p.proposal_id === id);
 }
 export function myVote(proposal_id: string, voter_id: string): GovVote | undefined {

@@ -20,7 +20,7 @@ import { Radar, Bars, Ring, Gauge, LabeledBars } from "@/components/app/charts";
 import OrbPanel from "@/components/app/OrbPanel";
 import type { Agent, Build, Grid, Job } from "@/lib/types";
 
-type Economy = { x402: { revenue: number; settlements: number; asset: string; resources: { name: string; price: number; description: string; count: number; revenue: number }[]; a2a: { count: number; volume: number } }; credentials: { issued: number; holders: number }; agents: { total: number; trusted: number; external: number; earnings: number }; grid: { price: number; liquidity: number; allocation_issued: number; recipients: number; tge_executed: boolean; treasury_grid: number; treasury_usdc: number; compute_builds: number; staked: number; slashed: number; gov_open: number; gov_passed: number; gov_locked: number } };
+type Economy = { x402: { revenue: number; settlements: number; asset: string; resources: { name: string; price: number; description: string; count: number; revenue: number }[]; a2a: { count: number; volume: number } }; credentials: { issued: number; holders: number }; agents: { total: number; trusted: number; external: number; earnings: number }; grid: { price: number; liquidity: number; burned: number; allocation_issued: number; recipients: number; tge_executed: boolean; treasury_grid: number; treasury_usdc: number; compute_builds: number; staked: number; slashed: number; gov_open: number; gov_passed: number; gov_locked: number } };
 
 function Section({ icon, children, action }: { icon: React.ReactNode; children: React.ReactNode; action?: React.ReactNode }) {
   return (
@@ -384,6 +384,7 @@ export default function HomePage() {
               <div className="mt-2.5 divide-y divide-line text-[11px]">
                 <div className="ng-row flex items-center !py-1.5"><span className="ng-row__k flex items-center gap-2 text-ink"><IconBolt className="h-3.5 w-3.5 text-neon/70" />Allocation</span><span className="ng-row__v tnum text-ink-dim">{(economy?.grid?.allocation_issued ?? 0).toLocaleString()} · {economy?.grid?.tge_executed ? "vesting" : "vests @ TGE"}</span></div>
                 <div className="ng-row flex items-center !py-1.5"><span className="ng-row__k flex items-center gap-2 text-ink"><IconShield className="h-3.5 w-3.5 text-neon/70" />Sinks → Treasury</span><span className="ng-row__v tnum text-ink-dim">{(economy?.grid?.treasury_grid ?? 0).toLocaleString()} · {economy?.grid?.compute_builds ?? 0} builds</span></div>
+                <div className="ng-row flex items-center !py-1.5"><span className="ng-row__k flex items-center gap-2 text-ink"><IconBolt className="h-3.5 w-3.5 text-neon/70" />Burned</span><span className="ng-row__v tnum text-ink-dim">{(economy?.grid?.burned ?? 0).toLocaleString()} · <span className="text-ink-faint">buyback-and-burn</span></span></div>
                 <Link href="/governance" className="ng-row group flex items-center !py-1.5 transition hover:text-neon"><span className="ng-row__k flex items-center gap-2 text-ink"><IconTarget className="h-3.5 w-3.5 text-neon/70" />Governance</span><span className="ng-row__v flex items-center gap-1.5 tnum text-ink-dim">{economy?.grid?.gov_open ?? 0} open · {economy?.grid?.gov_passed ?? 0} passed <span className="text-neon group-hover:underline">vote →</span></span></Link>
               </div>
             </div>
