@@ -51,6 +51,7 @@ export default function HomePage() {
   const [openJobs, setOpenJobs] = useState<Job[]>([]);
   const [grids, setGrids] = useState<Grid[]>([]);
   const [economy, setEconomy] = useState<Economy | null>(null);
+  const [season, setSeason] = useState<{ season: { number: number; days_left: number; pct_elapsed: number }; standing: { rank: number | null; points: number; racers: number } } | null>(null);
   // loaded flags — hold a neutral placeholder until the first fetch resolves so a real account never flashes empty
   const [meLoaded, setMeLoaded] = useState(false);
   const [buildsLoaded, setBuildsLoaded] = useState(false);
@@ -80,6 +81,7 @@ export default function HomePage() {
     fetch("/api/jobs?status=open").then((r) => r.json()).then((d) => setOpenJobs(d.jobs ?? [])).catch(() => {}).finally(() => setJobsLoaded(true));
     fetch("/api/grids").then((r) => r.json()).then((d) => setGrids(d.grids ?? d ?? [])).catch(() => {}).finally(() => setGridsLoaded(true));
     fetch("/api/economy").then((r) => r.json()).then(setEconomy).catch(() => {});
+    fetch("/api/season").then((r) => r.json()).then(setSeason).catch(() => {});
   }, []);
 
   const rep = Math.round(me?.reputation?.total ?? me?.pulse ?? 0);
@@ -220,6 +222,20 @@ export default function HomePage() {
               <p className="text-[12px] text-ink-dim">{firstRun ? "Start here — connect your wallet, claim your Echo credit, and ship your first proof-of-build. Everything on this page is live." : "Your command center — build with Echo, deploy agents, raise on Fund. Everything here is live."}</p>
             </Bracket>
           </Rise>
+
+          {/* SEASON strip — the live growth loop: countdown + your rank → /season */}
+          {season && (
+            <Rise>
+            <Link href="/season" className="group flex flex-wrap items-center gap-x-4 gap-y-1 border border-neon/25 bg-neon/[0.04] px-4 py-2.5 transition hover:!border-neon/50">
+              <span className="flex items-center gap-2"><Tag accent="cyan" className="!text-[9px]">LIVE</Tag><span className="ng-title text-sm font-bold text-neon">SEASON {season.season.number}</span></span>
+              <span className="text-[12px] text-ink-dim tnum">⏳ {season.season.days_left}d left</span>
+              <span className="text-[12px] text-ink-dim">·</span>
+              <span className="text-[12px] text-ink">{season.standing.rank ? <>You&#39;re <b className="text-neon">#{season.standing.rank}</b> of {season.standing.racers}</> : <>Not on the board yet</>}</span>
+              <span className="text-[12px] text-ink-dim tnum">· {season.standing.points.toLocaleString()} pts</span>
+              <span className="ml-auto text-[12px] text-neon group-hover:underline">Season board →</span>
+            </Link>
+            </Rise>
+          )}
 
           {/* STARTER PATH — zero → first proof-of-build (shows until the first build ships) */}
           {me?.starter?.show && (

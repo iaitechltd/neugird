@@ -106,7 +106,7 @@ export interface DB {
   /** The GRID/USDC AMM pool — protocol-owned (treasury-seeded) liquidity for buying
    *  GRID. A singleton (not a collection), lazy-seeded by the gridMarket module — kept
    *  out of seed() so normalize() doesn't array-default it. */
-  gridPool?: { grid_reserve: number; usdc_reserve: number };
+  gridPool?: { grid_reserve: number; usdc_reserve: number; burned?: number };
   /** The one-time platform TGE event (singleton; out of seed() like gridPool). Once
    *  executed, each user's earned allocation is frozen into a vesting schedule. */
   tge?: { executed: boolean; at: string };
@@ -114,6 +114,9 @@ export interface DB {
    *  mutated only by a PASSED governance proposal (see modules/params.ts). Singleton
    *  (sparse map), kept out of seed() so normalize() doesn't array-default it. */
   params?: Record<string, number>;
+  /** The current earning SEASON (singleton; out of seed() like gridPool). A numbered
+   *  window with a snapshot deadline — the countdown + leaderboard people race up. */
+  season?: { number: number; started_at: string; ends_at: string };
 }
 
 /* Stable seed so dashboards render real-looking data in dev. */

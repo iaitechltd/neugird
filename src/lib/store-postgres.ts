@@ -205,7 +205,7 @@ const SPECS: Spec[] = [
 
 /* Non-array singleton state on DB (gridPool / tge / params) — stored one jsonb
  * row per key in the `singletons` table (upserted, never truncated). */
-const SINGLETON_KEYS = ["gridPool", "tge", "params"] as const satisfies readonly (keyof DB)[];
+const SINGLETON_KEYS = ["gridPool", "tge", "params", "season"] as const satisfies readonly (keyof DB)[];
 
 const q = (ident: string) => `"${ident}"`; // safe-quote a lowercase identifier (handles "order")
 

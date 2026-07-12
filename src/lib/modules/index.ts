@@ -11,6 +11,7 @@ export * as Campaign from "./campaign"; // CampaignCanister
 export * as Pulse from "./pulse"; // PulseCanister
 export * as ReputationMaint from "./reputationMaint"; // V6 — reputation fade: time-decay + employer ghost-sweep
 export * as Rewards from "./rewards"; // reward allocation — earned GRID (Pulse's 2nd ledger)
+export * as Season from "./season"; // the earning season — countdown + leaderboard (growth loop)
 export * as Jobs from "./jobs"; // universal Job protocol
 export * as Genesis from "./genesis"; // Fund funding + milestone escrow
 export * as Markets from "./markets"; // Axon/Trade — gated token markets

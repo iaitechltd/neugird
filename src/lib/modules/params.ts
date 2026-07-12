@@ -11,7 +11,7 @@
 
 import { db } from "../store";
 
-export type ParamKey = "tradex_fee_bps" | "echo_build_cost_grid" | "grid_market_fee_bps" | "gov_quorum_grid" | "grid_fee_discount_bps" | "campaign_ghost_days" | "echo_revision_cost_grid" | "echo_ask_cost_grid" | "echo_deploy_cost_grid" | "fraud_flag_quorum" | "agent_perf_fee_bps" | "genesis_raise_days" | "genesis_stall_days" | "gridx_fee_bps" | "affiliate_fee_share_bps" | "backer_allocation_bps" | "starter_credit_grid" | "dispute_quorum" | "dispute_window_days" | "skill_market_fee_bps" | "starter_gate_tier" | "rewards_gate_tier" | "max_trade_impact_bps" | "perp_oi_cap_bps" | "buyback_bps";
+export type ParamKey = "tradex_fee_bps" | "echo_build_cost_grid" | "grid_market_fee_bps" | "gov_quorum_grid" | "grid_fee_discount_bps" | "campaign_ghost_days" | "echo_revision_cost_grid" | "echo_ask_cost_grid" | "echo_deploy_cost_grid" | "fraud_flag_quorum" | "agent_perf_fee_bps" | "genesis_raise_days" | "genesis_stall_days" | "gridx_fee_bps" | "affiliate_fee_share_bps" | "backer_allocation_bps" | "starter_credit_grid" | "dispute_quorum" | "dispute_window_days" | "skill_market_fee_bps" | "starter_gate_tier" | "rewards_gate_tier" | "max_trade_impact_bps" | "perp_oi_cap_bps" | "buyback_bps" | "season_days";
 
 export type ParamUnit = "bps" | "grid" | "days" | "count";
 
@@ -27,6 +27,7 @@ export const DEFAULTS: Record<ParamKey, number> = {
   echo_deploy_cost_grid: 50, // GRID metered per deploy to NeuGrid hosting (/d/<slug>)
   fraud_flag_quorum: 2, // distinct Verifier fraud reports required to halt + slash a market
   agent_perf_fee_bps: 1000, // cut of POSITIVE realized PnL to a hired trading agent (trader ≠ wallet owner)
+  season_days: 45, // length of an earning season (the countdown to the points snapshot)
   genesis_raise_days: 30, // open-raise funding window; unfilled past this ⇒ expired + backers refunded
   genesis_stall_days: 60, // funded project with no milestone activity this long ⇒ kill-switch eligible
   gridx_fee_bps: 250, // protocol fee on GridX product purchases (2.5% → treasury)
@@ -56,6 +57,7 @@ export const META: Record<ParamKey, { label: string; unit: ParamUnit; min: numbe
   echo_deploy_cost_grid: { label: "Echo deploy cost", unit: "grid", min: 0, max: 5_000 },
   fraud_flag_quorum: { label: "Fraud-flag quorum", unit: "count", min: 2, max: 7 }, // ≥2 distinct reporters — never a single-caller halt+slash
   agent_perf_fee_bps: { label: "Agent performance fee", unit: "bps", min: 0, max: 5_000 }, // ≤50% of positive PnL
+  season_days: { label: "Season length", unit: "days", min: 7, max: 120 },
   genesis_raise_days: { label: "Fund raise window", unit: "days", min: 7, max: 120 },
   genesis_stall_days: { label: "Fund stall deadline", unit: "days", min: 14, max: 365 },
   gridx_fee_bps: { label: "GridX purchase fee", unit: "bps", min: 0, max: 1_000 }, // ≤10%

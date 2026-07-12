@@ -91,6 +91,21 @@ export function accruedFor(user_id: string): number {
   return eventsFor(user_id).reduce((s, e) => s + unitsOf(e), 0);
 }
 
+/** Season points — rewardable allocation EARNED since `sinceISO` (a window). The
+ *  number people race on the season leaderboard. */
+export function pointsSince(user_id: string, sinceISO: string): number {
+  return eventsFor(user_id).filter((e) => e.timestamp >= sinceISO).reduce((s, e) => s + unitsOf(e), 0);
+}
+
+/** Everyone ranked by points earned in the window (season leaderboard). */
+export function leaderboardSince(sinceISO: string, limit = 25): { id: string; username: string; points: number }[] {
+  return db.users
+    .map((u) => ({ id: u.id, username: u.username, points: pointsSince(u.id, sinceISO) }))
+    .filter((x) => x.points > 0)
+    .sort((a, b) => b.points - a.points)
+    .slice(0, limit);
+}
+
 /** Sybil / quality factor (0.7..1): rewards contribution spread across multiple
  *  reputation dimensions, haircuts concentration (anti-farm). Simple v1 of the
  *  quality-weighted, sybil-resistant filter the mechanism calls for. */
