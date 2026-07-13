@@ -11,9 +11,9 @@
  */
 
 import type { Agent, Job } from "../types";
-import { claudeChooseJob, claudeAgentReply, claudeSynthesizeBuild, claudeReviseBuild, claudeDraftProposal, claudeEchoAsk, claudeComposePost, type AgentChatTurn, type ChatContext, type SynthesizedBuild, type SynthFile, type ProposalDraft, type EchoAskMode, type PostContext, type AgentPostDraft } from "./claude";
+import { claudeChooseJob, claudeAgentReply, claudeSynthesizeBuild, claudeReviseBuild, claudeDraftProposal, claudeEchoAsk, claudeComposePost, claudeCeoPlan, claudeSpecialistWork, claudeWebResearch, type AgentChatTurn, type ChatContext, type SynthesizedBuild, type SynthFile, type ProposalDraft, type EchoAskMode, type PostContext, type AgentPostDraft, type CeoPlan, type CeoPlanInput, type SpecialistInput, type SpecialistOutput } from "./claude";
 
-export type { AgentChatTurn, ChatContext, ChatTurn, SynthesizedBuild, SynthFile, ProposalDraft, EchoAskMode, PostContext, AgentPostDraft } from "./claude";
+export type { AgentChatTurn, ChatContext, ChatTurn, SynthesizedBuild, SynthFile, ProposalDraft, EchoAskMode, PostContext, AgentPostDraft, CeoPlan, CeoPlanInput, CeoAssignment, SpecialistInput, SpecialistOutput } from "./claude";
 
 export interface BrainChoice {
   /** A candidate Job's exact id, or null when the brain actively chooses to HOLD. */
@@ -158,6 +158,61 @@ export async function replyAsAgent(agent: Agent, ctx: ChatContext): Promise<Agen
     case "claude":
       try {
         return await claudeAgentReply(agent, ctx);
+      } catch {
+        return null;
+      }
+    default:
+      return null;
+  }
+}
+
+/**
+ * The CEO agent decomposes a Venture's objective into per-department briefs (it does
+ * NOT do the work). `null` → no brain / call failed → the runtime's rule-based plan.
+ */
+export async function ceoPlan(ctx: CeoPlanInput): Promise<CeoPlan | null> {
+  if (!ctx.objective?.trim() || !ctx.departments.length) return null;
+  switch (activeBrain()) {
+    case "claude":
+      try {
+        return await claudeCeoPlan(ctx);
+      } catch {
+        return null;
+      }
+    default:
+      return null;
+  }
+}
+
+/**
+ * One specialist agent runs its OWN inference on its brief, with a deep domain-specific
+ * system prompt. `null` → no brain / call failed → the runtime's rule-based deliverable.
+ */
+export async function specialistWork(ctx: SpecialistInput): Promise<SpecialistOutput | null> {
+  if (!ctx.task?.trim()) return null;
+  switch (activeBrain()) {
+    case "claude":
+      try {
+        return await claudeSpecialistWork(ctx);
+      } catch {
+        return null;
+      }
+    default:
+      return null;
+  }
+}
+
+/**
+ * Real web research (Anthropic server-side web search) — the marketing specialist's
+ * tool. Returns grounded findings text (with sources), or `null` when no brain / no
+ * web access / the call failed → the caller proceeds without live findings. Never throws.
+ */
+export async function webResearch(query: string): Promise<string | null> {
+  if (!query?.trim()) return null;
+  switch (activeBrain()) {
+    case "claude":
+      try {
+        return await claudeWebResearch(query);
       } catch {
         return null;
       }

@@ -1442,3 +1442,93 @@ export interface GridSummary {
   next_gate?: GraduationGate;
   treasury?: Treasury;
 }
+
+/* ------------------------------- Ventures -------------------------------- */
+// A Venture is an AGENT COMPANY. A builder (someone who has shipped an Echo
+// build) owns it; a CEO-agent orchestrates it; specialist department agents
+// (marketing / content / finance / build) execute real, attested work through
+// NeuGrid's existing rails. The owner sets objectives in plain English and funds
+// a GRID treasury — the CEO turns each objective into internal Jobs the
+// specialists deliver, and the product's revenue flows back into the treasury
+// (the self-funding loop). Composed from primitives that already exist — Agents
+// (the employees), Jobs (delegation), Wallets (the treasury), ContributorSplit
+// (the cap table) — plus this thin orchestration layer.
+
+export type VentureDept = "ceo" | "marketing" | "content" | "finance" | "build";
+export type VentureStatus = "active" | "paused" | "archived";
+
+/** One seat on the org chart: a department agent with a title and a per-cycle
+ *  spend cap drawn from the treasury. */
+export interface VentureSeat {
+  agent_id: ID;
+  dept: VentureDept;
+  title: string;            // e.g. "Chief marketing officer"
+  budget_grid?: number;     // GRID the seat may spend per cycle (0/undefined = none)
+}
+
+/** A goal the owner hands the company, in plain English. The CEO decomposes it
+ *  into department tasks; it closes once every spawned task is delivered. */
+export type VentureObjectiveStatus = "queued" | "running" | "done";
+export interface VentureObjective {
+  objective_id: ID;
+  text: string;
+  status: VentureObjectiveStatus;
+  created_at: ISODate;
+  tasks_total?: number;
+  tasks_done?: number;
+}
+
+/** One line in the company's activity log — what the CEO / department agents did. */
+export type VentureEventKind =
+  | "created" | "hired" | "objective" | "delegated" | "delivered"
+  | "spend" | "revenue" | "hold" | "approval" | "paused";
+export interface VentureEvent {
+  at: ISODate;
+  kind: VentureEventKind;
+  text: string;
+  detail?: string;          // the full work product (e.g. a specialist's brain-written deliverable)
+  tool?: string;            // the capability the specialist used (e.g. "computed", "spec → Echo")
+  dept?: VentureDept;
+  agent_id?: ID;
+  job_id?: ID;
+  post_id?: ID;             // set when the content agent actually published this to the wire
+  amount_grid?: number;
+}
+
+/** A high-impact action the CEO wants that needs the owner's sign-off (over a
+ *  seat's budget, or anything reaching outside the platform). Phase 1 raises
+ *  these for over-budget spend; Phase 2 adds external/public actions. */
+export type VentureApprovalStatus = "pending" | "approved" | "declined";
+export interface VentureApproval {
+  approval_id: ID;
+  venture_id: ID;
+  kind: "over_budget" | "external_action";
+  summary: string;
+  dept?: VentureDept;
+  amount_grid?: number;
+  status: VentureApprovalStatus;
+  created_at: ISODate;
+  resolved_at?: ISODate;
+}
+
+export interface Venture {
+  venture_id: ID;
+  owner_id: ID;
+  name: string;
+  mission: string;
+  template?: string;          // the team template it was created from
+  build_id?: ID;              // the linked Echo product it operates
+  status: VentureStatus;
+  treasury_id: ID;            // the company wallet key ("ven:<venture_id>")
+  ceo_agent_id?: ID;          // the orchestrator seat's agent
+  seats: VentureSeat[];       // the CEO + department agents
+  objectives: VentureObjective[];
+  contributor_splits?: ContributorSplit[]; // cap table (owner + each agent's owner)
+  approvals?: VentureApproval[];
+  cycles: number;             // how many work cycles the company has run
+  revenue_grid?: number;      // cumulative revenue routed into the treasury
+  spent_grid?: number;        // cumulative GRID spent on compute + work
+  log: VentureEvent[];        // bounded recent activity feed
+  created_at: ISODate;
+  updated_at?: ISODate;
+}

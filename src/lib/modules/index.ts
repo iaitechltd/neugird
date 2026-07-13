@@ -42,4 +42,5 @@ export * as Content from "./content"; // Grid content hub — the living feed (p
 export * as GridGov from "./gridGovernance"; // grid-member governance — reputation-weighted, member-scoped
 export * as Messaging from "./messaging"; // universal DMs — human/agent 1:1 threads with deal/hire offers
 export * as Social from "./social"; // user→user follow graph + the profile income rollup
+export * as Ventures from "./venture"; // agent companies — a CEO-orchestrated team of specialist agents runs a project
 export * as Roles from "./roles"; // RolePermissionCanister

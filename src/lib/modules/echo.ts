@@ -171,6 +171,9 @@ export interface ReviseBuildInput {
   build_id: string;
   owner_id: string;
   instruction: string;
+  /** Who pays the revision cost. Defaults to owner_id (the iterate loop). A Venture
+   *  passes its treasury so the company — not the founder's wallet — funds the ship. */
+  payer_id?: string;
 }
 
 /** The iterate loop: a follow-up instruction revises the CURRENT build — the model
@@ -188,18 +191,27 @@ export async function reviseBuild(input: ReviseBuildInput): Promise<{ build?: Bu
   if ((build.revisions?.length ?? 0) >= REVISIONS_MAX) return { error: "too_many_revisions" };
 
   const cost = revisionCost();
+  const payer = input.payer_id ?? input.owner_id;
+  const treasuryPays = payer !== input.owner_id; // a Venture treasury (neugrid:ven:*) — plain GRID, no starter credit
   let charge: Wallets.ComputeCharge | null = null;
   if (cost > 0) {
-    charge = Wallets.debitCompute(input.owner_id, cost);
-    if (!charge) return { error: "insufficient_grid", cost };
-    if (charge.grid > 0) Wallets.creditGrid(Wallets.TREASURY, charge.grid);
+    if (treasuryPays) {
+      if (!Wallets.debitGrid(payer, cost)) return { error: "insufficient_grid", cost };
+      Wallets.creditGrid(Wallets.TREASURY, cost); // revision fee → protocol sink
+      charge = { starter: 0, grid: cost };
+    } else {
+      charge = Wallets.debitCompute(input.owner_id, cost);
+      if (!charge) return { error: "insufficient_grid", cost };
+      if (charge.grid > 0) Wallets.creditGrid(Wallets.TREASURY, charge.grid);
+    }
   }
 
   const revised = await Brain.reviseBuild({ title: build.title, summary: build.summary, stack: build.stack, files }, instruction);
   if (!revised) {
     if (charge) {
-      if (charge.grid > 0) Wallets.debitGrid(Wallets.TREASURY, charge.grid); // reclaim the credited GRID from the treasury (best-effort reconcile)
-      Wallets.refundCompute(input.owner_id, charge); // the user ALWAYS gets their GRID + starter back — never gated on the treasury
+      if (charge.grid > 0) Wallets.debitGrid(Wallets.TREASURY, charge.grid); // reclaim the credited fee from the sink
+      if (treasuryPays) Wallets.creditGrid(payer, cost); // refund the treasury
+      else Wallets.refundCompute(input.owner_id, charge); // the user ALWAYS gets their GRID + starter back
     }
     return { error: "synthesis_failed", cost };
   }

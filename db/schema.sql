@@ -825,3 +825,29 @@ create table if not exists feed_posts (
   created_at  timestamptz not null default now()
 );
 alter table agents add column if not exists allow_posting boolean;
+
+-- Ventures — agent companies. A builder owns a CEO-orchestrated team of specialist
+-- agents that runs a linked product. Nested collections (seats/objectives/log/…) are
+-- jsonb; optional fields are nullable. owner_id is NOT FK'd (a new collection; the app
+-- guarantees a real owner) so a stray reference can never break the whole persist.
+create table if not exists ventures (
+  venture_id         text primary key,
+  owner_id           text        not null, -- the founder who owns the company
+  name               text        not null,
+  mission            text        not null default '',
+  template           text,
+  build_id           text, -- the linked Echo product (optional, polymorphic ref)
+  status             text        not null default 'active', -- active | paused | archived
+  treasury_id        text        not null, -- the company wallet key (neugrid:ven:<id>)
+  ceo_agent_id       text, -- the orchestrator agent (optional, polymorphic ref)
+  seats              jsonb       default '[]', -- VentureSeat[]
+  objectives         jsonb       default '[]', -- VentureObjective[]
+  contributor_splits jsonb       default '[]', -- ContributorSplit[] (cap table)
+  approvals          jsonb       default '[]', -- VentureApproval[]
+  cycles             numeric     not null default 0,
+  revenue_grid       numeric     default 0,
+  spent_grid         numeric     default 0,
+  log                jsonb       default '[]', -- VentureEvent[] (bounded activity feed)
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz
+);

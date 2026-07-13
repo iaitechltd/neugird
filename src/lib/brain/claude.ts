@@ -594,3 +594,255 @@ export async function claudeChooseJob(agent: Agent, jobs: Job[]): Promise<BrainC
   const job_id = candidates.some((j) => j.job_id === rawId) ? rawId : null;
   return { job_id, rationale };
 }
+
+/* ---------------------------- venture: CEO + specialists ---------------------------- */
+// A real agent company, NOT one brain wearing four hats. Two layers:
+//   1. the CEO decomposes the objective into per-department BRIEFS (claudeCeoPlan);
+//   2. each specialist runs its OWN inference with a DEEP, domain-specific system
+//      prompt (claudeSpecialistWork) — a marketing lead, a finance lead, a content
+//      lead, an engineering lead, each genuinely expert in its lane. The venture
+//      runtime runs the specialists in parallel and grounds finance in real numbers.
+// Every call is independent; nulls fall back to the runtime's rule-based path.
+
+const VENTURE_DEFAULT_MODEL = "claude-sonnet-5"; // per-agent calls want fast + snappy; NEUGRID_VENTURE_MODEL overrides (e.g. claude-opus-4-8)
+
+function productLine(p?: { title: string; summary: string; stack?: string[]; url?: string } | null): string {
+  return p
+    ? `PRODUCT (the real thing this company runs — ground everything in it): ${p.title} — ${p.summary}${p.stack?.length ? ` [built with ${p.stack.join(", ")}]` : ""}${p.url ? ` · live at ${p.url}` : ""}`
+    : "PRODUCT: (none linked yet — scope accordingly and note where a real product would sharpen the work)";
+}
+function firstText(res: { content?: Array<{ type: string; text?: string }> }): string | undefined {
+  return (res.content ?? []).find((b) => b.type === "text" && b.text)?.text;
+}
+
+/* -------- the CEO: decompose + delegate (does NOT do the work itself) -------- */
+
+export interface CeoPlanInput {
+  company: string;
+  mission?: string;
+  product?: { title: string; summary: string; stack?: string[]; url?: string } | null;
+  departments: { dept: string; title: string; role: string }[];
+  objective: string;
+}
+export interface CeoAssignment { dept: string; task: string }
+export interface CeoPlan { summary: string; assignments: CeoAssignment[] }
+
+// NOTE: structured-outputs json_schema rejects minItems/minLength etc — keep it bare.
+const CEO_PLAN_SCHEMA = {
+  type: "object",
+  properties: {
+    summary: { type: "string", description: "Your one-sentence plan, as CEO, for hitting this objective this cycle." },
+    assignments: {
+      type: "array",
+      description: "One brief per department you delegate to — ONLY the departments that genuinely move THIS objective. Each is a specific, actionable task for that specialist.",
+      items: {
+        type: "object",
+        properties: {
+          dept: { type: "string", enum: ["marketing", "content", "finance", "build"], description: "The specialist you're briefing." },
+          task: { type: "string", description: "A concrete brief for that specialist — specific enough to execute without asking you questions. Name what to produce and the angle." },
+        },
+        required: ["dept", "task"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["summary", "assignments"],
+  additionalProperties: false,
+} as const;
+
+const CEO_SYSTEM = [
+  "You are the CEO of an autonomous startup on NeuGrid — a real company owned by a founder and staffed by specialist agents. You do NOT do the work yourself; you decompose, prioritise, and delegate to the right specialists.",
+  "Given the objective, the product, and your available department heads, write a specific, actionable brief for each department you involve — and involve ONLY the departments that genuinely move THIS objective (a content goal may not need finance; a pure product goal may not need marketing).",
+  "Each brief must be concrete enough that an expert could execute it without asking you questions: name what to produce and the angle. Sequence and prioritise like a sharp operator. Ground everything in the real product.",
+  "Reply ONLY via the required JSON schema.",
+].join("\n");
+
+/** The CEO decomposes the objective into per-department briefs. Null on any failure. */
+export async function claudeCeoPlan(ctx: CeoPlanInput): Promise<CeoPlan | null> {
+  const client = await loadClient();
+  if (!client) return null;
+  const depts = ctx.departments.map((d) => `- ${d.dept}: ${d.title} (${d.role})`).join("\n") || "- (none)";
+  const user = [
+    `COMPANY: ${ctx.company}`,
+    ctx.mission ? `MISSION: ${ctx.mission}` : "",
+    productLine(ctx.product),
+    `YOUR DEPARTMENT HEADS (delegate ONLY to these):\n${depts}`,
+    `OBJECTIVE FROM THE FOUNDER:\n${ctx.objective.slice(0, 400)}`,
+  ].filter(Boolean).join("\n\n");
+  const allowed = new Set(ctx.departments.map((d) => d.dept));
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await client.messages.create({
+        model: process.env.NEUGRID_VENTURE_MODEL || VENTURE_DEFAULT_MODEL,
+        max_tokens: 900,
+        thinking: { type: "disabled" },
+        output_config: { format: { type: "json_schema", schema: CEO_PLAN_SCHEMA } },
+        system: CEO_SYSTEM,
+        messages: [{ role: "user", content: user }],
+      });
+      const text = firstText(res);
+      if (text) {
+        try {
+          const parsed = JSON.parse(text) as { summary?: unknown; assignments?: unknown };
+          const raw: unknown[] = Array.isArray(parsed.assignments) ? parsed.assignments : [];
+          const assignments = raw
+            .slice(0, 6)
+            .map((r) => {
+              const a = (r ?? {}) as { dept?: unknown; task?: unknown };
+              return { dept: String(a.dept ?? "").trim(), task: String(a.task ?? "").trim().slice(0, 400) };
+            })
+            .filter((a) => allowed.has(a.dept) && a.task.length > 0);
+          if (assignments.length) {
+            const summary = typeof parsed.summary === "string" ? parsed.summary.trim().slice(0, 300) : "";
+            return { summary: summary || `Plan for: ${ctx.objective.slice(0, 80)}`, assignments };
+          }
+        } catch { /* fall through to retry */ }
+      }
+      console.warn(`[venture] CEO plan attempt ${attempt} returned empty/invalid`);
+    } catch (e) {
+      console.warn(`[venture] CEO plan attempt ${attempt} failed:`, e instanceof Error ? e.message : e);
+    }
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 700 * attempt));
+  }
+  return null;
+}
+
+/* ----------- the specialists: each its OWN brain + domain expertise ----------- */
+
+export interface SpecialistInput {
+  company: string;
+  mission?: string;
+  product?: { title: string; summary: string; stack?: string[]; url?: string } | null;
+  objective: string;
+  dept: string;
+  role: string;
+  task: string;
+  facts?: string;     // authoritative domain data the specialist must work from (e.g. finance numbers)
+  expertise?: string; // the agent's own accumulated track record in its domain (memory)
+}
+export interface SpecialistOutput { title: string; deliverable: string }
+
+const SPECIALIST_SCHEMA = {
+  type: "object",
+  properties: {
+    title: { type: "string", description: "A short title for what you produced (a few words)." },
+    deliverable: { type: "string", description: "Your actual work product — the real thing, in full, in your professional voice. Plain text, no markdown headings." },
+  },
+  required: ["title", "deliverable"],
+  additionalProperties: false,
+} as const;
+
+// Deep, DISTINCT domain experts — not one persona reused. Each thinks like a real
+// senior operator in its lane.
+const SPECIALIST_SYSTEM: Record<string, string> = {
+  marketing: [
+    "You are a senior growth & marketing lead — a specialist, not a generalist. You think in ICP, positioning, channels, funnel stages, acquisition math (CAC / LTV, conversion rates), and testable experiments.",
+    "Given your brief and the REAL product, produce the actual marketing work: the specific channels and WHY they fit THIS product and audience, the positioning angle, the funnel, and a concrete first experiment with a measurable success bar. Reference the product's real characteristics.",
+    "When WEB RESEARCH FINDINGS are provided, build your channels, communities, and competitor read ON them and name the sources — do NOT invent channels or communities you didn't find.",
+    "Never fabricate results or metrics that haven't happened — propose the plan and exactly how you'd measure it. Be specific and defensible, the way a real growth lead writes in a working doc. No hype words. Reply ONLY via the JSON schema.",
+  ].join(" "),
+  content: [
+    "You are a senior content lead and writer. Your job is to WRITE — headlines, posts, in-product microcopy, launch narrative — in a clear, honest, on-brand voice.",
+    "Given your brief and the REAL product, deliver the actual copy itself (the finished draft), not a description of what you would write. Match the product's tone and honesty. No hashtags, no filler, no invented claims. Reply ONLY via the JSON schema.",
+  ].join(" "),
+  finance: [
+    "You are a rigorous finance & operations lead. You work ONLY from the authoritative numbers you are given — you NEVER invent figures.",
+    "Given your brief, the REAL numbers provided, and the product, produce the financial work: a budget with real line items that sum correctly, the runway or unit-economics implication, and the single biggest risk. Show the math explicitly.",
+    "If something you'd need isn't in the numbers provided, say what you'd need rather than guessing. Precise, numbers-first, no hand-waving. Reply ONLY via the JSON schema.",
+  ].join(" "),
+  build: [
+    "You are a senior engineering & product lead. You respect the product's REAL stack and never invent fictional infrastructure.",
+    "Given your brief and the real product, produce concrete, implementable engineering work: the specific change, scoped and sequenced, with named files/components where you can infer them, and a clear acceptance check. Write it so it could be handed to Echo (the platform's build engine) or a developer and executed without ambiguity.",
+    "No hand-waving. If the change is large, define the smallest shippable first slice. Reply ONLY via the JSON schema.",
+  ].join(" "),
+};
+
+/** One specialist runs its own brain on its brief, in its domain voice. Null on any failure. */
+export async function claudeSpecialistWork(ctx: SpecialistInput): Promise<SpecialistOutput | null> {
+  const client = await loadClient();
+  if (!client) return null;
+  const system = SPECIALIST_SYSTEM[ctx.dept];
+  if (!system) return null;
+  const user = [
+    `COMPANY: ${ctx.company}${ctx.mission ? ` — ${ctx.mission}` : ""}`,
+    productLine(ctx.product),
+    `THE FOUNDER'S OBJECTIVE THIS CYCLE: ${ctx.objective.slice(0, 300)}`,
+    `YOUR BRIEF FROM THE CEO:\n${ctx.task.slice(0, 500)}`,
+    ctx.facts ? ctx.facts.slice(0, 900) : "",
+    ctx.expertise ? `YOUR TRACK RECORD (build on it, don't repeat it): ${ctx.expertise.slice(0, 300)}` : "",
+    "Produce your deliverable now — the real work, not a description of it.",
+  ].filter(Boolean).join("\n\n");
+  // Up to 2 attempts with backoff — several specialists run at once, so a transient
+  // rate-limit/overload on one must not silently drop it to a template.
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await client.messages.create({
+        model: process.env.NEUGRID_VENTURE_MODEL || VENTURE_DEFAULT_MODEL,
+        max_tokens: 1200,
+        thinking: { type: "disabled" },
+        output_config: { format: { type: "json_schema", schema: SPECIALIST_SCHEMA } },
+        system,
+        messages: [{ role: "user", content: user }],
+      });
+      const text = firstText(res);
+      if (text) {
+        try {
+          const parsed = JSON.parse(text) as { title?: unknown; deliverable?: unknown };
+          const title = typeof parsed.title === "string" ? parsed.title.trim().slice(0, 90) : "";
+          const deliverable = typeof parsed.deliverable === "string" ? parsed.deliverable.trim().slice(0, 1800) : "";
+          if (title && deliverable.length >= 20) return { title, deliverable };
+        } catch { /* fall through to retry */ }
+      }
+      console.warn(`[venture] ${ctx.dept} specialist attempt ${attempt} returned empty/invalid`);
+    } catch (e) {
+      console.warn(`[venture] ${ctx.dept} specialist attempt ${attempt} failed:`, e instanceof Error ? e.message : e);
+    }
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 700 * attempt));
+  }
+  return null;
+}
+
+/* ----------- real web research (Anthropic server-side web search) ----------- */
+// The marketing specialist doesn't just reason — it actually searches the live web
+// for real channels, communities, competitors, and benchmarks, then grounds its plan
+// in what it found. A separate call (free-form text, no schema) whose findings feed
+// the specialist as authoritative facts. Null on any failure / no web access → the
+// marketing agent simply runs without live findings.
+
+const RESEARCH_SYSTEM = [
+  "You are a market research analyst with live web access. Use web search to find CURRENT, REAL, specific information for the request — actual acquisition channels, the specific online communities where the target users gather, named competitors, and any real pricing or benchmark data.",
+  "Report concise findings grounded ONLY in what you actually found, and name the sources (site / community names). Do not speculate beyond the results; if something isn't findable, say so plainly.",
+  "Keep it tight: 8-14 short lines of the most useful, specific findings a growth lead could act on.",
+].join(" ");
+
+/** Real web research via Anthropic's server-side web_search tool. Returns grounded
+ *  findings text (with sources), or null on any failure / no web access. Never throws. */
+export async function claudeWebResearch(query: string): Promise<string | null> {
+  const client = await loadClient();
+  if (!client) return null;
+  try {
+    const res = await client.messages.create({
+      model: process.env.NEUGRID_VENTURE_MODEL || VENTURE_DEFAULT_MODEL,
+      max_tokens: 1400,
+      thinking: { type: "disabled" },
+      tools: [{ type: "web_search_20260318", name: "web_search", max_uses: 3 }],
+      system: RESEARCH_SYSTEM,
+      messages: [{ role: "user", content: query.slice(0, 600) }],
+    });
+    const content = res.content ?? [];
+    // PROOF it actually searched — a web_search_tool_result block. No block (search
+    // unavailable / quota exhausted) ⇒ the model's text is NOT real findings, so we
+    // return null rather than passing a "couldn't search" narration to the specialist.
+    if (!content.some((b) => b.type === "web_search_tool_result")) return null;
+    const text = content
+      .filter((b) => b.type === "text" && b.text)
+      .map((b) => b.text as string)
+      .join("\n")
+      .trim();
+    // Reject the model narrating that it couldn't search / can't verify — never pass that on.
+    const failed = /server tool use limit|search.{0,24}(limit|exhaust|quota)|couldn'?t (search|find)|can'?t (search|confirm|fabricate)|not (verified|search-verified)|treat (this|it|as) background|without a live search/i.test(text);
+    return text.length >= 40 && !failed ? text.slice(0, 2000) : null;
+  } catch {
+    return null; // web search unavailable / not enabled / rate-limited → graceful fallback
+  }
+}
