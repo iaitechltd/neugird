@@ -25,7 +25,7 @@ const fmtDate = (iso?: string) => (iso ? new Date(iso).toISOString().slice(0, 10
 const pad = (s: string, n: number) => (s + "<".repeat(n)).slice(0, n);
 const mrzText = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "<");
 const label = (k: string) => k.replace(/_/g, " ").replace(/\bx10\b/, "");
-const DIMS = ["builder", "creator", "backer", "reviewer", "agent"];
+const DIMS = ["builder", "creator", "backer", "reviewer", "agent", "trader"];
 
 export default function PassportPage() {
   const params = useParams();

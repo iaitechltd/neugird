@@ -314,7 +314,13 @@ export function voteMilestone(milestone_id: string, voter_id: string, support: b
           for (const [backer_id, backed] of byBacker) {
             if (backer_id === prop.author_id) continue; // no self-reward
             const backerShare = backed / gridTotal;
-            const weight = Math.max(1, Math.round(8 * backerShare * (payable / prop.ask_amount)));
+            // Share-scaled allocation: summed over ALL milestones this converges to
+            // ~8×share per backer (Σ backerShare = 1, Σ payable/ask ≈ 1). NO
+            // Math.max(1,…) floor — a floor bumps every sub-1 rounding up to a full
+            // point and, across many small backers, over-mints the aggregate past the
+            // documented 8×share total. A sub-½ tranche-share simply earns 0 here.
+            const weight = Math.round(8 * backerShare * (payable / prop.ask_amount));
+            if (weight <= 0) continue;
             Pulse.recordEvent({ target_type: "user", target_id: backer_id, action_type: "backer_delivery", weight, reason: `Backed "${prop.title}" — milestone "${m.title}" delivered`, verification_source: "backers", dimension: "backer" });
           }
         }

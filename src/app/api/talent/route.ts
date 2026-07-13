@@ -45,6 +45,7 @@ const GROW_ACTIONS: Record<string, string> = {
   backer: "Back a raise you believe in — backer weight compounds your milestone voice.",
   reviewer: "Review audits and verify milestones — reviewer rep is scarce and trusted.",
   creator: "Post in your grids and run promo campaigns — creator rep drives discovery.",
+  trader: "Trade on a market — earn a GRID rebate on fees and build trader rep.",
 };
 
 /** Events-per-week over the trailing 8 weeks (the engagement pulse). */
@@ -96,7 +97,7 @@ export async function GET() {
   // the session user's growth block (drives the "what to improve" rail)
   const me = Users.getUser(uid);
   const dims = me?.reputation?.by_dimension ?? {};
-  const axes = ["builder", "backer", "reviewer", "creator"] as const;
+  const axes = ["builder", "backer", "reviewer", "creator", "trader"] as const;
   const gaps = axes
     .map((d) => ({ dim: d, score: Math.round(dims[d] ?? 0) }))
     .sort((a, b) => a.score - b.score)

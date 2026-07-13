@@ -17,6 +17,7 @@ import * as Staking from "./staking";
 import * as Perps from "./perps";
 import * as Params from "./params";
 import * as GridMarket from "./gridMarket";
+import * as Rewards from "./rewards";
 import { Amm as ChainAmm } from "../chain";
 import type { Audit, Backing, LimitOrder, Market, MarketStage, Token, Vesting } from "../types";
 
@@ -359,6 +360,10 @@ export function trade(market_id: string, user_id: string, side: "buy" | "sell", 
   }
   const r = executeSwap(m, user_id, side, amount);
   if (r.error) return { error: r.error };
+  // reward the trader a fraction of the FEE they paid, as GRID (fee-based ⇒
+  // farm-resistant: a wash trade pays more in fees than it earns back). Rewards.
+  const feeUsd = r.fee_in === "grid" ? (r.fee_grid ?? 0) * GridMarket.price() : (r.fee ?? 0);
+  Rewards.rewardTrade(user_id, feeUsd);
   fillCrossedOrders(market_id); // resting limit orders the new price now crosses
   Perps.settle(market_id); // any leverage position past its liq price
   return { market: m, ...r };

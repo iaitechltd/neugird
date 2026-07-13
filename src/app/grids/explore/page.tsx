@@ -11,32 +11,17 @@ import Link from "next/link";
 import NeuHeader from "@/components/app/NeuHeader";
 import OrbPanel from "@/components/app/OrbPanel";
 import StartNewButton from "@/components/app/StartNewButton";
-import { Panel, Tag, Mark, DataRow, IconActivity, IconArrowRight, IconNetwork, IconBot , kpiColor } from "@/components/app/ui";
+import { Panel, Tag, Mark, DataRow, IconActivity, IconArrowRight, IconNetwork, IconBot, IconUser, IconLayers , kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import Meter from "@/components/app/Meter";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
-import { PanelChart, barStr } from "@/components/app/terminal";
+import { PanelChart } from "@/components/app/terminal";
 import { PolarArea, Heatmap, Bullet, SegBar } from "@/components/app/charts";
 import type { Grid } from "@/lib/types";
 
 type GridRow = Grid & { subgrid_count?: number; agent_count?: number; earnings?: number };
 const STAGES = ["idea", "building", "genesis", "alpha", "spot", "futures"];
 const fmtVal = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : `${Math.round(n)}`);
-
-// Card meter %: real share of the network max; nonzero values keep one visible
-// block (same floor idea as Bars in charts.tsx) so "small but alive" ≠ "zero".
-const meterPct = (v: number, max: number) => (v > 0 ? Math.max(10, Math.round((v / max) * 100)) : 0);
-
-/** Compact char-drawn meter row for card tiles — `LABEL ▮▮▯▯▯▯▯▯ 42`. */
-function StandingMeter({ label, pct, value }: { label: string; pct: number; value: string | number }) {
-  return (
-    <div className="flex items-baseline gap-2 py-0.5 text-[10px]">
-      <span className="w-14 shrink-0 uppercase tracking-wide text-ink-faint">{label}</span>
-      <span className="min-w-0 flex-1 overflow-hidden font-mono text-[11px] tracking-tighter text-neon">{barStr(pct, 10)}</span>
-      <span className="tnum shrink-0 text-ink-dim">{value}</span>
-    </div>
-  );
-}
 
 export default function GridsExplorePage() {
   const [grids, setGrids] = useState<GridRow[] | null>(null);
@@ -84,9 +69,6 @@ export default function GridsExplorePage() {
   const catTopN = [...categories].sort((a, b) => b[1] - a[1]).slice(0, 7);
   // LEFT-2 · Heatmap — the whole network as a field, cell brightness = the grid's pulse
   const maxPulse = Math.max(1, ...list.map((g) => g.pulse_score ?? 0));
-  // CARD · standing meters — each grid's real stats vs the network max
-  const maxMembers = Math.max(1, ...list.map((g) => g.member_count ?? 0));
-  const maxSubs = Math.max(1, ...list.map((g) => g.subgrid_count ?? 0));
   const HM_ROWS = 6, HM_COLS = 10;
   const activityHeat = list.slice(0, HM_ROWS * HM_COLS).map((g) => Math.min(1, (g.pulse_score ?? 0) / maxPulse));
   // RIGHT-1 · Bullet — top grids' membership against the network average
@@ -188,12 +170,18 @@ export default function GridsExplorePage() {
                   {/* hero — activity value (campaigns · deals · agents · work) */}
                   <div className="ng-stat__v mt-3 !text-2xl text-neon tnum">${fmtVal(g.earnings ?? 0)}</div>
                   <div className="flex items-center justify-between text-[9px] uppercase tracking-wide text-ink-faint"><span>Activity value</span><span>lifetime</span></div>
-                  {/* standing — this grid's REAL stats as char-meters vs the network max */}
-                  <div className="mt-3 border-t border-line pt-2.5">
-                    <div className="mb-1 flex items-center justify-between text-[9px] uppercase tracking-wide text-ink-faint"><span>Standing</span><span>vs network max</span></div>
-                    <StandingMeter label="Pulse" pct={meterPct(g.pulse_score ?? 0, maxPulse)} value={(g.pulse_score ?? 0).toLocaleString()} />
-                    <StandingMeter label="Members" pct={meterPct(g.member_count ?? 0, maxMembers)} value={(g.member_count ?? 0).toLocaleString()} />
-                    <StandingMeter label="SubGrids" pct={meterPct(g.subgrid_count ?? 0, maxSubs)} value={g.subgrid_count ?? 0} />
+                  {/* standing — an icon + bold-number readout (the rails carry the bars; the card doesn't repeat them) */}
+                  <div className="mt-3 grid grid-cols-3 divide-x divide-line border-t border-line pt-2.5 text-center">
+                    {([
+                      { label: "Pulse", value: g.pulse_score ?? 0, icon: <IconActivity className="h-3 w-3" /> },
+                      { label: "Members", value: g.member_count ?? 0, icon: <IconUser className="h-3 w-3" /> },
+                      { label: "SubGrids", value: g.subgrid_count ?? 0, icon: <IconLayers className="h-3 w-3" /> },
+                    ]).map((s) => (
+                      <div key={s.label} className="px-1">
+                        <div className="ng-stat__v !text-base leading-none text-neon tnum">{s.value >= 100000 ? fmtVal(s.value) : s.value.toLocaleString()}</div>
+                        <div className="mt-1 flex items-center justify-center gap-1 text-[8.5px] uppercase tracking-wide text-ink-faint">{s.icon}{s.label}</div>
+                      </div>
+                    ))}
                   </div>
                   {/* footer — agents + the enter action */}
                   <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-2.5 text-[10px]">

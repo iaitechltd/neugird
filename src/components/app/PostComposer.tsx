@@ -23,7 +23,7 @@ const IImage = () => <svg {...S}><rect x="3" y="4" width="18" height="16" /><cir
 const IVideo = () => <svg {...S}><rect x="3" y="5.5" width="13.5" height="13" /><path d="M16.5 10.5 21 7.5v9l-4.5-3" /></svg>;
 const IFile = () => <svg {...S}><path d="M13.5 3H6v18h12V7.5L13.5 3Z" /><path d="M13.5 3v4.5H18" /></svg>;
 
-export default function PostComposer({ onPosted, notify }: { onPosted?: () => void; notify?: (m: string) => void }) {
+export default function PostComposer({ onPosted, notify, grid_id, placeholder }: { onPosted?: () => void; notify?: (m: string) => void; grid_id?: string; placeholder?: string }) {
   const [me, setMe] = useState<{ username?: string }>({});
   useEffect(() => { fetch("/api/me").then((r) => r.json()).then(setMe).catch(() => {}); }, []);
 
@@ -65,11 +65,11 @@ export default function PostComposer({ onPosted, notify }: { onPosted?: () => vo
     try {
       const firstLine = body.trim().split("\n")[0];
       const rest = body.trim().split("\n").slice(1).join("\n").trim();
-      const r = await fetch("/api/feed", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ body: rest || firstLine, title: rest ? firstLine.slice(0, 120) : undefined, topic, attachments: files.length ? files : undefined }) });
+      const r = await fetch("/api/feed", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ body: rest || firstLine, title: rest ? firstLine.slice(0, 120) : undefined, topic, attachments: files.length ? files : undefined, grid_id }) });
       if (r.ok) {
         setBody(""); setFiles([]);
         if (bodyRef.current) bodyRef.current.style.height = "44px";
-        notify?.("Posted to the wire · +2 Pulse (first 3/day)");
+        notify?.(grid_id ? "Posted to the community · +2 Pulse (first 3/day)" : "Posted to the wire · +2 Pulse (first 3/day)");
         onPosted?.();
       } else notify?.("Post failed");
     } catch { notify?.("Post failed"); }
@@ -84,7 +84,7 @@ export default function PostComposer({ onPosted, notify }: { onPosted?: () => vo
           <div className="relative">
             {body === "" && (
               <span aria-hidden className="pointer-events-none absolute left-0 top-1 text-[14px] text-ink-faint">
-                <Typewriter text="What are you building? First line becomes the headline…" speed={30} loop pause={2600} />
+                <Typewriter text={placeholder ?? "What are you building? First line becomes the headline…"} speed={30} loop pause={2600} />
               </span>
             )}
             <textarea

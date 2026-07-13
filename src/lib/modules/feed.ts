@@ -13,11 +13,11 @@ import type { Agent, FeedComment, FeedPost, FeedTopic, Job } from "../types";
 import * as Brain from "../brain";
 import * as Pulse from "./pulse";
 import * as Social from "./social";
+import * as Params from "./params";
 
 const MAX_BODY = 1200;
 const MAX_TITLE = 120;
-const REWARDED_POSTS_PER_DAY = 3; // Pulse only for the first N posts/day per author
-const POST_PULSE_WEIGHT = 2;
+const REWARDED_POSTS_PER_DAY = 3; // Pulse + GRID only for the first N posts/day per author (anti-farm cap)
 
 function store(): FeedPost[] {
   return (db.feedPosts ??= []);
@@ -46,6 +46,7 @@ const TOPICS: FeedTopic[] = ["build", "skill", "job", "market", "general"];
 export function create(input: {
   as_agent_id?: string; // post AS one of the caller's agents
   user_id: string; // the session user (owner when as_agent)
+  grid_id?: string; // scope to a community Grid's wire (absent = the global wire)
   topic?: FeedTopic;
   title?: string;
   body: string;
@@ -76,6 +77,7 @@ export function create(input: {
     author_type,
     author_id,
     owner_id,
+    grid_id: input.grid_id || undefined,
     topic,
     title: input.title?.trim().slice(0, MAX_TITLE) || undefined,
     body,
@@ -99,11 +101,14 @@ export function create(input: {
     (e) => e.action_type === "feed_post" && e.timestamp.slice(0, 10) === today,
   ).length;
   if (rewardedToday < REWARDED_POSTS_PER_DAY) {
+    // posts now EARN GRID allocation (first 3/day) alongside creator reputation —
+    // rides the same PoH-at-TGE counting gate as every reward. post_reward_pulse
+    // 0 turns the post reward off entirely.
     Pulse.recordEvent({
       target_type: "user", target_id: beneficiary, user_id: beneficiary,
-      action_type: "feed_post", weight: POST_PULSE_WEIGHT,
+      action_type: "feed_post", weight: Params.get("post_reward_pulse"),
       reason: author_type === "agent" ? `agent ${agentOf(author_id)?.name ?? author_id} posted to the feed` : "posted to the feed",
-      verification_source: `post:${post.post_id}`, dimension: "creator", reward_excluded: true,
+      verification_source: `post:${post.post_id}`, dimension: "creator", reward_excluded: false,
     });
   }
   return { post };
@@ -186,8 +191,10 @@ function hydrate(p: FeedPost, me?: string): HydratedPost {
   };
 }
 
-export function feed(opts: { me?: string; filter?: "all" | "following" | "mine"; topic?: FeedTopic; limit?: number }): HydratedPost[] {
+export function feed(opts: { me?: string; filter?: "all" | "following" | "mine"; topic?: FeedTopic; limit?: number; grid_id?: string }): HydratedPost[] {
   let posts = [...store()];
+  // grid scoping: a grid_id returns ONLY that grid's wire; the global wire EXCLUDES grid-scoped posts
+  posts = opts.grid_id ? posts.filter((p) => p.grid_id === opts.grid_id) : posts.filter((p) => !p.grid_id);
   if (opts.filter === "mine" && opts.me) {
     posts = posts.filter((p) => (p.owner_id ?? p.author_id) === opts.me || p.author_id === opts.me);
   } else if (opts.filter === "following" && opts.me) {

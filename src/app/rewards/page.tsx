@@ -27,8 +27,22 @@ type HumanityState = {
   thresholds: { wallet_age_days: number; tx_count: number };
   gates: { starter: { required: number; ok: boolean }; rewards: { required: number; ok: boolean } };
 };
+type Bucket = "community" | "treasury" | "team" | "liquidity";
 type Payload = {
   me: { id: string };
+  supply: {
+    total_supply: number; split: Record<Bucket, number>; pools: Record<Bucket, number>;
+    minted: number; emitted: number; minted_pct_of_pool: number; recipients: number;
+    claimed: number; circulating: number; circulating_pct: number;
+    burned: number; liquidity_grid: number; community_remaining: number;
+    tge_executed: boolean; price_usd: number; market_cap_usd: number;
+  };
+  emission: {
+    epoch: number; epoch_days: number; ends_in_days: number; elapsed_pct: number;
+    budget: number; remaining_pool: number; emitted_total: number; epochs_run: number;
+    active_earners: number; epoch_activity: number; tge_executed: boolean;
+    projected: { id: string; username: string; activity: number; share_pct: number; grid: number }[];
+  };
   ledger: {
     accrued: number; sybil_adjusted: number; affiliate_grid: number; total_allocation: number; sybil_factor: number; claimed: number; rate: number;
     counted: number; pending_verification: number;
@@ -39,6 +53,7 @@ type Payload = {
   };
   accrual: number[];
   weekly: number[];
+  daily: number[];
   feed: { action: string; reason: string; pulse: number; grid: number; at: string }[];
   schedule: ScheduleRow[];
   referrals: {
@@ -48,12 +63,30 @@ type Payload = {
   };
 };
 
+/** compact GRID formatting: 36_900_000_000 → "36.9B". */
+const compact = (n: number): string => {
+  const a = Math.abs(n);
+  if (a >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
+  if (a >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (a >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+  return `${Math.round(n)}`;
+};
+
+// the supply allocation buckets, in draw order — green-tier fills (green-only lock)
+const BUCKETS: [Bucket, string, string][] = [
+  ["community", "rgba(0,255,0,0.85)", "earned over ~10y"],
+  ["treasury", "rgba(0,255,0,0.46)", "liquidity · insurance · ops"],
+  ["team", "rgba(0,255,0,0.28)", "long vest"],
+  ["liquidity", "rgba(0,255,0,0.15)", "market"],
+];
+
 export default function RewardsPage() {
   const [data, setData] = useState<Payload | null>(null);
   const [hum, setHum] = useState<HumanityState | null>(null);
   const [humBusy, setHumBusy] = useState(false);
   const [civicMsg, setCivicMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [settling, setSettling] = useState(false);
   const [lOpen, setLOpen] = useState(true);
   const [rOpen, setROpen] = useState(true);
   const closed = (lOpen ? 0 : 1) + (rOpen ? 0 : 1);
@@ -100,16 +133,39 @@ export default function RewardsPage() {
     try { await navigator.clipboard.writeText(refLink); setCopied(true); window.setTimeout(() => setCopied(false), 2000); } catch { /* ignore */ }
   };
 
+  // demo-only: settle the current emission epoch now (production settles on schedule via the cron)
+  const settleEpoch = async () => {
+    if (settling) return;
+    setSettling(true);
+    try {
+      await fetch("/api/emission", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "settle" }) });
+      fetch("/api/rewards").then((r) => r.json()).then(setData).catch(() => {});
+    } finally { setSettling(false); }
+  };
+  const isDev = process.env.NODE_ENV === "development";
+
   const l = data?.ledger;
+  const s = data?.supply;
+  const emi = data?.emission;
 
   // ── side-rail chart data (all derived from the real ledger/event log) ──
   const accrual = data?.accrual ?? [];
+  const daily = data?.daily ?? [];
+  const heatMax = Math.max(1, ...daily);
+  const dailyTotal = daily.reduce((a, b) => a + b, 0);
   const breakdown = l?.breakdown ?? [];
   const srcUnits = breakdown.map((b) => b.units);
   const srcTotal = srcUnits.reduce((a, b) => a + b, 0);
   const srcMax = Math.max(1, ...srcUnits);
-  const schedMax = Math.max(1, ...(data?.schedule ?? []).map((r) => Math.abs(r.pulse ?? 0)));
-  const feedMax = Math.max(1, ...(data?.feed ?? []).map((f) => Math.abs(f.pulse)));
+  // the earning schedule as a bar chart: fixed-GRID earners (sorted), reward-scaled
+  // actions (no fixed value → chips), and penalties (reputation hits, in red)
+  const rate = data?.ledger.rate ?? 10;
+  const sched = data?.schedule ?? [];
+  const schedFixed = sched.filter((r) => r.pulse !== null && r.pulse > 0).map((r) => ({ action: r.action, grid: (r.pulse as number) * rate })).sort((a, b) => b.grid - a.grid);
+  const schedScaled = sched.filter((r) => r.pulse === null);
+  const schedPenalty = sched.filter((r) => (r.pulse ?? 0) < 0).map((r) => ({ action: r.action, pulse: r.pulse as number }));
+  const schedGridMax = Math.max(1, ...schedFixed.map((r) => r.grid));
+  const schedPenMax = Math.max(1, ...schedPenalty.map((r) => Math.abs(r.pulse)));
   const srcBars = breakdown.map((b) => ({ label: b.dimension, value: b.units }));
   const refVerified = data?.referrals.verified ?? 0;
   const refPending = data?.referrals.pending ?? 0;
@@ -150,24 +206,47 @@ export default function RewardsPage() {
                 : <p className="py-3 text-center text-[10px] text-ink-faint">No sources yet</p>}
             </PanelChart>
 
-            <div className="mt-4 divide-y divide-line">
-              {(data?.schedule ?? []).map((r) => (
-                <div key={r.action} className="py-2">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className={`text-[11.5px] leading-snug ${(r.pulse ?? 1) < 0 ? "text-red-400/80" : "text-ink"}`}>{r.action}</span>
-                    <span className={`shrink-0 text-[11px] font-bold ${(r.pulse ?? 1) < 0 ? "text-red-400" : "text-neon"}`}>
-                      {r.pulse === null ? "scaled" : `${r.pulse > 0 ? "+" : ""}${r.pulse}`}
-                    </span>
+            <div className="mt-4">
+              <div className="ng-label mb-2 !text-[10px] !text-ink-dim">GRID per action</div>
+              <div className="space-y-1.5">
+                {schedFixed.map((r) => (
+                  <div key={r.action} className="flex items-center gap-2">
+                    <span className="w-[104px] shrink-0 truncate text-[10px] text-ink" title={r.action}>{r.action}</span>
+                    <div className="relative h-3 flex-1 overflow-hidden rounded-[2px] bg-neon/[0.06]">
+                      <div className="h-full rounded-[2px] bg-neon/70" style={{ width: `${Math.max(4, (r.grid / schedGridMax) * 100)}%` }} />
+                    </div>
+                    <span className="w-[44px] shrink-0 text-right text-[10px] font-bold tnum text-neon">{r.grid}</span>
                   </div>
-                  <div className="flex items-center justify-between gap-2 text-[9.5px] text-ink-faint">
-                    <span className="truncate">{r.formula ?? r.dimension}</span>
-                    <span className="flex shrink-0 items-center gap-1.5">
-                      {r.pulse !== null && r.pulse > 0 && <span className="text-cyan/70">{r.pulse * (l?.rate ?? 10)} GRID</span>}
-                      {r.pulse !== null && <Meter value={Math.abs(r.pulse)} max={schedMax} w={36} color={r.pulse < 0 ? "#ff4d5e" : "#00ff00"} />}
-                    </span>
+                ))}
+              </div>
+
+              {schedScaled.length > 0 && (
+                <>
+                  <div className="ng-label mb-1.5 mt-3.5 !text-[10px] !text-ink-dim">Reward-scaled</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {schedScaled.map((r) => (
+                      <span key={r.action} className="rounded-[2px] border border-neon/25 px-1.5 py-0.5 text-[9px] text-ink-dim" title={r.formula ?? undefined}>{r.action}</span>
+                    ))}
                   </div>
-                </div>
-              ))}
+                </>
+              )}
+
+              {schedPenalty.length > 0 && (
+                <>
+                  <div className="ng-label mb-1.5 mt-3.5 !text-[10px] !text-ink-dim">Penalties · reputation</div>
+                  <div className="space-y-1.5">
+                    {schedPenalty.map((r) => (
+                      <div key={r.action} className="flex items-center gap-2">
+                        <span className="w-[104px] shrink-0 truncate text-[10px] text-red-400/90" title={r.action}>{r.action}</span>
+                        <div className="relative h-3 flex-1 overflow-hidden rounded-[2px] bg-red-500/10">
+                          <div className="h-full rounded-[2px]" style={{ width: `${(Math.abs(r.pulse) / schedPenMax) * 100}%`, background: "#ff4d5e" }} />
+                        </div>
+                        <span className="w-[44px] shrink-0 text-right text-[10px] font-bold tnum text-red-400">{r.pulse}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </Panel>
         </OrbPanel>
@@ -178,6 +257,127 @@ export default function RewardsPage() {
             <h1 className="ng-title text-2xl font-bold text-neon text-glow-soft"><Decrypt text="Rewards" /></h1>
             <p className="mt-1 text-sm text-ink-dim">Your activity → Pulse → GRID. Allocation is earned by verified work and converts at the TGE.</p>
           </div>
+
+          {/* SUPPLY HERO — the fixed-cap 36.9B picture: minted only by real work */}
+          {s && (
+            <div className="ng-card p-5">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <div className="ng-label !text-ink-dim">GRID · total supply</div>
+                  <div className="ng-stat__v !text-4xl leading-none text-neon text-glow-soft">
+                    {compact(s.total_supply)}
+                    <span className="ml-2 align-middle text-[11px] font-normal text-ink-faint">{s.total_supply.toLocaleString()} · fixed cap</span>
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-ink-dim">Minted only by verified work — <Mark plain>earned, not sold</Mark>. No sale, no VC.</p>
+                </div>
+                <div className="text-right">
+                  <div className="ng-stat__v !text-xl text-cyan">${s.price_usd.toFixed(3)}</div>
+                  <div className="text-[10px] uppercase tracking-wide text-ink-faint">GRID price · mcap ${compact(s.market_cap_usd)}</div>
+                </div>
+              </div>
+
+              {/* allocation bar — the four buckets by width */}
+              <div className="mt-4 flex h-6 w-full overflow-hidden rounded-sm border border-line">
+                {BUCKETS.map(([key, color]) => (
+                  <div key={key} className="border-r border-black/70 last:border-r-0"
+                    style={{ width: `${(s.pools[key] / s.total_supply) * 100}%`, background: color }}
+                    title={`${key}: ${s.pools[key].toLocaleString()} GRID`} />
+                ))}
+              </div>
+              <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-ink-dim">
+                {BUCKETS.map(([key, color, note]) => (
+                  <span key={key} className="flex items-center gap-1.5">
+                    <span className="inline-block h-2 w-2 shrink-0" style={{ background: color }} />
+                    <span className="capitalize text-ink">{key}</span>
+                    <span className="text-neon">{compact(s.pools[key])}</span>
+                    <span className="text-ink-faint">· {note}</span>
+                  </span>
+                ))}
+              </div>
+
+              {/* minted-by-activity progress within the community pool */}
+              <div className="mt-4">
+                <div className="mb-1 flex items-baseline justify-between text-[11px]">
+                  <span className="text-ink-dim">Minted by activity so far</span>
+                  <span className="text-ink-faint">{compact(s.minted)} of {compact(s.pools.community)} community pool</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-sm bg-neon/10">
+                  <div className="h-full bg-neon" style={{ width: `${Math.max(0.5, Math.min(100, s.minted_pct_of_pool * 100))}%` }} />
+                </div>
+                <p className="mt-1 text-[9.5px] text-ink-faint">{(s.minted_pct_of_pool * 100).toFixed(4)}% tapped — {compact(s.community_remaining)} GRID still to be earned by the community.</p>
+              </div>
+
+              {/* supply stat tiles */}
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {([
+                  ["Minted by activity", s.minted, "neon", `${s.recipients} earner${s.recipients === 1 ? "" : "s"}`],
+                  ["In circulation", s.circulating, "cyan", `${(s.circulating_pct * 100).toFixed(2)}% of supply`],
+                  ["Burned", s.burned, "neon", "buyback & burn"],
+                  ["Still to earn", s.community_remaining, "neon", "community pool"],
+                ] as const).map(([k, v, tone, sub]) => (
+                  <div key={k} className="rounded-sm border border-line p-3 text-center">
+                    <div className={`ng-stat__v !text-lg ${tone === "cyan" ? "text-cyan" : "text-neon"}`}>{compact(v)}</div>
+                    <div className="ng-stat__k">{k}</div>
+                    <div className="mt-0.5 text-[8.5px] uppercase tracking-wide text-ink-faint">{sub}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* CONTINUOUS EMISSIONS — the post-TGE mint that keeps releasing the pool by activity */}
+          {emi && (
+            <div className="ng-card p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="ng-label !text-ink-dim">Continuous emissions · epoch {emi.epoch}</div>
+                <div className="text-[10px] uppercase tracking-wide text-ink-faint">{emi.epochs_run} epoch{emi.epochs_run === 1 ? "" : "s"} run · {compact(emi.emitted_total)} released</div>
+              </div>
+              <p className="mt-1 text-[11px] text-ink-dim">Every {emi.epoch_days} days the community pool releases a slice, split among that epoch&apos;s earners <Mark plain>by activity</Mark> — minting keeps flowing from usage, forever, within the cap.</p>
+
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {([
+                  ["This epoch releases", compact(emi.budget), `of ${compact(emi.remaining_pool)} left`],
+                  ["Your projected share", compact(emi.projected.find((p) => p.id === data?.me.id)?.grid ?? 0), `${((emi.projected.find((p) => p.id === data?.me.id)?.share_pct ?? 0) * 100).toFixed(0)}% of activity`],
+                  ["Active earners", `${emi.active_earners}`, "this epoch"],
+                  ["Released to date", compact(emi.emitted_total), `over ${emi.epochs_run} epoch${emi.epochs_run === 1 ? "" : "s"}`],
+                ] as const).map(([k, v, sub]) => (
+                  <div key={k} className="rounded-sm border border-line p-3 text-center">
+                    <div className="ng-stat__v !text-lg text-neon">{v}</div>
+                    <div className="ng-stat__k">{k}</div>
+                    <div className="mt-0.5 text-[8.5px] uppercase tracking-wide text-ink-faint">{sub}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4">
+                <div className="mb-1 flex items-baseline justify-between text-[10px] text-ink-faint">
+                  <span>epoch {emi.epoch} progress</span>
+                  <span>{emi.ends_in_days}d to the release</span>
+                </div>
+                <div className="h-1.5 w-full overflow-hidden rounded-sm bg-neon/10">
+                  <div className="h-full bg-neon/70" style={{ width: `${emi.elapsed_pct}%` }} />
+                </div>
+              </div>
+
+              {emi.projected.length > 0 && (
+                <div className="mt-4">
+                  <div className="ng-label mb-1.5 !text-[10px] !text-ink-dim">Projected split · this epoch</div>
+                  <div className="divide-y divide-line">
+                    {emi.projected.slice(0, 5).map((p) => (
+                      <div key={p.id} className="flex items-center justify-between gap-3 py-1.5 text-[11px]">
+                        <span className="flex min-w-0 items-center gap-2"><MatrixAvatar seed={p.username} size={20} shape="square" /><span className="truncate text-ink">{p.username}</span></span>
+                        <span className="flex shrink-0 items-center gap-3"><span className="text-ink-faint">{(p.share_pct * 100).toFixed(0)}%</span><span className="text-neon">{compact(p.grid)} GRID</span></span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {isDev && (
+                <button onClick={settleEpoch} disabled={settling} className="ng-btn ng-btn-primary ng-btn--sm mt-4 disabled:opacity-40">{settling ? "Settling…" : "Settle this epoch now (demo)"}</button>
+              )}
+            </div>
+          )}
 
           {/* KPIs — 3 by default, +1 per collapsed panel */}
           <div className="grid grid-cols-2 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 3 + closed } as React.CSSProperties}>
@@ -224,27 +424,46 @@ export default function RewardsPage() {
             </div>
           )}
 
-          {/* the reward feed */}
+          {/* EARNING ACTIVITY — a contribution calendar of GRID earned (visual, not a text wall) + a compact recent strip */}
           <div className="ng-card p-4">
-            <div className="ng-label mb-2 flex items-center gap-2 !text-ink-dim"><IconActivity className="h-3.5 w-3.5 text-neon" />Reward feed</div>
-            {(data?.feed ?? []).length === 0 && <p className="py-4 text-center text-[11px] text-ink-dim">No reward events yet — the schedule on the left is the map.</p>}
-            <div className="ng-2col-wide divide-y divide-line">
-              {(data?.feed ?? []).map((f, i) => (
-                <div key={i} className="flex items-center justify-between gap-3 py-2">
-                  <div className="min-w-0">
-                    <div className="truncate text-[12px] text-ink">{f.reason}</div>
-                    <div className="text-[9.5px] uppercase tracking-wider text-ink-faint">{f.action.replace(/_/g, " ")} · {new Date(f.at).toLocaleDateString()}</div>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <Meter value={Math.abs(f.pulse)} max={feedMax} w={36} />
-                      <div className="text-[12px] font-bold text-neon">+{f.pulse} Pulse</div>
-                    </div>
-                    {f.grid > 0 ? <div className="text-[10px] text-cyan">+{f.grid} GRID</div> : <div className="text-[10px] text-ink-faint">rep only</div>}
-                  </div>
-                </div>
-              ))}
+            <div className="mb-3 flex items-center justify-between">
+              <div className="ng-label flex items-center gap-2 !text-ink-dim"><IconActivity className="h-3.5 w-3.5 text-neon" />Earning activity · 12 weeks</div>
+              <span className="text-[10px] text-ink-faint">{compact(dailyTotal)} GRID</span>
             </div>
+            <div className="flex items-end gap-3 overflow-x-auto">
+              <div className="flex gap-[3px]">
+                {Array.from({ length: 12 }).map((_, w) => (
+                  <div key={w} className="flex flex-col gap-[3px]">
+                    {Array.from({ length: 7 }).map((_, d) => {
+                      const v = daily[w * 7 + d] ?? 0;
+                      const ratio = v > 0 ? 0.2 + 0.8 * (Math.log1p(v) / Math.log1p(heatMax)) : 0;
+                      return <div key={d} className="h-3.5 w-3.5 rounded-[2px]" title={v > 0 ? `${compact(v)} GRID` : "—"}
+                        style={{ background: v > 0 ? `rgba(0,255,0,${ratio})` : "rgba(0,255,0,0.05)", border: "1px solid rgba(0,255,0,0.09)" }} />;
+                    })}
+                  </div>
+                ))}
+              </div>
+              <div className="flex shrink-0 items-center gap-1 pb-0.5 text-[9px] text-ink-faint">less
+                {[0.12, 0.35, 0.6, 0.9].map((o) => <span key={o} className="inline-block h-2 w-2 rounded-[1px]" style={{ background: `rgba(0,255,0,${o})` }} />)}more</div>
+            </div>
+            {(data?.feed ?? []).length === 0
+              ? <p className="mt-3 py-3 text-center text-[11px] text-ink-dim">No earnings yet — the schedule on the left is the map.</p>
+              : <div className="mt-4 border-t border-line pt-3">
+                  <div className="ng-label mb-1.5 !text-[10px] !text-ink-dim">Recent</div>
+                  <div className="divide-y divide-line">
+                    {(data?.feed ?? []).slice(0, 6).map((f, i) => (
+                      <div key={i} className="flex items-center justify-between gap-3 py-1.5">
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: f.grid > 0 ? "#00ff00" : "#1e9c1e" }} />
+                          <span className="truncate text-[11.5px] text-ink">{f.reason}</span>
+                        </span>
+                        {f.grid > 0
+                          ? <span className="shrink-0 text-[11.5px] font-bold text-neon">+{compact(f.grid)} GRID</span>
+                          : <span className="shrink-0 text-[9px] uppercase tracking-wide text-ink-faint">rep</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>}
           </div>
         </main>
 

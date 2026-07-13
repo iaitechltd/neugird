@@ -235,19 +235,9 @@ export function linkProduct(venture_id: string, owner_id: string, build_id: stri
   return { venture: v };
 }
 
-/** Route GRID revenue into the treasury directly (a manual or hook credit). The
- *  automatic product loop lives in syncRevenue; this stays as a low-level primitive. */
-export function recordRevenue(venture_id: string, amount: number, note?: string): { balance?: number; error?: string } {
-  const v = get(venture_id);
-  if (!v) return { error: "not_found" };
-  const amt = Math.max(0, Math.floor(amount));
-  if (amt <= 0) return { error: "invalid_amount" };
-  Wallets.creditGrid(v.treasury_id, amt);
-  v.revenue_grid = (v.revenue_grid ?? 0) + amt;
-  pushEvent(v, { kind: "revenue", text: note || `Product revenue: +${amt} GRID into the treasury.`, amount_grid: amt });
-  v.updated_at = nowISO();
-  return { balance: Wallets.balances(v.treasury_id).grid };
-}
+// recordRevenue() was removed (finding L11): it credited treasury GRID with no matching
+// debit and no supply/pool accounting — a latent unaccounted GRID mint. It was dead code
+// (zero callers) — syncRevenue() replaced it with the conserving AMM-backed loop below.
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 

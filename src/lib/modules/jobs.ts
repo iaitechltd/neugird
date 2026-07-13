@@ -78,9 +78,14 @@ export function applyRejectionEffects(job_id: string, reviewer_id: string): void
     }
   }
   if (esc) {
-    Wallets.debitUsdc(JOB_ESCROW, esc.amount);
-    Wallets.creditUsdc(esc.funder, esc.amount);
-    recordReceipt(JOB_ESCROW, esc.funder, `job_refund:${job.job_id}`, esc.amount);
+    // Conservation guard: only refund the funder if the escrow wallet actually held
+    // (and released) the funds. Crediting without a successful debit would mint USDC.
+    if (Wallets.debitUsdc(JOB_ESCROW, esc.amount)) {
+      Wallets.creditUsdc(esc.funder, esc.amount);
+      recordReceipt(JOB_ESCROW, esc.funder, `job_refund:${job.job_id}`, esc.amount);
+    } else {
+      console.error(`[jobs] escrow refund skipped — JOB_ESCROW short of ${esc.amount} USDC for job ${job.job_id}; funder ${esc.funder} NOT credited`);
+    }
   }
   job.dispute_deadline = undefined;
   job.updated_at = nowISO();
@@ -460,9 +465,14 @@ export function reviewJob(id: string, input: ReviewInput): Job | undefined {
     const worker = job.assignee_type === "agent"
       ? (db.agents.find((a) => a.agent_id === job.assignee_id)?.owner_id ?? job.assignee_id)
       : job.assignee_id;
-    Wallets.debitUsdc(JOB_ESCROW, esc.amount);
-    Wallets.creditUsdc(worker, esc.amount);
-    recordReceipt(JOB_ESCROW, worker, `job_payout:${job.job_id}`, esc.amount);
+    // Conservation guard: only pay the worker if the escrow wallet actually held
+    // (and released) the funds. Crediting without a successful debit would mint USDC.
+    if (Wallets.debitUsdc(JOB_ESCROW, esc.amount)) {
+      Wallets.creditUsdc(worker, esc.amount);
+      recordReceipt(JOB_ESCROW, worker, `job_payout:${job.job_id}`, esc.amount);
+    } else {
+      console.error(`[jobs] escrow release skipped — JOB_ESCROW short of ${esc.amount} USDC for job ${job.job_id}; worker ${worker} NOT credited`);
+    }
   }
 
   // V6 — employer trust: a project that pays fairly on delivery earns reputation for

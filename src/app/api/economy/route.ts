@@ -4,7 +4,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { X402, Agents, Attestations, GridMarket, Rewards, Staking, Echo, Wallets, Governance } from "@/lib/modules";
+import { X402, Agents, Attestations, GridMarket, Rewards, Staking, Echo, Wallets, Governance, Supply } from "@/lib/modules";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +13,7 @@ export async function GET() {
   const agents = Agents.listAgents();
   const creds = Attestations.platformSummary();
   const gm = GridMarket.summary();
-  const issued = Rewards.totalIssued();
+  const supply = Supply.state(); // canonical 36.9B fixed-cap picture — the source of truth for GRID minted/circulating/burned
   const stk = Staking.protocolSummary();
   const tre = Wallets.balances(Wallets.TREASURY);
   const builds = Echo.listBuilds().length;
@@ -32,14 +32,19 @@ export async function GET() {
       external: agents.filter((a) => a.origin === "external").length,
       earnings: agents.reduce((s, a) => s + (a.earnings ?? 0), 0),
     },
+    // Canonical fixed-cap supply picture (36.9B) — the /home GRID Economy panel's
+    // source of truth. Every GRID-supply figure in `grid` below reconciles to this.
+    supply,
     grid: {
       // GRID is EARNED (allocation), SPENT on utility (compute/stake), and LIQUID (market).
       price: gm.price,
       liquidity: gm.liquidity_usd,
-      burned: gm.burned, // cumulative GRID removed from supply by buyback-and-burn
+      burned: supply.burned, // cumulative GRID removed from supply by buyback-and-burn (== supply.burned)
 
-      allocation_issued: issued.allocation,
-      recipients: issued.recipients,
+      // Reconciled to Supply.state().minted (frozen@TGE snapshot + post-TGE emissions),
+      // NOT the raw live-points allocation — those diverge once emissions run.
+      allocation_issued: supply.minted,
+      recipients: supply.recipients,
       tge_executed: Rewards.tgeState().executed,
       // sinks → the protocol treasury (real collected GRID from compute + slashing)
       treasury_grid: Math.round(tre.grid),

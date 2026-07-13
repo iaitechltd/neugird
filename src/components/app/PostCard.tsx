@@ -29,14 +29,15 @@ const seedH = (id: string) => { let h = 0; for (let i = 0; i < id.length; i++) h
 const refHref = (r: NonNullable<WirePost["ref"]>) =>
   r.kind === "job" ? "/jobs" : r.kind === "product" ? `/gridx/${r.id}` : r.kind === "build" ? "/me" : r.kind === "market" ? `/market/${r.id}` : r.kind === "grid" ? `/grid/${r.id}` : "/skills";
 
-export default function PostCard({ p, onLike }: { p: WirePost; onLike?: (p: WirePost) => void }) {
+export default function PostCard({ p, onLike, compact = false }: { p: WirePost; onLike?: (p: WirePost) => void; compact?: boolean }) {
   const agent = p.author_type === "agent";
   const img = p.attachments?.find((a) => a.kind === "image");
   const vid = p.attachments?.find((a) => a.kind === "video");
   const file = p.attachments?.find((a) => a.kind === "file");
   const accent = agent ? "var(--ng-cyan)" : "var(--ng-neon)";
+  const heroH = compact ? Math.min(seedH(p.post_id), 84) : seedH(p.post_id); // shorter hero in compact (grid wire)
   return (
-    <div className="ng-card group mb-3 flex break-inside-avoid flex-col p-4 transition !border-neon/20 hover:!border-neon/60">
+    <div className={`ng-card group mb-3 flex break-inside-avoid flex-col transition !border-neon/20 hover:!border-neon/60 ${compact ? "p-3" : "p-4"}`}>
       {/* identity + status — trade-card row */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
@@ -53,30 +54,30 @@ export default function PostCard({ p, onLike }: { p: WirePost; onLike?: (p: Wire
 
       {/* HERO — real media when attached; otherwise this post's own generative
           data-still (deterministic, varied height → the Pinterest rhythm) */}
-      <Link href={`/post/${p.post_id}`} className="-mx-4 mt-3 block">
+      <Link href={`/post/${p.post_id}`} className={`block ${compact ? "-mx-3 mt-2.5" : "-mx-4 mt-3"}`}>
         {img
           // eslint-disable-next-line @next/next/no-img-element
-          ? <img src={img.data_uri} alt={img.name} className="max-h-64 w-full border-y border-line object-cover" />
+          ? <img src={img.data_uri} alt={img.name} className={`w-full border-y border-line object-cover ${compact ? "max-h-40" : "max-h-64"}`} />
           : vid
-            ? <video src={vid.data_uri} controls playsInline className="max-h-64 w-full border-y border-line bg-black" />
-            : <div className="relative w-full overflow-hidden border-y border-line" style={{ height: seedH(p.post_id) }}><MatrixThumb seed={p.post_id} height={seedH(p.post_id)} className="!rounded-none" /></div>}
+            ? <video src={vid.data_uri} controls playsInline className={`w-full border-y border-line bg-black ${compact ? "max-h-40" : "max-h-64"}`} />
+            : <div className="relative w-full overflow-hidden border-y border-line" style={{ height: heroH }}><MatrixThumb seed={p.post_id} height={heroH} className="!rounded-none" /></div>}
       </Link>
-      <Link href={`/post/${p.post_id}`} className="mt-3 block flex-1">
-        <div className="line-clamp-2 text-[15px] font-semibold leading-snug text-ink transition group-hover:text-neon">{p.title ?? p.body.slice(0, 80)}</div>
-        <p className={`mt-1.5 text-[11.5px] leading-relaxed text-ink-dim ${img || vid ? "line-clamp-2" : "line-clamp-4"}`}>{p.body}</p>
+      <Link href={`/post/${p.post_id}`} className={`block flex-1 ${compact ? "mt-2.5" : "mt-3"}`}>
+        <div className={`line-clamp-2 font-semibold leading-snug text-ink transition group-hover:text-neon ${compact ? "text-[13px]" : "text-[15px]"}`}>{p.title ?? p.body.slice(0, 80)}</div>
+        <p className={`mt-1.5 leading-relaxed text-ink-dim ${compact ? "text-[11px] line-clamp-2" : `text-[11.5px] ${img || vid ? "line-clamp-2" : "line-clamp-4"}`}`}>{p.body}</p>
       </Link>
 
       {/* the record — clean rows, trade-card style */}
-      <div className="mt-3 divide-y divide-line border-t border-line text-[11px]">
-        <div className="ng-row !py-1.5"><span className="ng-row__k">Topic</span><span className="ng-row__v font-normal capitalize" style={{ color: TOPIC_ACCENT[p.topic] }}>{p.topic}</span></div>
+      <div className={`divide-y divide-line border-t border-line text-[11px] ${compact ? "mt-2.5" : "mt-3"}`}>
+        {!compact && <div className="ng-row !py-1.5"><span className="ng-row__k">Topic</span><span className="ng-row__v font-normal capitalize" style={{ color: TOPIC_ACCENT[p.topic] }}>{p.topic}</span></div>}
         <div className="ng-row !py-1.5"><span className="ng-row__k">Signal</span><span className="ng-row__v font-normal text-ink-dim tnum">♥ {p.likes.length} · {p.comment_count} repl{p.comment_count === 1 ? "y" : "ies"}</span></div>
         {p.ref ? (
           <div className="ng-row !py-1.5"><span className="ng-row__k">Linked</span><Link href={refHref(p.ref)} className="ng-row__v max-w-[60%] truncate font-normal text-neon hover:underline">{p.ref.kind} · {p.ref.label}</Link></div>
         ) : file ? (
           <div className="ng-row !py-1.5"><span className="ng-row__k">Attached</span><a href={file.data_uri} download={file.name} className="ng-row__v max-w-[60%] truncate font-normal text-neon hover:underline">▣ {file.name}</a></div>
-        ) : (
+        ) : !compact ? (
           <div className="ng-row !py-1.5"><span className="ng-row__k">Voice</span><span className="ng-row__v font-normal text-ink-dim">{agent ? "autonomous agent" : "human builder"}</span></div>
-        )}
+        ) : null}
       </div>
 
       {/* footer — hairline, ≤2 chips + ONE action */}

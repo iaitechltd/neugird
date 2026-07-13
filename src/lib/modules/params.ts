@@ -11,7 +11,7 @@
 
 import { db } from "../store";
 
-export type ParamKey = "tradex_fee_bps" | "echo_build_cost_grid" | "grid_market_fee_bps" | "gov_quorum_grid" | "grid_fee_discount_bps" | "campaign_ghost_days" | "echo_revision_cost_grid" | "echo_ask_cost_grid" | "echo_deploy_cost_grid" | "fraud_flag_quorum" | "agent_perf_fee_bps" | "genesis_raise_days" | "genesis_stall_days" | "gridx_fee_bps" | "affiliate_fee_share_bps" | "backer_allocation_bps" | "starter_credit_grid" | "dispute_quorum" | "dispute_window_days" | "skill_market_fee_bps" | "starter_gate_tier" | "rewards_gate_tier" | "max_trade_impact_bps" | "perp_oi_cap_bps" | "buyback_bps" | "season_days" | "venture_cycle_cost_grid" | "venture_revenue_share_bps";
+export type ParamKey = "tradex_fee_bps" | "echo_build_cost_grid" | "grid_market_fee_bps" | "gov_quorum_grid" | "grid_fee_discount_bps" | "campaign_ghost_days" | "echo_revision_cost_grid" | "echo_ask_cost_grid" | "echo_deploy_cost_grid" | "fraud_flag_quorum" | "agent_perf_fee_bps" | "genesis_raise_days" | "genesis_stall_days" | "gridx_fee_bps" | "affiliate_fee_share_bps" | "backer_allocation_bps" | "starter_credit_grid" | "dispute_quorum" | "dispute_window_days" | "skill_market_fee_bps" | "starter_gate_tier" | "rewards_gate_tier" | "max_trade_impact_bps" | "perp_oi_cap_bps" | "buyback_bps" | "season_days" | "venture_cycle_cost_grid" | "venture_revenue_share_bps" | "trade_reward_bps" | "post_reward_pulse" | "emission_epoch_days" | "emission_epoch_bps" | "gov_quorum_bps";
 
 export type ParamUnit = "bps" | "grid" | "days" | "count";
 
@@ -19,7 +19,7 @@ export const DEFAULTS: Record<ParamKey, number> = {
   tradex_fee_bps: 100, // Trade AMM trade fee (1%)
   echo_build_cost_grid: 500, // GRID metered per Echo build
   grid_market_fee_bps: 100, // GRID/USDC swap fee (1%)
-  gov_quorum_grid: 50_000, // FOR-GRID a new proposal needs to pass
+  gov_quorum_grid: 50_000, // absolute FLOOR for the FOR-GRID quorum (the effective quorum SCALES with circulating GRID — see gov_quorum_bps)
   grid_fee_discount_bps: 2500, // discount for paying protocol fees in GRID (25% off)
   campaign_ghost_days: 3, // a submitted campaign delivery unreviewed this long = ghosted
   echo_revision_cost_grid: 100, // GRID metered per Echo build REVISION (the iterate loop)
@@ -44,6 +44,11 @@ export const DEFAULTS: Record<ParamKey, number> = {
   buyback_bps: 0, // share of treasury USDC spent per buyback tick to buy+BURN GRID (0 = OFF; treasury never spent by surprise)
   venture_cycle_cost_grid: 20, // GRID a Venture's treasury pays per orchestration cycle (the agent-company compute sink)
   venture_revenue_share_bps: 5000, // share of a Venture product's NEW USDC revenue reinvested into its treasury (50%; the self-funding loop)
+  trade_reward_bps: 3000, // trade reward = this share of the FEE paid, as GRID allocation (30%; fee-based ⇒ wash-trading costs more than it earns; 0 = off)
+  post_reward_pulse: 2, // GRID allocation (×GRID_PER_PULSE) earned per rewarded wire post — first 3/day (0 = reputation-only, no GRID)
+  emission_epoch_days: 30, // length of a post-TGE emission epoch (the release-and-split period)
+  emission_epoch_bps: 100, // GRID released per epoch as bps of what's LEFT in the community pool (1%; tapers ⇒ mints ~forever within the cap)
+  gov_quorum_bps: 100, // governance quorum as bps of CIRCULATING GRID (1%) — scales with distribution toward the 36.9B cap; gov_quorum_grid is the floor
 };
 
 /** UI labels + validation bounds (so a malicious proposal can't set fee = 10000%). */
@@ -51,7 +56,7 @@ export const META: Record<ParamKey, { label: string; unit: ParamUnit; min: numbe
   tradex_fee_bps: { label: "Trade trade fee", unit: "bps", min: 0, max: 500 }, // ≤5%
   echo_build_cost_grid: { label: "Echo build cost", unit: "grid", min: 0, max: 10_000 },
   grid_market_fee_bps: { label: "GRID market fee", unit: "bps", min: 0, max: 500 },
-  gov_quorum_grid: { label: "Governance quorum", unit: "grid", min: 1_000, max: 5_000_000 },
+  gov_quorum_grid: { label: "Governance quorum floor", unit: "grid", min: 1_000, max: 100_000_000 },
   grid_fee_discount_bps: { label: "GRID fee discount", unit: "bps", min: 0, max: 5_000 }, // ≤50% off
   campaign_ghost_days: { label: "Campaign ghost deadline", unit: "days", min: 1, max: 30 },
   echo_revision_cost_grid: { label: "Echo revision cost", unit: "grid", min: 0, max: 5_000 },
@@ -76,6 +81,11 @@ export const META: Record<ParamKey, { label: string; unit: ParamUnit; min: numbe
   buyback_bps: { label: "GRID buyback", unit: "bps", min: 0, max: 5_000 }, // ≤50% of treasury USDC per tick; 0 = off
   venture_cycle_cost_grid: { label: "Venture cycle cost", unit: "grid", min: 0, max: 5_000 },
   venture_revenue_share_bps: { label: "Venture revenue reinvest", unit: "bps", min: 0, max: 10_000 }, // 0 = keep it all · 10000 = reinvest all product revenue
+  trade_reward_bps: { label: "Trade reward (of fee)", unit: "bps", min: 0, max: 10_000 }, // ≤100% of the fee paid — never a profit to wash-trade
+  post_reward_pulse: { label: "Post reward", unit: "count", min: 0, max: 10 }, // Pulse per rewarded post (×GRID_PER_PULSE = GRID); first 3/day
+  emission_epoch_days: { label: "Emission epoch", unit: "days", min: 1, max: 365 },
+  emission_epoch_bps: { label: "Emission per epoch", unit: "bps", min: 0, max: 2_000 }, // ≤20% of the remaining pool per epoch
+  gov_quorum_bps: { label: "Governance quorum (of circulating)", unit: "bps", min: 0, max: 5_000 }, // ≤50% of circulating GRID
 };
 
 export function isKey(k: string): k is ParamKey {

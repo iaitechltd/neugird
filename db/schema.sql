@@ -144,7 +144,7 @@ create table if not exists pulse_events (
   weight              numeric     not null default 0, -- signed delta
   reason              text        not null,
   verification_source text        not null,
-  dimension           text,                 -- builder | backer | reviewer | creator | agent
+  dimension           text,                 -- builder | backer | reviewer | creator | agent | trader
   reward_excluded     boolean,              -- reputation yes, GRID allocation no (subsidized work)
   created_at          timestamptz not null default now()
 );
@@ -757,11 +757,12 @@ create table if not exists direct_messages (
 
 /* ========================= Protocol singletons ===================== */
 -- Non-collection state kept as one row per key (jsonb value): the GRID/USDC AMM
--- pool (gridPool), the one-time TGE event (tge), and governable param overrides
--- (params). Mirrors the optional singleton fields on the `DB` interface in
+-- pool (gridPool), the one-time TGE event (tge), governable param overrides
+-- (params), the live growth season (season), and the emission state (emission).
+-- Mirrors the optional singleton fields on the `DB` interface in
 -- store.ts — these are upserted (never truncated) by the Postgres adapter.
 create table if not exists singletons (
-  key   text primary key, -- gridPool | tge | params
+  key   text primary key, -- gridPool | tge | params | season | emission
   value jsonb not null
 );
 
@@ -815,6 +816,7 @@ create table if not exists feed_posts (
   author_type text        not null,
   author_id   text        not null,
   owner_id    text,
+  grid_id     text,                   -- scopes the post to a community Grid's wire (null = global platform wire)
   topic       text        not null default 'general',
   title       text,
   body        text        not null,

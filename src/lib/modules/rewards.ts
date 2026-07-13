@@ -18,6 +18,8 @@ import * as Humanity from "./humanity";
 import * as Params from "./params";
 import * as Wallets from "./wallets";
 import * as Referrals from "./referrals";
+import * as Pulse from "./pulse";
+import * as Supply from "./supply";
 import type { PulseEvent, Vesting } from "../types";
 
 /** GRID allocation units per quality-weighted Pulse point. (TGE conversion rate TBD.) */
@@ -36,6 +38,8 @@ const REWARDABLE = new Set<PulseEvent["action_type"]>([
   "build_completed",
   "product_listed",
   "product_reviewed",
+  "trade_executed", // trading — a fee-based rebate (farm-resistant: costs more in fees than it earns)
+  "feed_post", // posting to the wire — first 3/day (rides the PoH-at-TGE gate for sybil safety)
 ]);
 
 /** THE EARNING SCHEDULE — the canonical "what each action pays" table, published
@@ -53,7 +57,8 @@ export const SCHEDULE: { action: string; pulse: number | null; formula?: string;
   { action: "Create a Grid", pulse: 25, dimension: "creator" },
   { action: "Referral verified (you referred them)", pulse: 15, dimension: "creator" },
   { action: "Referral verified (you were referred)", pulse: 5, dimension: "creator" },
-  { action: "Complete a promo campaign", pulse: null, formula: "reward-scaled (8–50)", dimension: "creator" },
+  { action: "Trade on a market", pulse: null, formula: "30% of the fee you pay, back as GRID · daily cap", dimension: "trader" },
+  { action: "Post to the wire", pulse: 2, formula: "first 3 posts/day", dimension: "creator" },
   { action: "Rejected delivery", pulse: -30, dimension: "builder" },
   { action: "Spam / fraud", pulse: -60, dimension: "builder" },
 ];
@@ -76,6 +81,38 @@ function eventsFor(user_id: string): PulseEvent[] {
  *  non-rewardable actions earn reputation, not GRID). */
 export function allocatesTo(e: PulseEvent, user_id: string): boolean {
   return beneficiaryOf(e) === user_id;
+}
+
+/* --------------------------- activity emitters --------------------------- */
+// New earning sources (2026-07-13, founder direction): trading mints GRID like
+// delivery does — but FARM-RESISTANT. It pays back a fraction of the fee you
+// actually paid (wash-trading costs more in fees than it earns), capped per day.
+// (Posting earns via feed.ts's existing first-3/day cap — now reward-eligible.)
+
+/** ≤ this much Pulse from TRADING per user per day — belt-and-suspenders over
+ *  the fee-cost bound (50 Pulse = 500 GRID/day ceiling from trading). */
+const TRADE_REWARD_DAILY_CAP_PULSE = 50;
+
+/** Reward a trader a fraction of the FEE they paid, as GRID allocation. Called
+ *  from Markets.trade on every filled swap. Fee-based ⇒ farm-resistant; daily-
+ *  capped; `trade_reward_bps` = 0 turns it off. */
+export function rewardTrade(user_id: string, fee_usd: number): void {
+  const bps = Params.get("trade_reward_bps");
+  if (!(bps > 0) || !(fee_usd > 0) || !user_id) return;
+  const today = nowISO().slice(0, 10);
+  const earnedToday = (db.pulseEvents ?? [])
+    .filter((e) => e.target_type === "user" && e.target_id === user_id && e.action_type === "trade_executed" && e.timestamp.slice(0, 10) === today)
+    .reduce((s, e) => s + Math.max(0, e.weight), 0);
+  const room = TRADE_REWARD_DAILY_CAP_PULSE - earnedToday;
+  if (room <= 0) return; // daily trading-reward cap reached
+  const weight = Math.min(room, Math.round(fee_usd * (bps / 10000) * 100) / 100);
+  if (!(weight > 0)) return;
+  Pulse.recordEvent({
+    target_type: "user", target_id: user_id, user_id,
+    action_type: "trade_executed", weight,
+    reason: `trade fee rebate — ${(bps / 100).toFixed(0)}% of $${fee_usd.toFixed(2)} fee`,
+    verification_source: "market:trade", dimension: "trader",
+  });
 }
 
 /** The user's allocation-earning events (ledger-attributed: includes their
@@ -165,30 +202,53 @@ const TGE_UNLOCK_PCT = 0.1; // 10% unlocks at TGE
 const TGE_CLIFF_DAYS = 180; // 6-month cliff on the rest
 const TGE_DURATION_DAYS = 730; // linear over 2 years from start
 
-export function tgeState(): { executed: boolean; at: string } {
+export function tgeState(): { executed: boolean; at: string; converted?: number } {
   return db.tge ?? { executed: false, at: "" };
 }
 
 /** Execute the one-time TGE: snapshot every contributor's allocation into a vesting
- *  schedule. Idempotent. (Demo trigger; production = a governance / founder action.) */
+ *  schedule. Idempotent. (Demo trigger; production = a governance / founder action.)
+ *
+ *  CAP-SAFE: the total contributor conversion is CAPPED at the community pool
+ *  (Supply.pools().community = 60% of 36.9B). If aggregate earned allocation
+ *  exceeds the pool, every share is scaled down proportionally so the 36.9B hard
+ *  cap is never breached. The frozen total is recorded in db.tge.converted, which
+ *  becomes the post-TGE "minted by activity" base (so live pulse accrual — now an
+ *  emission input — is not double-counted), and the emission clock resets here so
+ *  the first post-TGE epoch measures POST-TGE activity only. */
 export function runTGE(): { executed: boolean; at: string; converted: number; recipients: number } {
-  if (db.tge?.executed) return { executed: true, at: db.tge.at, converted: 0, recipients: 0 };
+  if (db.tge?.executed) return { executed: true, at: db.tge.at, converted: db.tge.converted ?? 0, recipients: 0 };
   const at = nowISO();
-  db.tge = { executed: true, at };
-  let converted = 0;
-  let recipients = 0;
+  const pool = Supply.pools().community;
+
+  // pass 1 — raw allocation per eligible contributor (pulse-earned + affiliate stream)
+  const raws: { u: (typeof db.users)[number]; raw: number }[] = [];
+  let rawTotal = 0;
   for (const u of db.users) {
     // PoH gate: the snapshot only converts verified accounts when gated —
     // verification is retroactive right up to this freeze point.
     if (!countingGate(u.id).ok) continue;
-    // pulse-earned (sybil-filtered) + the affiliate fee-share stream
-    const total = Math.round(sybilAdjustedFor(u.id)) + Referrals.affiliateGridFor(u.id);
+    const raw = Math.round(sybilAdjustedFor(u.id)) + Referrals.affiliateGridFor(u.id);
+    if (raw <= 0) continue;
+    raws.push({ u, raw });
+    rawTotal += raw;
+  }
+  // pass 2 — scale to the community pool (never mint past the 60% bucket), then vest
+  const scale = rawTotal > pool ? pool / rawTotal : 1;
+  let converted = 0;
+  let recipients = 0;
+  for (const { u, raw } of raws) {
+    const total = Math.floor(raw * scale);
     if (total <= 0) continue;
     if (!u.reward) u.reward = { accrued: 0, sybil_adjusted: 0, claimed: 0 };
     u.reward.vesting = { start_at: at, cliff_days: TGE_CLIFF_DAYS, duration_days: TGE_DURATION_DAYS, released: 0, total };
     converted += total;
     recipients += 1;
   }
+  db.tge = { executed: true, at, converted };
+  // freeze the activity base at the snapshot + reset the emission clock so the first
+  // post-TGE epoch pays on POST-TGE work, not pre-TGE work already vested here.
+  db.emission = { epoch: 1, epoch_start: at, emitted_total: 0, history: [] };
   return { executed: true, at, converted, recipients };
 }
 

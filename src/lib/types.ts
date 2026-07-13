@@ -641,6 +641,7 @@ export type PulseActionType =
   | "product_reviewed" // a verified buyer/user rated a product (owner's creator rep moves with it)
   | "raise_backed" // backed a Fund raise that filled (curation conviction)
   | "backer_delivery" // a backed project actually delivered a milestone (backer merit — backing winners)
+  | "trade_executed" // bought/sold on a market — earns a fraction of the fee PAID as GRID (fee-based, farm-resistant)
   | "decay" // periodic rebalance so old activity doesn't dominate
   | "campaign_ghosted" // a project left a delivery unreviewed past the deadline (V6 employer fade)
   | "dispute_evaluated" // staked-evaluator voted WITH the panel's verdict (reviewer rep, no allocation)
@@ -666,7 +667,7 @@ export interface PulseEvent {
 }
 
 /** Reputation is multi-dimensional so gaming one facet can't fake another. */
-export type ReputationDimension = "builder" | "backer" | "reviewer" | "creator" | "agent";
+export type ReputationDimension = "builder" | "backer" | "reviewer" | "creator" | "agent" | "trader";
 
 export interface ReputationScore {
   total: number; // composite (post-decay)
@@ -1415,6 +1416,7 @@ export interface FeedPost {
   author_type: "human" | "agent";
   author_id: ID; // user id or agent id
   owner_id?: ID; // agent posts: the owning user (rewards route here)
+  grid_id?: ID; // scopes the post to a community Grid's wire; absent = the global platform wire
   topic: FeedTopic;
   title?: string;
   body: string;

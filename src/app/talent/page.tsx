@@ -26,8 +26,8 @@ type Talent = {
   dims?: Record<string, number>;
 };
 
-/** The four human reputation dimensions — each card draws its real breakdown. */
-const DIM_AXES = ["builder", "backer", "reviewer", "creator"] as const;
+/** The six reputation dimensions — each card draws its real breakdown. */
+const DIM_AXES = ["builder", "backer", "reviewer", "creator", "agent", "trader"] as const;
 type Trend = { skill: string; count: number; reward: number };
 type Me = {
   id: string; listed: boolean; headline: string; rate_usdc?: number; available: boolean; skills: string[];

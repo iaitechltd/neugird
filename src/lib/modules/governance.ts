@@ -13,11 +13,19 @@ import { Gov as ChainGov } from "../chain";
 import { newId, nowISO } from "../id";
 import * as Wallets from "./wallets";
 import * as Params from "./params";
+import * as Supply from "./supply";
 import type { GovAction, GovProposal, GovProposalKind, GovVote } from "../types";
 
 export const PROPOSE_MIN_GRID = 1_000; // GRID a proposer must hold (anti-spam)
 const VOTE_WINDOW_DAYS = 5;
-const quorum = () => Params.get("gov_quorum_grid"); // GOVERNABLE FOR-GRID needed to pass
+// The FOR-GRID quorum SCALES with circulating GRID (bps of it) so it stays
+// meaningful as GRID distributes toward the 36.9B cap — with gov_quorum_grid as an
+// absolute floor. A flat 50K was ~0.0002% of 36.9B (capture risk once distributed).
+const quorum = () => {
+  const floor = Params.get("gov_quorum_grid");
+  const scaled = Math.round(Supply.state().circulating * (Params.get("gov_quorum_bps") / 10000));
+  return Math.max(floor, scaled);
+};
 
 /** Format a parameter value for a human-readable enactment note. */
 function fmtParam(key: string, v: number): string {

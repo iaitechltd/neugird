@@ -365,8 +365,8 @@ export default function MePage() {
                 <div className="mt-1 flex flex-col items-center">
                   {/* the shape of the builder — dimensions as a radar, not a text list */}
                   <Radar
-                    axes={["builder", "creator", "backer", "reviewer", "agent"].filter((d, i) => repDims[d] != null || i < 3)}
-                    values={["builder", "creator", "backer", "reviewer", "agent"].filter((d, i) => repDims[d] != null || i < 3).map((d) => Math.round((((repDims[d] as number) ?? 0) / repMax) * 100))}
+                    axes={["builder", "creator", "backer", "reviewer", "agent", "trader"].filter((d, i) => repDims[d] != null || i < 3)}
+                    values={["builder", "creator", "backer", "reviewer", "agent", "trader"].filter((d, i) => repDims[d] != null || i < 3).map((d) => Math.round((((repDims[d] as number) ?? 0) / repMax) * 100))}
                     size={168}
                   />
                   <div className="flex w-full flex-wrap justify-center gap-x-4 gap-y-0.5 text-[10px] text-ink-dim">

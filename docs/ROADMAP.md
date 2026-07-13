@@ -91,8 +91,11 @@ an audited existing protocol does the job (borrow-don't-build still applies).
   mirror; next stages: user-signed backings (wallet adapter) + the ICP
   canister as release authority (A3), then the Jobs-escrow lens.
 - **C2 · GRID token + vesting — ✅ SHIPPED (2026-07-03)**: GRID is a real
-  devnet SPL mint (`32mPZo…`, 1B fixed supply, zero custom code) and vested
+  devnet SPL mint (`32mPZo…`, zero custom code) and vested
   claims mirror as real treasury→wallet transfers (prod-armed, rev 00019).
+  ⚠️ The current devnet token was minted at the old 1B; the FIXED total supply is
+  now **36.9B** (`scripts/grid-mint-setup.mjs` + `supply.ts`) — a re-mint (devnet
+  re-run / mainnet TGE) issues 36.9B; the existing devnet token reconciles then.
   Real TGE swaps in audited vesting tooling + a governance-held authority.
 - **C3 · Staking + slashing — ✅ SHIPPED (2026-07-03)**: per-market GRID
   lockups + MasterChef USDC fee share + fraud slash (principal sweeps,

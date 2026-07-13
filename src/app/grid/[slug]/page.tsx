@@ -13,10 +13,12 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import NeuHeader from "@/components/app/NeuHeader";
 import OrbPanel from "@/components/app/OrbPanel";
-import { Panel, Stat, DataRow, Mark, Tag, ProgressBar, IconActivity, IconNetwork, IconLayers, IconUser, IconBot, IconPlus, IconExternal, IconFlag, IconCheck, IconMessage, IconHeart, IconBriefcase, IconTarget, IconLock, IconCoins } from "@/components/app/ui";
-import { Area } from "@/components/app/charts";
+import { Panel, DataRow, Mark, Tag, ProgressBar, IconActivity, IconNetwork, IconLayers, IconUser, IconBot, IconPlus, IconExternal, IconFlag, IconCheck, IconMessage, IconBriefcase, IconTarget, IconLock, IconCoins } from "@/components/app/ui";
+import { Area, LabeledBars, Donut, Bars } from "@/components/app/charts";
 import { Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar, MatrixCover } from "@/components/app/MatrixAvatar";
+import PostComposer from "@/components/app/PostComposer";
+import PostCard, { type WirePost } from "@/components/app/PostCard";
 import type { GridSummary, SubGrid } from "@/lib/types";
 
 type Me = { id: string; joined_grids: string[] } | null;
@@ -31,9 +33,7 @@ type Analytics = {
 type Member = { id: string; username: string; reputation: number; role: string; is_owner: boolean };
 type GridAgent = { agent_id: string; name: string; trust_tier: string; earnings: number; rating: number; status: string };
 type Activity = { campaigns: { campaign_id: string; title: string; status: string }[]; jobs: { job_id: string; title: string; status: string; reward_amount: number; required_skills: string[] }[] };
-type ChatMsg = { message_id: string; user_id: string; username: string; reputation: number; role: string; text: string; likes: number; liked: boolean; ago: string };
 type Tab = "feed" | "activity" | "members" | "subgrids" | "govern" | "analytics";
-type Post = { post_id: string; author_id: string; username: string; role: string; title?: string; body: string; pinned: boolean; likes: number; liked: boolean; can_manage: boolean; can_pin: boolean; ago: string };
 type Employer = { postings: number; paid: number; ghosted: number; rejected: number; in_flight: number; tier: "trusted_employer" | "reliable" | "ghost_risk" | "unrated"; recent: { title: string; outcome: string; reward: number; at?: string }[] };
 type GProp = { proposal_id: string; kind: "feature_post" | "general"; title: string; summary: string; status: "open" | "passed" | "rejected"; for_weight: number; against_weight: number; voters: number; quorum_votes: number; for_pct: number; against_pct: number; total_weight: number; my_vote: { support: boolean; weight: number } | null; target_post_title?: string; executed?: boolean; execution_note?: string };
 
@@ -50,10 +50,7 @@ export default function GridDetailPage() {
   const [activity, setActivity] = useState<Activity | null>(null);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [employer, setEmployer] = useState<Employer | null>(null);
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [postTitle, setPostTitle] = useState("");
-  const [postBody, setPostBody] = useState("");
-  const [posting, setPosting] = useState(false);
+  const [wire, setWire] = useState<WirePost[]>([]);
   // grid-member governance
   const [gprops, setGprops] = useState<GProp[]>([]);
   const [govMember, setGovMember] = useState(false);
@@ -70,10 +67,6 @@ export default function GridDetailPage() {
   const [sgPending, setSgPending] = useState(false);
   const [lOpen, setLOpen] = useState(true);
   const [rOpen, setROpen] = useState(true);
-  // chat
-  const [chat, setChat] = useState<ChatMsg[]>([]);
-  const [draft, setDraft] = useState("");
-  const [chatBusy, setChatBusy] = useState(false);
   const notify = (m: string) => { setToast(m); window.setTimeout(() => setToast(null), 2200); };
 
   const [tick, setTick] = useState(0);
@@ -84,12 +77,11 @@ export default function GridDetailPage() {
     if (!slug) return;
     let alive = true;
     (async () => {
-      const [s, m, sg, lc, po] = await Promise.allSettled([
+      const [s, m, sg, lc] = await Promise.allSettled([
         fetch(`/api/grids/${slug}`).then((r) => (r.ok ? r.json() : Promise.reject(new Error("404")))),
         fetch("/api/me").then((r) => r.json()),
         fetch(`/api/grids/${slug}/subgrids`).then((r) => (r.ok ? r.json() : Promise.reject(new Error("404")))),
         fetch(`/api/grids/${slug}/launch`).then((r) => (r.ok ? r.json() : Promise.reject(new Error("404")))),
-        fetch(`/api/grids/${slug}/posts`).then((r) => (r.ok ? r.json() : Promise.reject(new Error("404")))),
       ]);
       if (!alive) return;
       if (s.status === "fulfilled") {
@@ -99,24 +91,16 @@ export default function GridDetailPage() {
         setActivity(s.value.activity ?? null);
         setAnalytics(s.value.analytics ?? null);
         setEmployer(s.value.employer ?? null);
+        const gid = (s.value.summary as GridSummary)?.grid?.grid_id;
+        if (gid) fetch(`/api/feed?grid_id=${gid}`).then((r) => r.json()).then((d) => { if (alive) setWire(d.posts ?? []); }).catch(() => {});
       } else setData("missing");
       if (m.status === "fulfilled" && m.value?.id) setMe({ id: m.value.id, joined_grids: m.value.joined_grids || [] });
       setSubgrids(sg.status === "fulfilled" ? (sg.value.subgrids ?? []) : []);
       setLaunch(lc.status === "fulfilled" ? { eligibility: lc.value.eligibility, market: lc.value.market, audit: lc.value.audit ?? null } : null);
-      setPosts(po.status === "fulfilled" ? (po.value.posts ?? []) : []);
     })();
     return () => { alive = false; };
   }, [slug, tick]);
 
-  // Chat — fetch on mount + poll every 4s (independent of the main loader).
-  useEffect(() => {
-    if (!slug) return;
-    let alive = true;
-    const loadChat = () => fetch(`/api/grids/${slug}/chat`).then((r) => (r.ok ? r.json() : null)).then((d) => { if (alive && d) setChat(d.messages ?? []); }).catch(() => {});
-    loadChat();
-    const iv = window.setInterval(loadChat, 4000);
-    return () => { alive = false; window.clearInterval(iv); };
-  }, [slug]);
 
   // Grid governance — fetch on slug change or a governance mutation (govTick bump).
   useEffect(() => {
@@ -131,6 +115,12 @@ export default function GridDetailPage() {
   const g = summary?.grid ?? null;
   const isOwner = !!(g && me && g.owner_id === me.id);
   const joined = !!(g && me && (isOwner || me.joined_grids.includes(g.grid_id)));
+
+  const reloadWire = () => { if (g) fetch(`/api/feed?grid_id=${g.grid_id}`).then((r) => r.json()).then((d) => setWire(d.posts ?? [])).catch(() => {}); };
+  async function likeWire(p: WirePost) {
+    await fetch(`/api/feed/${p.post_id}/like`, { method: "POST" }).catch(() => {});
+    reloadWire();
+  }
 
   async function setMembership(join: boolean) {
     if (!g || pending) return;
@@ -207,45 +197,6 @@ export default function GridDetailPage() {
     setSgPending(false);
   }
 
-  async function sendChat() {
-    const text = draft.trim();
-    if (!g || !text || chatBusy) return;
-    setChatBusy(true);
-    try {
-      const r = await fetch(`/api/grids/${g.slug}/chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
-      if (!r.ok) throw new Error();
-      setDraft("");
-      const d = await fetch(`/api/grids/${g.slug}/chat`).then((x) => x.json()).catch(() => null);
-      if (d) setChat(d.messages ?? []);
-    } catch { notify("Could not send"); }
-    setChatBusy(false);
-  }
-  async function likeChat(message_id: string) {
-    if (!g) return;
-    await fetch(`/api/grids/${g.slug}/chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "like", message_id }) }).catch(() => {});
-    const d = await fetch(`/api/grids/${g.slug}/chat`).then((x) => x.json()).catch(() => null);
-    if (d) setChat(d.messages ?? []);
-  }
-
-  async function publishPost() {
-    const body = postBody.trim();
-    if (!g || !body || posting) return;
-    setPosting(true);
-    try {
-      const r = await fetch(`/api/grids/${g.slug}/posts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: postTitle.trim() || undefined, body }) });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j?.error);
-      setPosts(j.posts ?? []); setPostTitle(""); setPostBody("");
-    } catch (e) { notify(e instanceof Error && e.message === "not_member" ? "Join the Grid to post" : "Could not post"); }
-    setPosting(false);
-  }
-  async function postAction(post_id: string, action: "like" | "pin" | "delete") {
-    if (!g) return;
-    const r = await fetch(`/api/grids/${g.slug}/posts/${post_id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) }).then((x) => x.json()).catch(() => null);
-    if (r?.posts) setPosts(r.posts);
-    else if (r?.error) notify(r.error.replace(/_/g, " "));
-  }
-
   async function createGovProposal() {
     if (!g || !govForm.title.trim() || govPosting) return;
     if (govForm.kind === "feature_post" && !govForm.target_post_id) { notify("Pick a post to feature"); return; }
@@ -262,7 +213,7 @@ export default function GridDetailPage() {
   }
 
   const TABS: { key: Tab; label: string; count?: number }[] = [
-    { key: "feed", label: "Feed", count: posts.length },
+    { key: "feed", label: "Wire", count: wire.length },
     { key: "activity", label: "Activity", count: (activity?.campaigns.length ?? 0) + (activity?.jobs.length ?? 0) },
     { key: "members", label: "Members", count: members.length + agents.length },
     { key: "subgrids", label: "SubGrids", count: subgrids.length },
@@ -277,19 +228,28 @@ export default function GridDetailPage() {
       <div className="flex flex-col gap-3 px-3 py-3 lg:min-h-0 lg:flex-1 lg:flex-row">
         {/* LEFT — grid info + join + launch */}
         <OrbPanel side="left" label="Grid Info" open={lOpen} onToggle={setLOpen} widthClass="lg:w-[300px] xl:w-[320px]">
+          {analytics && (
+            <Panel scroll title="COMMUNITY SIGNAL" icon={<IconActivity className="h-4 w-4" />} bodyClass="p-3.5">
+              <div className="ng-label mb-1 !text-[10px] !text-ink-dim">Members · growth</div>
+              {analytics.member_trend.length > 1
+                ? <Area data={analytics.member_trend} gid="grid-mem" h={54} />
+                : <p className="py-3 text-center text-[10px] text-ink-faint">Not enough history yet</p>}
+              <div className="ng-label mb-1 mt-4 !text-[10px] !text-ink-dim">Activity · by source</div>
+              {analytics.pulse_by_source.length
+                ? <LabeledBars data={analytics.pulse_by_source.map((s) => ({ label: s.label.replace(/_/g, " "), value: s.value }))} />
+                : <p className="py-3 text-center text-[10px] text-ink-faint">No activity yet</p>}
+            </Panel>
+          )}
           <Panel scroll title="GRID INFO" icon={<IconNetwork className="h-4 w-4" />} bodyClass="p-3.5">
             {!g ? (
               <p className="text-xs text-ink-dim">{data === "missing" ? "Grid not found." : "Loading…"}</p>
             ) : (
               <>
                 <div className="divide-y divide-line">
-                  <DataRow k="Owner" v={g.owner_id} />
                   <DataRow k="Type" v={g.grid_type ?? "community"} />
-                  <DataRow k="Visibility" v={g.visibility} />
                   <DataRow k="Members" v={g.member_count} accent="neon" />
                   <DataRow k="Agents" v={agents.length} accent="cyan" />
                   <DataRow k="SubGrids" v={summary!.subgrids} />
-                  <DataRow k="Created" v={g.created_at.slice(0, 10)} />
                 </div>
 
                 {isOwner ? (
@@ -384,34 +344,44 @@ export default function GridDetailPage() {
             <>
               <div className="ng-panel overflow-hidden">
                 {/* identity banner — deterministic art, unique to this grid */}
-                <div className="relative h-16">
+                <div className="relative h-10">
                   <MatrixCover seed={g.slug ?? g.name} />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
                 </div>
-                <div className="p-5 pt-3">
-                <div className="flex items-start gap-4">
-                  <span className="grid h-14 w-14 shrink-0 place-items-center rounded-xl text-2xl" style={{ color: g.visual_theme?.accent ?? "var(--ng-neon)", background: "rgba(0,255,0,0.07)" }}>{g.visual_theme?.glyph ?? "▦"}</span>
-                  <div className="min-w-0 flex-1">
-                    <h1 className="ng-title text-2xl font-bold text-neon text-glow-soft"><Decrypt text={g.name} /></h1>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-ink-faint">
-                      <span>{g.category}</span>
-                      {g.grid_type && <Tag>{g.grid_type}</Tag>}
-                      <span>· @{g.slug}</span>
-                      {joined && !isOwner && <Mark plain accent="cyan" className="!text-[10px]">Member</Mark>}
+                <div className="p-3.5 pt-2.5">
+                  <div className="flex items-start gap-3">
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-lg" style={{ color: g.visual_theme?.accent ?? "var(--ng-neon)", background: "rgba(0,255,0,0.07)" }}>{g.visual_theme?.glyph ?? "▦"}</span>
+                    <div className="min-w-0 flex-1">
+                      <h1 className="ng-title text-lg font-bold text-neon"><Decrypt text={g.name} /></h1>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-ink-faint">
+                        <span>{g.category}</span>
+                        {g.grid_type && <Tag className="!text-[9px]">{g.grid_type}</Tag>}
+                        <span>· @{g.slug}</span>
+                        {joined && !isOwner && <Mark plain accent="cyan" className="!text-[9px]">Member</Mark>}
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <button onClick={() => notify("Bookmarked")} aria-label="Bookmark" className="grid h-7 w-7 place-items-center rounded text-ink-dim transition hover:text-neon"><IconFlag className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => notify("Shared")} aria-label="Share" className="grid h-7 w-7 place-items-center rounded text-ink-dim transition hover:text-neon"><IconExternal className="h-3.5 w-3.5" /></button>
                     </div>
                   </div>
-                  <div className="flex gap-1.5">
-                    <button onClick={() => notify("Bookmarked")} aria-label="Bookmark" className="grid h-8 w-8 place-items-center rounded text-ink-dim transition hover:text-neon"><IconFlag className="h-4 w-4" /></button>
-                    <button onClick={() => notify("Shared")} aria-label="Share" className="grid h-8 w-8 place-items-center rounded text-ink-dim transition hover:text-neon"><IconExternal className="h-4 w-4" /></button>
+                  <p className="mt-2 line-clamp-2 text-[12px] leading-relaxed text-ink-dim">{g.description}</p>
+                  {/* KPI boxes — the Grid's overall performance */}
+                  <div className="mt-3 grid grid-cols-3 gap-2 border-t border-line pt-3 sm:grid-cols-6">
+                    {([
+                      ["Members", g.member_count ?? 0],
+                      ["Pulse", g.pulse_score ?? 0],
+                      ["Posts", analytics?.kpis.posts ?? wire.length],
+                      ["Agents", agents.length],
+                      ["Open Jobs", analytics?.kpis.open_jobs ?? 0],
+                      ["SubGrids", summary.subgrids],
+                    ] as [string, number][]).map(([k, v]) => (
+                      <div key={k} className="ng-card p-2 text-center">
+                        <div className="ng-stat__v !text-base leading-none text-neon tnum">{v.toLocaleString()}</div>
+                        <div className="ng-stat__k !mt-0.5 !text-[8.5px]">{k}</div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-                <p className="mt-4 text-sm leading-relaxed text-ink-dim">{g.description}</p>
-                <div className="mt-5 grid grid-cols-2 gap-4 border-t border-line pt-4 sm:grid-cols-4">
-                  <Stat label="Pulse" value={g.pulse_score} accent="neon" />
-                  <Stat label="Members" value={g.member_count} />
-                  <Stat label="SubGrids" value={summary.subgrids} />
-                  <Stat label="Active Campaigns" value={summary.active_campaigns} />
-                </div>
                 </div>
               </div>
 
@@ -424,42 +394,21 @@ export default function GridDetailPage() {
                 ))}
               </div>
 
-              {/* FEED — the content hub: members post updates, admins pin announcements */}
+              {/* WIRE — the community feed: everyone posts (text · photos · videos · files),
+                  likes + threaded comments, in the home masonry grammar */}
               {tab === "feed" && (
                 <div className="space-y-3">
                   {joined || isOwner ? (
-                    <Panel bodyClass="p-3.5">
-                      <input value={postTitle} onChange={(e) => setPostTitle(e.target.value)} placeholder="Title (optional)" className="ng-input mb-2 w-full text-[13px]" />
-                      <textarea value={postBody} onChange={(e) => setPostBody(e.target.value)} placeholder="Share an update with the Grid…" rows={3} className="ng-input mb-2 w-full resize-none text-[12px]" />
-                      <button onClick={publishPost} disabled={posting || !postBody.trim()} className="ng-btn ng-btn-primary ng-btn--sm disabled:opacity-50">{posting ? "Posting…" : "Post update"}</button>
-                    </Panel>
+                    <PostComposer grid_id={g.grid_id} placeholder={`Share something with ${g.name} — first line becomes the headline…`} notify={notify} onPosted={reloadWire} />
                   ) : (
-                    <Panel><div className="p-4 text-center text-xs text-ink-dim">{me ? "Join the Grid to post updates." : "Sign in to post."}</div></Panel>
+                    <Panel><div className="p-5 text-center text-xs text-ink-dim">{me ? <>Join <span className="text-neon">{g.name}</span> to share posts, photos and videos.</> : "Sign in to post."}</div></Panel>
                   )}
-                  {posts.length === 0 ? (
-                    <Panel><div className="p-8 text-center text-sm text-ink-dim">No posts yet — {joined || isOwner ? "share the first update." : "the founder hasn't posted yet."}</div></Panel>
+                  {wire.length === 0 ? (
+                    <Panel><div className="p-8 text-center text-sm text-ink-dim">No posts yet — {joined || isOwner ? "share the first one with the community." : "join and start the conversation."}</div></Panel>
                   ) : (
-                    posts.map((p) => (
-                      <div key={p.post_id} className={`ng-card p-4 ${p.pinned ? "!border-neon/30" : ""}`}>
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                            {p.pinned && <Mark accent="neon" className="!text-[8px]">Pinned</Mark>}
-                            <span className="font-semibold text-ink">{p.username}</span>
-                            <Mark plain accent={ROLE_ACCENT[p.role]} className="!text-[8px]">{p.role}</Mark>
-                            <span className="text-ink-faint">· {p.ago}</span>
-                          </div>
-                          {(p.can_pin || p.can_manage) && (
-                            <div className="flex shrink-0 items-center gap-2 text-[10px]">
-                              {p.can_pin && <button onClick={() => postAction(p.post_id, "pin")} className="text-ink-faint transition hover:text-neon">{p.pinned ? "Unpin" : "Pin"}</button>}
-                              {p.can_manage && <button onClick={() => postAction(p.post_id, "delete")} className="text-ink-faint transition hover:text-[color:var(--ng-danger)]">Delete</button>}
-                            </div>
-                          )}
-                        </div>
-                        {p.title && <h3 className="ng-title mt-2 text-[15px] font-bold leading-snug text-ink">{p.title}</h3>}
-                        <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-ink-dim">{p.body}</p>
-                        <button onClick={() => postAction(p.post_id, "like")} className={`mt-2 flex items-center gap-1 text-[11px] transition ${p.liked ? "text-neon" : "text-ink-faint hover:text-neon"}`}><IconHeart className="h-3 w-3" />{p.likes > 0 ? p.likes : ""}</button>
-                      </div>
-                    ))
+                    <div className="columns-2 gap-3 lg:columns-3">
+                      {wire.map((p) => <PostCard key={p.post_id} p={p} onLike={likeWire} compact />)}
+                    </div>
                   )}
                 </div>
               )}
@@ -597,17 +546,6 @@ export default function GridDetailPage() {
                     <Panel bodyClass="p-3.5">
                       <input value={govForm.title} onChange={(e) => setGovForm((f) => ({ ...f, title: e.target.value }))} placeholder="Proposal title" className="ng-input mb-2 w-full text-[13px]" />
                       <textarea value={govForm.summary} onChange={(e) => setGovForm((f) => ({ ...f, summary: e.target.value }))} placeholder="Rationale (optional)" rows={2} className="ng-input mb-2 w-full resize-none text-[12px]" />
-                      <div className="mb-2 flex flex-wrap gap-1.5">
-                        {(["general", "feature_post"] as const).map((k) => (
-                          <button key={k} onClick={() => setGovForm((f) => ({ ...f, kind: k }))} className={`rounded px-2.5 py-1 text-[11px] transition ${govForm.kind === k ? "bg-neon/15 text-neon" : "bg-line/40 text-ink-dim hover:text-ink"}`}>{k === "general" ? "Advisory" : "Feature a post"}</button>
-                        ))}
-                      </div>
-                      {govForm.kind === "feature_post" && (
-                        <select value={govForm.target_post_id} onChange={(e) => setGovForm((f) => ({ ...f, target_post_id: e.target.value }))} className="ng-input mb-2 w-full text-[12px]">
-                          <option value="">Pick a post to feature…</option>
-                          {posts.map((p) => <option key={p.post_id} value={p.post_id}>{p.title ?? p.body.slice(0, 40)}</option>)}
-                        </select>
-                      )}
                       <button onClick={createGovProposal} disabled={govPosting || !govForm.title.trim()} className="ng-btn ng-btn-primary ng-btn--sm disabled:opacity-50">{govPosting ? "Opening…" : "Open proposal"}</button>
                     </Panel>
                   )}
@@ -738,38 +676,50 @@ export default function GridDetailPage() {
           )}
         </main>
 
-        {/* RIGHT — community chat */}
-        <OrbPanel side="right" label="Community" open={rOpen} onToggle={setROpen}>
-          <Panel title="COMMUNITY" icon={<IconMessage className="h-4 w-4" />} bodyClass="flex flex-col p-0">
-            <div className="max-h-[58vh] flex-1 space-y-3 overflow-y-auto p-3.5">
-              {chat.length === 0 ? (
-                <p className="py-6 text-center text-[11px] text-ink-dim">No messages yet — start the conversation.</p>
-              ) : (
-                chat.map((m) => (
-                  <div key={m.message_id} className="group">
-                    <div className="flex items-center gap-1.5 text-[10px]">
-                      <span className="font-semibold text-ink">{m.username}</span>
-                      <Mark plain accent={ROLE_ACCENT[m.role]} className="!text-[8px]">{m.role}</Mark>
-                      <span className="text-ink-faint">· {m.reputation.toLocaleString()} rep · {m.ago}</span>
-                    </div>
-                    <p className="mt-0.5 text-[12px] leading-snug text-ink-dim">{m.text}</p>
-                    <button onClick={() => likeChat(m.message_id)} className={`mt-0.5 flex items-center gap-1 text-[10px] transition ${m.liked ? "text-neon" : "text-ink-faint hover:text-neon"}`}>
-                      <IconHeart className="h-3 w-3" />{m.likes > 0 ? m.likes : ""}
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-            <div className="shrink-0 border-t border-line p-2.5">
-              {joined || isOwner ? (
-                <div className="flex items-center gap-1.5">
-                  <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") sendChat(); }} placeholder="Message the Grid…" className="ng-input min-w-0 flex-1 !py-1.5 text-[12px]" />
-                  <button onClick={sendChat} disabled={chatBusy || !draft.trim()} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-50">Send</button>
+        {/* RIGHT — community signal: makeup + revenue charts + the member directory */}
+        <OrbPanel side="right" label="Signal" open={rOpen} onToggle={setROpen}>
+          <Panel scroll title="COMMUNITY MAKEUP" icon={<IconActivity className="h-4 w-4" />} bodyClass="p-3.5">
+            {g && (
+              <>
+                <div className="flex items-center justify-center py-1">
+                  <Donut data={[g.member_count ?? 0, agents.length, summary?.subgrids ?? 0]} colors={["#00ff00", "var(--ng-cyan)", "#b388ff"]} center={`${g.member_count ?? 0}`} />
                 </div>
-              ) : (
-                <p className="text-center text-[11px] text-ink-faint">{me ? "Join the Grid to post." : "Sign in to post."}</p>
-              )}
-            </div>
+                <div className="mt-1 flex justify-center gap-3 text-[9px] text-ink-faint">
+                  <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-1.5" style={{ background: "#00ff00" }} />members {g.member_count ?? 0}</span>
+                  <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-1.5" style={{ background: "var(--ng-cyan)" }} />agents {agents.length}</span>
+                  <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-1.5" style={{ background: "#b388ff" }} />subgrids {summary?.subgrids ?? 0}</span>
+                </div>
+              </>
+            )}
+            <div className="ng-label mb-1 mt-4 !text-[10px] !text-ink-dim">Revenue · by agent</div>
+            {analytics && analytics.agent_performance.some((a) => a.earnings > 0) ? (
+              <>
+                <Bars data={analytics.agent_performance.map((a) => a.earnings)} h={58} />
+                <div className="mt-1.5 space-y-1">
+                  {analytics.agent_performance.filter((a) => a.earnings > 0).slice(0, 3).map((a) => (
+                    <div key={a.agent_id} className="flex items-center justify-between text-[10px]"><span className="truncate text-ink-dim">{a.name}</span><Mark plain accent="neon" className="!text-[10px]">{a.earnings.toLocaleString()}</Mark></div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="py-3 text-center text-[10px] text-ink-faint">No agent revenue yet</p>
+            )}
+          </Panel>
+
+          <Panel scroll title="MEMBERS" icon={<IconUser className="h-4 w-4" />} bodyClass="p-3.5">
+            {members.length === 0 ? (
+              <p className="text-[11px] text-ink-dim">No members yet — be the first to join.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {members.slice(0, 12).map((mem) => (
+                  <Link key={mem.id} href={`/talent/${mem.id}`} className="flex items-center justify-between gap-2 text-[11px] transition hover:text-neon">
+                    <span className="flex min-w-0 items-center gap-1.5"><MatrixAvatar seed={mem.username} size={20} /><span className="truncate">{mem.username}</span></span>
+                    <Mark plain accent={mem.is_owner ? "neon" : ROLE_ACCENT[mem.role]} className="!text-[9px]">{mem.is_owner ? "founder" : mem.role}</Mark>
+                  </Link>
+                ))}
+                {members.length > 12 && <button onClick={() => setTab("members")} className="mt-1 text-[10px] text-ink-faint transition hover:text-neon">+{members.length - 12} more →</button>}
+              </div>
+            )}
           </Panel>
         </OrbPanel>
       </div>

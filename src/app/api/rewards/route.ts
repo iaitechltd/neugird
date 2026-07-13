@@ -7,7 +7,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { Rewards, Referrals, Pulse } from "@/lib/modules";
+import { Rewards, Referrals, Pulse, Supply, Emission } from "@/lib/modules";
 import { getCurrentUserId } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +38,14 @@ export async function GET() {
     if (idx >= 0 && idx < 12) weekly[idx] += 1;
   }
 
+  // daily GRID earned — trailing 84 days (12 weeks × 7) for the activity heatmap
+  const DAY = 24 * 3600 * 1000;
+  const daily = new Array(84).fill(0);
+  for (const e of Rewards.rewardEventsFor(uid)) {
+    const idx = 83 - Math.floor((now - Date.parse(e.timestamp)) / DAY);
+    if (idx >= 0 && idx < 84) daily[idx] += Math.max(0, e.weight) * Rewards.GRID_PER_PULSE;
+  }
+
   // the reward feed — newest first, capped; grid=0 ⇒ reputation-only event
   const feed = [...events].reverse().slice(0, 25).map((e) => ({
     action: e.action_type,
@@ -50,8 +58,11 @@ export async function GET() {
   return NextResponse.json({
     me: { id: uid },
     ledger, // accrued · sybil_adjusted · factor · rate · breakdown · tge · vesting
+    supply: Supply.state(), // the fixed-cap 36.9B picture — total · minted-by-activity · circulating · burned
+    emission: Emission.state(), // continuous post-TGE emissions — this epoch's budget + projected split
     accrual,
     weekly,
+    daily,
     feed,
     schedule: Rewards.SCHEDULE,
     referrals,

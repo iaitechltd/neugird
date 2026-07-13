@@ -20,7 +20,7 @@ import { Radar, Bars, Ring, Gauge, LabeledBars } from "@/components/app/charts";
 import OrbPanel from "@/components/app/OrbPanel";
 import type { Agent, Build, Grid, Job } from "@/lib/types";
 
-type Economy = { x402: { revenue: number; settlements: number; asset: string; resources: { name: string; price: number; description: string; count: number; revenue: number }[]; a2a: { count: number; volume: number } }; credentials: { issued: number; holders: number }; agents: { total: number; trusted: number; external: number; earnings: number }; grid: { price: number; liquidity: number; burned: number; allocation_issued: number; recipients: number; tge_executed: boolean; treasury_grid: number; treasury_usdc: number; compute_builds: number; staked: number; slashed: number; gov_open: number; gov_passed: number; gov_locked: number } };
+type Economy = { x402: { revenue: number; settlements: number; asset: string; resources: { name: string; price: number; description: string; count: number; revenue: number }[]; a2a: { count: number; volume: number } }; credentials: { issued: number; holders: number }; agents: { total: number; trusted: number; external: number; earnings: number }; grid: { price: number; liquidity: number; burned: number; allocation_issued: number; recipients: number; tge_executed: boolean; treasury_grid: number; treasury_usdc: number; compute_builds: number; staked: number; slashed: number; gov_open: number; gov_passed: number; gov_locked: number }; supply?: { total_supply: number; minted: number; circulating: number; emitted: number; burned: number; community_remaining: number } };
 
 function Section({ icon, children, action }: { icon: React.ReactNode; children: React.ReactNode; action?: React.ReactNode }) {
   return (
@@ -96,7 +96,7 @@ export default function HomePage() {
   const greeting = !meLoaded ? "Welcome to NeuGrid" : firstRun ? `Welcome to NeuGrid, ${me?.username ?? "builder"}` : `Welcome back, ${me?.username ?? "builder"}`;
   const repMax = Math.max(1, ...Object.values(repDims));
   // reputation radar — canonical dimensions, normalized to the strongest
-  const RADAR_DIMS = ["builder", "creator", "backer", "reviewer", "agent"] as const;
+  const RADAR_DIMS = ["builder", "creator", "backer", "reviewer", "agent", "trader"] as const;
   const radarVals = RADAR_DIMS.map((d) => Math.round(((repDims[d] ?? 0) / repMax) * 100));
   // activity bars — positive rep deltas across the recent curve (contribution cadence)
   const repSeries = me?.rep_series ?? [];
@@ -109,6 +109,9 @@ export default function HomePage() {
   const govApprovalPct = govDenom ? Math.round(((economy?.grid?.gov_passed ?? 0) / govDenom) * 100) : 0;
   const gridEarnSink = (economy?.grid?.treasury_grid ?? 0) + (economy?.grid?.allocation_issued ?? 0);
   const gridSinkPct = gridEarnSink ? Math.round(((economy?.grid?.treasury_grid ?? 0) / gridEarnSink) * 100) : 0;
+  // GRID supply story — the fixed 36.9B cap, earned-only (from /api/economy → Supply.state())
+  const supply = economy?.supply;
+  const fmtGrid = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : Math.round(n).toLocaleString();
   // recent builds → a tail -f style log (oldest first, so newest lands at the bottom)
   const buildLog: LogLine[] = [...builds]
     .sort((a, b) => Date.parse(a.created_at ?? "") - Date.parse(b.created_at ?? ""))
@@ -397,6 +400,20 @@ export default function HomePage() {
                   <div className="mt-0.5 text-[9px] text-ink-faint">sink share</div>
                 </div>
               </div>
+              {/* fixed-cap supply story — 36.9B, earned-only (minted-by-activity → circulating → emitted) */}
+              {supply && (
+                <div className="mt-2.5 border-t border-line pt-2.5">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="ng-title text-sm font-bold tnum text-neon">{fmtGrid(supply.total_supply ?? 0)}</span>
+                    <span className="ng-tag !text-[9px]"><IconLayers className="h-3 w-3" />fixed supply · earned</span>
+                  </div>
+                  <div className="mt-1.5 grid grid-cols-3 gap-2 text-center">
+                    <div><div className="ng-stat__v !text-xs tnum text-ink">{fmtGrid(supply.minted ?? 0)}</div><div className="ng-stat__k !text-[8px]">minted</div></div>
+                    <div><div className="ng-stat__v !text-xs tnum text-ink">{fmtGrid(supply.circulating ?? 0)}</div><div className="ng-stat__k !text-[8px]">circulating</div></div>
+                    <div><div className="ng-stat__v !text-xs tnum text-ink">{fmtGrid(supply.emitted ?? 0)}</div><div className="ng-stat__k !text-[8px]">emitted</div></div>
+                  </div>
+                </div>
+              )}
               <div className="mt-2.5 divide-y divide-line text-[11px]">
                 <div className="ng-row flex items-center !py-1.5"><span className="ng-row__k flex items-center gap-2 text-ink"><IconBolt className="h-3.5 w-3.5 text-neon/70" />Allocation</span><span className="ng-row__v tnum text-ink-dim">{(economy?.grid?.allocation_issued ?? 0).toLocaleString()} · {economy?.grid?.tge_executed ? "vesting" : "vests @ TGE"}</span></div>
                 <div className="ng-row flex items-center !py-1.5"><span className="ng-row__k flex items-center gap-2 text-ink"><IconShield className="h-3.5 w-3.5 text-neon/70" />Sinks → Treasury</span><span className="ng-row__v tnum text-ink-dim">{(economy?.grid?.treasury_grid ?? 0).toLocaleString()} · {economy?.grid?.compute_builds ?? 0} builds</span></div>

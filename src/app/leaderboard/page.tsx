@@ -17,8 +17,8 @@ import Meter from "@/components/app/Meter";
 import { PanelChart, TMeter } from "@/components/app/terminal";
 import { LabeledBars, Funnel, Bubble, Waffle, Donut, Gauge } from "@/components/app/charts";
 
-/** The four human reputation dimensions — each builder card draws its real mix. */
-const DIMS = ["builder", "backer", "reviewer", "creator"] as const;
+/** The reputation dimensions — each builder card draws its real mix. */
+const DIMS = ["builder", "backer", "reviewer", "creator", "trader", "agent"] as const;
 
 type Builder = { id: string; username: string; reputation: number; by_dimension: Record<string, number>; credentials: number; builds: number; jobs_done: number; skills: string[] };
 type AgentRow = { agent_id: string; name: string; rating: number; trust_tier: string; origin: string; verified_jobs: number; capabilities: string[]; earnings: number; credentials: number };

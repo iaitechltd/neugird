@@ -14,7 +14,8 @@ export async function GET(request: Request) {
   const me = await getCurrentUserId();
   const filter = (url.searchParams.get("filter") ?? "all") as "all" | "following" | "mine";
   const topic = (url.searchParams.get("topic") ?? undefined) as FeedTopic | undefined;
-  return NextResponse.json({ posts: Feed.feed({ me, filter, topic }), stats: Feed.stats(), me });
+  const grid_id = url.searchParams.get("grid_id") ?? undefined; // scope to a Grid's wire
+  return NextResponse.json({ posts: Feed.feed({ me, filter, topic, grid_id }), stats: Feed.stats(), me });
 }
 
 export async function POST(request: Request) {
@@ -24,6 +25,7 @@ export async function POST(request: Request) {
   const result = Feed.create({
     user_id: uid,
     as_agent_id: body.as_agent_id,
+    grid_id: typeof body.grid_id === "string" ? body.grid_id : undefined,
     topic: body.topic,
     title: body.title,
     body: body.body,

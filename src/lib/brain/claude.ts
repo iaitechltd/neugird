@@ -770,7 +770,7 @@ export async function claudeSpecialistWork(ctx: SpecialistInput): Promise<Specia
     `YOUR BRIEF FROM THE CEO:\n${ctx.task.slice(0, 500)}`,
     ctx.facts ? ctx.facts.slice(0, 900) : "",
     ctx.expertise ? `YOUR TRACK RECORD (build on it, don't repeat it): ${ctx.expertise.slice(0, 300)}` : "",
-    "Produce your deliverable now — the real work, not a description of it.",
+    "Produce your deliverable now — the real work, not a description of it. Keep it tight and self-contained: at most ~240 words (under ~1500 characters). Lead with the single most valuable, concrete result; do not pad or add preamble.",
   ].filter(Boolean).join("\n\n");
   // Up to 2 attempts with backoff — several specialists run at once, so a transient
   // rate-limit/overload on one must not silently drop it to a template.
@@ -778,7 +778,11 @@ export async function claudeSpecialistWork(ctx: SpecialistInput): Promise<Specia
     try {
       const res = await client.messages.create({
         model: process.env.NEUGRID_VENTURE_MODEL || VENTURE_DEFAULT_MODEL,
-        max_tokens: 1200,
+        // 1600 (was 1200): headroom so the JSON always closes — a truncated response
+        // (stop_reason:max_tokens) leaves an unterminated string that fails JSON.parse,
+        // which deterministically dropped the verbose BUILD specialist to a template.
+        // The prompt caps the deliverable at ~1500 chars, so real usage stays well under this.
+        max_tokens: 1600,
         thinking: { type: "disabled" },
         output_config: { format: { type: "json_schema", schema: SPECIALIST_SCHEMA } },
         system,
