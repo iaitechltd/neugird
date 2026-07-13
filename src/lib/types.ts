@@ -1481,7 +1481,7 @@ export interface VentureObjective {
 /** One line in the company's activity log — what the CEO / department agents did. */
 export type VentureEventKind =
   | "created" | "hired" | "objective" | "delegated" | "delivered"
-  | "spend" | "revenue" | "hold" | "approval" | "paused";
+  | "spend" | "revenue" | "fund" | "hold" | "approval" | "paused";
 export interface VentureEvent {
   at: ISODate;
   kind: VentureEventKind;
@@ -1499,14 +1499,22 @@ export interface VentureEvent {
  *  seat's budget, or anything reaching outside the platform). Phase 1 raises
  *  these for over-budget spend; Phase 2 adds external/public actions. */
 export type VentureApprovalStatus = "pending" | "approved" | "declined";
+export type VentureApprovalAction = "echo_ship" | "wire_post";
 export interface VentureApproval {
   approval_id: ID;
   venture_id: ID;
   kind: "over_budget" | "external_action";
+  action?: VentureApprovalAction; // what executes on approval (defer-then-do)
   summary: string;
+  detail?: string;                // the drafted payload (post title+body / ship instruction)
   dept?: VentureDept;
+  agent_id?: ID;                  // the specialist that proposed it
+  objective_id?: ID;              // the objective it came from
+  build_id?: ID;                  // target build for an echo_ship
   amount_grid?: number;
   status: VentureApprovalStatus;
+  post_id?: ID;                   // set once a wire_post approval publishes
+  version?: number;               // set once an echo_ship approval ships
   created_at: ISODate;
   resolved_at?: ISODate;
 }
@@ -1525,8 +1533,10 @@ export interface Venture {
   objectives: VentureObjective[];
   contributor_splits?: ContributorSplit[]; // cap table (owner + each agent's owner)
   approvals?: VentureApproval[];
+  require_approval?: boolean;  // gate big actions (ships/posts) behind owner sign-off; default ON
   cycles: number;             // how many work cycles the company has run
-  revenue_grid?: number;      // cumulative revenue routed into the treasury
+  revenue_grid?: number;      // cumulative revenue routed into the treasury (in GRID)
+  revenue_synced_usdc?: number; // high-water mark: product USDC revenue already recognized (self-funding loop)
   spent_grid?: number;        // cumulative GRID spent on compute + work
   log: VentureEvent[];        // bounded recent activity feed
   created_at: ISODate;

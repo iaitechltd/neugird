@@ -844,8 +844,10 @@ create table if not exists ventures (
   objectives         jsonb       default '[]', -- VentureObjective[]
   contributor_splits jsonb       default '[]', -- ContributorSplit[] (cap table)
   approvals          jsonb       default '[]', -- VentureApproval[]
+  require_approval   boolean     default true, -- gate big actions (ships/posts) behind owner sign-off
   cycles             numeric     not null default 0,
   revenue_grid       numeric     default 0,
+  revenue_synced_usdc numeric    default 0, -- high-water mark of product USDC revenue reinvested (self-funding loop)
   spent_grid         numeric     default 0,
   log                jsonb       default '[]', -- VentureEvent[] (bounded activity feed)
   created_at         timestamptz not null default now(),

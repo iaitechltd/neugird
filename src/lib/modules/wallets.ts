@@ -42,12 +42,14 @@ export function balances(user_id: string): { usdc: number; grid: number; starter
 }
 
 export function debitUsdc(user_id: string, amount: number): boolean {
+  if (!Number.isFinite(amount) || amount < 0) return false; // reject NaN/±Inf/negative (ledger poison)
   const w = get(user_id);
   if (w.usdc < amount) return false;
   w.usdc -= amount;
   return true;
 }
 export function creditUsdc(user_id: string, amount: number): void {
+  if (!Number.isFinite(amount) || amount <= 0) return; // never write NaN/Inf/negative into a balance
   get(user_id).usdc += amount;
 }
 /** Opt in/out of paying protocol fees in GRID (at the governable discount). */
@@ -58,12 +60,14 @@ export function setFeePref(user_id: string, on: boolean): Wallet {
 }
 
 export function debitGrid(user_id: string, amount: number): boolean {
+  if (!Number.isFinite(amount) || amount < 0) return false; // reject NaN/±Inf/negative (ledger poison)
   const w = get(user_id);
   if (w.grid < amount) return false;
   w.grid -= amount;
   return true;
 }
 export function creditGrid(user_id: string, amount: number): void {
+  if (!Number.isFinite(amount) || amount <= 0) return; // never write NaN/Inf/negative into a balance
   get(user_id).grid += amount;
 }
 

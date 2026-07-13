@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import NeuHeader from "@/components/app/NeuHeader";
 import {
@@ -15,7 +16,7 @@ import {
 import { Ring, Histogram, SegBar, Donut, Spark } from "@/components/app/charts";
 import { PanelChart, TMeter } from "@/components/app/terminal";
 import Meter from "@/components/app/Meter";
-import { Decrypt, CountUp, Typewriter } from "@/components/app/typefx";
+import { Decrypt, CountUp, Typewriter, TypeCycle } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import OrbPanel from "@/components/app/OrbPanel";
 import type { Build } from "@/lib/types";
@@ -23,6 +24,16 @@ import type { ProposalDraft } from "@/lib/brain";
 
 /* ===== Echo — living HUD restyle of the "NeuGrid / Echo" frames ===== */
 type Mode = "select" | "personal" | "analyst" | "builder" | "executor" | "observer";
+
+// stable so the placeholder cycler doesn't restart on every render
+const HUB_PHRASES = [
+  "build a tip jar for creators…",
+  "/analyze which market is strongest right now",
+  "what should I do next on the grid?",
+  "build a Solana staking dashboard with charts…",
+  "/deploy my timer to a live URL",
+  "how is my portfolio doing?",
+];
 /* real marketplace rows for the Builder "recommended executors" rail */
 type AgentRow = { agent_id: string; name: string; capabilities: string[]; rating: number; trust_tier?: string; verified_jobs: number };
 type TalentRow = { id: string; username: string; skills: string[]; reputation: number; jobs_done: number };
@@ -57,12 +68,23 @@ const failureControls: { Icon: (p: { className?: string }) => React.JSX.Element;
 /* ----------------------------- atoms ------------------------------- */
 
 function Orb({ size = 240 }: { size?: number }) {
+  const reduce = useReducedMotion();
   return (
-    <div className="relative grid place-items-center" style={{ width: size, height: size }}>
-      <div className="absolute inset-0 rounded-full" style={{ background: "radial-gradient(circle at 50% 45%, rgba(0,255,80,0.9), rgba(0,200,60,0.25) 38%, rgba(0,60,20,0.15) 60%, transparent 72%)", boxShadow: "0 0 60px 8px rgba(0,255,0,0.45), inset 0 0 60px rgba(0,255,80,0.6)" }} />
+    <motion.div className="relative grid shrink-0 place-items-center" style={{ width: size, height: size }}
+      animate={reduce ? undefined : { scale: [1, 1.055, 1] }}
+      transition={reduce ? undefined : { duration: 6, repeat: Infinity, ease: "easeInOut" }}>
+      {/* outer halo — slowly grows + brightens, like something alive breathing */}
+      <motion.div className="absolute inset-0 rounded-full"
+        style={{ background: "radial-gradient(circle at 50% 45%, rgba(0,255,80,0.9), rgba(0,200,60,0.25) 38%, rgba(0,60,20,0.15) 60%, transparent 72%)", boxShadow: "0 0 60px 8px rgba(0,255,0,0.45), inset 0 0 60px rgba(0,255,80,0.6)" }}
+        animate={reduce ? undefined : { opacity: [0.72, 1, 0.72], scale: [0.94, 1.05, 0.94] }}
+        transition={reduce ? undefined : { duration: 5, repeat: Infinity, ease: "easeInOut" }} />
       <div className="absolute rounded-full border border-neon/30" style={{ inset: size * 0.08 }} />
-      <div className="absolute rounded-full" style={{ inset: size * 0.2, background: "radial-gradient(circle at 40% 35%, rgba(180,255,200,0.9), rgba(0,180,60,0.3) 55%, transparent)", filter: "blur(1px)" }} />
-    </div>
+      {/* core — a faster, subtler pulse so the centre reads like a heartbeat */}
+      <motion.div className="absolute rounded-full"
+        style={{ inset: size * 0.2, background: "radial-gradient(circle at 40% 35%, rgba(180,255,200,0.9), rgba(0,180,60,0.3) 55%, transparent)", filter: "blur(1px)" }}
+        animate={reduce ? undefined : { opacity: [0.65, 1, 0.65], scale: [0.86, 1.1, 0.86] }}
+        transition={reduce ? undefined : { duration: 3.6, repeat: Infinity, ease: "easeInOut" }} />
+    </motion.div>
   );
 }
 function Av({ size = 36, seed }: { size?: number; seed?: string }) {
@@ -184,6 +206,7 @@ export default function EchoPage() {
      "/deploy" → Launchpad · "/fund" → raise flow · "build …" → Builder (prompt prefilled)
      · "/analyze …" → Analyst (asked) · anything else → your Personal cofounder (asked). */
   const [hubQ, setHubQ] = useState("");
+  const hubInputRef = useRef<HTMLInputElement>(null);
   function hubGo(raw?: string) {
     const text = (raw ?? hubQ).trim();
     if (!text) return;
@@ -583,14 +606,18 @@ export default function EchoPage() {
                 <div className="text-[12px] text-ink-dim">Your living interface to the grid — ask, build, analyze, or execute.</div>
               </div>
             </div>
-            {/* the REAL composer — routes what you type to the right mode and acts on it */}
-            <div className="ng-panel p-3">
-              <div className="flex items-center gap-2">
-                <IconSparkle className="h-4 w-4 shrink-0 text-neon/80" />
-                <input value={hubQ} onChange={(e) => setHubQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") hubGo(); }} placeholder="Ask, build, analyze, or execute — Echo routes it…" className="min-w-0 flex-1 bg-transparent text-[14px] text-ink outline-none placeholder:text-ink-faint" />
-                <button onClick={() => hubGo()} disabled={!hubQ.trim()} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-40"><IconArrowRight className="h-3.5 w-3.5" /> Go</button>
+            {/* the REAL composer — compact; the WHOLE box is the write area (click anywhere),
+                with a small, faint, living cycling placeholder. */}
+            <div onClick={() => hubInputRef.current?.focus()} className="group relative cursor-text border border-neon/40 bg-neon/[0.03] px-3.5 py-2.5 transition hover:border-neon/55 focus-within:border-neon/80 focus-within:bg-neon/[0.05]">
+              <div className="flex items-center gap-2.5">
+                <IconSparkle className="h-4 w-4 shrink-0 text-neon/70" />
+                <div className="relative min-w-0 flex-1">
+                  <input ref={hubInputRef} value={hubQ} onChange={(e) => setHubQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") hubGo(); }} placeholder="" className="w-full min-w-0 bg-transparent py-0.5 text-[13.5px] text-ink outline-none" />
+                  {!hubQ && <div className="pointer-events-none absolute inset-0 flex items-center"><TypeCycle phrases={HUB_PHRASES} className="text-[12px] text-ink-faint/70" /></div>}
+                </div>
+                <button onClick={(e) => { e.stopPropagation(); hubGo(); }} disabled={!hubQ.trim()} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-40"><IconArrowRight className="h-3.5 w-3.5" /> Go</button>
               </div>
-              <p className="mt-1.5 pl-6 text-[10px] text-ink-faint">Questions → your cofounder · &ldquo;build …&rdquo; → the Builder · /analyze → Analyst · /deploy · /fund</p>
+              <p className="mt-1.5 pl-[26px] text-[9.5px] leading-snug text-ink-faint/80">Questions → your cofounder · &ldquo;build …&rdquo; → the Builder · /analyze → Analyst · /deploy · /fund</p>
             </div>
             <div className="flex flex-wrap items-center gap-2"><span className="text-[10px] uppercase tracking-[0.14em] text-ink-faint">Try</span>{["build a tip jar for creators", "/analyze which market is strongest", "what should I do next?", "/deploy"].map((c) => <button key={c} onClick={() => hubGo(c)} className="ng-btn ng-btn-ghost ng-btn--sm">{c}</button>)}</div>
 

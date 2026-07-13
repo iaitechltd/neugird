@@ -64,6 +64,27 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     return NextResponse.json({ result: r, view: Ventures.view(id, uid) });
   }
 
+  if (action === "revenue") {
+    const v = Ventures.get(id);
+    if (!v) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    if (v.owner_id !== uid) return NextResponse.json({ error: "not_owner" }, { status: 403 });
+    const r = Ventures.syncRevenue(id); // reinvest the product's new earnings into the treasury
+    return NextResponse.json({ result: r, view: Ventures.view(id, uid) });
+  }
+
+  if (action === "approve") {
+    const decision = body?.decision === "decline" ? "decline" : "approve";
+    const r = await Ventures.resolveApproval(id, uid, String(body?.approval_id ?? ""), decision);
+    if (r.error) return NextResponse.json({ error: r.error }, { status: status(r) });
+    return NextResponse.json({ result: r, view: Ventures.view(id, uid) });
+  }
+
+  if (action === "autonomy") {
+    const r = Ventures.setApprovalPolicy(id, uid, body?.require !== false);
+    if (r.error) return NextResponse.json({ error: r.error }, { status: status(r) });
+    return NextResponse.json({ view: Ventures.view(id, uid) });
+  }
+
   if (action === "status") {
     const next = String(body?.status ?? "");
     if (!["active", "paused", "archived"].includes(next)) return NextResponse.json({ error: "bad_status" }, { status: 400 });

@@ -11,7 +11,7 @@
 
 import { db } from "../store";
 
-export type ParamKey = "tradex_fee_bps" | "echo_build_cost_grid" | "grid_market_fee_bps" | "gov_quorum_grid" | "grid_fee_discount_bps" | "campaign_ghost_days" | "echo_revision_cost_grid" | "echo_ask_cost_grid" | "echo_deploy_cost_grid" | "fraud_flag_quorum" | "agent_perf_fee_bps" | "genesis_raise_days" | "genesis_stall_days" | "gridx_fee_bps" | "affiliate_fee_share_bps" | "backer_allocation_bps" | "starter_credit_grid" | "dispute_quorum" | "dispute_window_days" | "skill_market_fee_bps" | "starter_gate_tier" | "rewards_gate_tier" | "max_trade_impact_bps" | "perp_oi_cap_bps" | "buyback_bps" | "season_days" | "venture_cycle_cost_grid";
+export type ParamKey = "tradex_fee_bps" | "echo_build_cost_grid" | "grid_market_fee_bps" | "gov_quorum_grid" | "grid_fee_discount_bps" | "campaign_ghost_days" | "echo_revision_cost_grid" | "echo_ask_cost_grid" | "echo_deploy_cost_grid" | "fraud_flag_quorum" | "agent_perf_fee_bps" | "genesis_raise_days" | "genesis_stall_days" | "gridx_fee_bps" | "affiliate_fee_share_bps" | "backer_allocation_bps" | "starter_credit_grid" | "dispute_quorum" | "dispute_window_days" | "skill_market_fee_bps" | "starter_gate_tier" | "rewards_gate_tier" | "max_trade_impact_bps" | "perp_oi_cap_bps" | "buyback_bps" | "season_days" | "venture_cycle_cost_grid" | "venture_revenue_share_bps";
 
 export type ParamUnit = "bps" | "grid" | "days" | "count";
 
@@ -43,6 +43,7 @@ export const DEFAULTS: Record<ParamKey, number> = {
   perp_oi_cap_bps: 2500, // total perp open interest cap as bps of pool TVL (25%) — TRADING_ENGINE_AUDIT F5
   buyback_bps: 0, // share of treasury USDC spent per buyback tick to buy+BURN GRID (0 = OFF; treasury never spent by surprise)
   venture_cycle_cost_grid: 20, // GRID a Venture's treasury pays per orchestration cycle (the agent-company compute sink)
+  venture_revenue_share_bps: 5000, // share of a Venture product's NEW USDC revenue reinvested into its treasury (50%; the self-funding loop)
 };
 
 /** UI labels + validation bounds (so a malicious proposal can't set fee = 10000%). */
@@ -74,6 +75,7 @@ export const META: Record<ParamKey, { label: string; unit: ParamUnit; min: numbe
   perp_oi_cap_bps: { label: "Perp OI cap (of pool TVL)", unit: "bps", min: 500, max: 10_000 },
   buyback_bps: { label: "GRID buyback", unit: "bps", min: 0, max: 5_000 }, // ≤50% of treasury USDC per tick; 0 = off
   venture_cycle_cost_grid: { label: "Venture cycle cost", unit: "grid", min: 0, max: 5_000 },
+  venture_revenue_share_bps: { label: "Venture revenue reinvest", unit: "bps", min: 0, max: 10_000 }, // 0 = keep it all · 10000 = reinvest all product revenue
 };
 
 export function isKey(k: string): k is ParamKey {

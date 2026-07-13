@@ -25,12 +25,21 @@ import * as Wallets from "./wallets";
 import * as Params from "./params";
 import * as Echo from "./echo";
 import * as Feed from "./feed";
+import * as GridX from "./gridx";
+import * as GridMarket from "./gridMarket";
 import * as Brain from "../brain";
 import type {
-  Agent, AgentPersona, ContributorSplit, Venture, VentureDept, VentureEvent, VentureObjective, VentureSeat,
+  Agent, AgentPersona, ContributorSplit, Venture, VentureApproval, VentureDept, VentureEvent, VentureObjective, VentureSeat,
 } from "../types";
 
 const LOG_MAX = 40;
+
+// Per-venture / per-approval in-flight guards — a real mutex in the single-instance
+// process so two concurrent requests (e.g. a double-click during the multi-second LLM
+// calls) can't double-charge, double-work, double-ship, or mint GRID. Transient runtime
+// state, intentionally NOT persisted.
+const cyclesInFlight = new Set<string>();
+const approvalsInFlight = new Set<string>();
 const clip = (s: string, n = 52): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 /* -------------------------------- templates ------------------------------- */
@@ -159,8 +168,11 @@ export function createVenture(input: CreateVentureInput): { venture?: Venture; e
     objectives: [],
     contributor_splits: splits,
     approvals: [],
+    require_approval: true, // safe by default — the crew checks with the owner before big moves
     cycles: 0,
     revenue_grid: 0,
+    // baseline the self-funding mark so only sales after formation fund the company
+    revenue_synced_usdc: build?.product_id && GridX.getProduct(build.product_id) ? GridX.revenueFor(build.product_id) : 0,
     spent_grid: 0,
     log: [],
     created_at: nowISO(),
@@ -182,11 +194,12 @@ export function fundTreasury(venture_id: string, owner_id: string, amount: numbe
   const v = get(venture_id);
   if (!v) return { error: "not_found" };
   if (v.owner_id !== owner_id) return { error: "not_owner" };
+  if (!Number.isFinite(amount)) return { error: "invalid_amount" }; // NaN/Inf never reach the ledger
   const amt = Math.max(0, Math.floor(amount));
   if (amt <= 0) return { error: "invalid_amount" };
   if (!Wallets.debitGrid(owner_id, amt)) return { error: "insufficient_grid" };
   Wallets.creditGrid(v.treasury_id, amt);
-  pushEvent(v, { kind: "revenue", text: `Owner funded the treasury with ${amt} GRID.`, amount_grid: amt });
+  pushEvent(v, { kind: "fund", text: `Owner funded the treasury with ${amt} GRID.`, amount_grid: amt });
   v.updated_at = nowISO();
   return { balance: Wallets.balances(v.treasury_id).grid };
 }
@@ -215,13 +228,15 @@ export function linkProduct(venture_id: string, owner_id: string, build_id: stri
   const build = db.builds.find((b) => b.build_id === build_id && b.owner_id === owner_id);
   if (!build) return { error: "build_not_found" };
   v.build_id = build.build_id;
+  // baseline the revenue mark: only sales AFTER the company takes the product count
+  v.revenue_synced_usdc = productRevenueUsdc(v);
   pushEvent(v, { kind: "objective", text: `Product linked: "${build.title}" — the team now runs it.` });
   v.updated_at = nowISO();
   return { venture: v };
 }
 
-/** Route product revenue into the treasury (the self-funding loop). Real when the
- *  linked product actually earns; callable by a revenue-sync or settlement hook. */
+/** Route GRID revenue into the treasury directly (a manual or hook credit). The
+ *  automatic product loop lives in syncRevenue; this stays as a low-level primitive. */
 export function recordRevenue(venture_id: string, amount: number, note?: string): { balance?: number; error?: string } {
   const v = get(venture_id);
   if (!v) return { error: "not_found" };
@@ -232,6 +247,83 @@ export function recordRevenue(venture_id: string, amount: number, note?: string)
   pushEvent(v, { kind: "revenue", text: note || `Product revenue: +${amt} GRID into the treasury.`, amount_grid: amt });
   v.updated_at = nowISO();
   return { balance: Wallets.balances(v.treasury_id).grid };
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Whether this company gates its big actions (Echo ships + wire posts) behind the
+ *  owner's sign-off. Default ON (safe) — set require_approval false for full autonomy. */
+function gatesApproval(v: Venture): boolean {
+  return v.require_approval !== false;
+}
+
+/** The GridX product the company's linked build is listed as (if any). The build↔product
+ *  link is authoritative on the build record (set when it's published to GridX). */
+function productIdFor(v: Venture): string | undefined {
+  if (!v.build_id) return undefined;
+  const build = db.builds.find((b) => b.build_id === v.build_id);
+  const pid = build?.product_id;
+  return pid && GridX.getProduct(pid) ? pid : undefined;
+}
+
+/** All-time real USDC the linked product has earned its owner (net of protocol fee),
+ *  derived from settled purchase receipts — never a stored counter. 0 if unlisted. */
+export function productRevenueUsdc(v: Venture): number {
+  const pid = productIdFor(v);
+  return pid ? GridX.revenueFor(pid) : 0;
+}
+
+export interface RevenueResult { synced_usdc?: number; grid_in?: number; balance?: number; skipped?: boolean; reason?: string; error?: string }
+
+/**
+ * The self-funding loop, made real. The company's linked product earns USDC (into the
+ * owner's wallet, as normal); a governable SHARE of the NEW revenue since the last sync
+ * is reinvested into the treasury — bought as GRID through the real GRID/USDC AMM (one
+ * unit across the whole company, actual pool + price impact, no minting). Only revenue
+ * earned AFTER the product was linked counts (baselined at link time). The reinvest is
+ * capped at the owner's available USDC; the high-water mark only advances for revenue
+ * actually recognized, so a shortfall simply catches up next time. Conservation holds:
+ * pool GRID → treasury, owner USDC → pool (+ swap fee → protocol treasury).
+ */
+export function syncRevenue(venture_id: string): RevenueResult {
+  const v = get(venture_id);
+  if (!v) return { error: "not_found" };
+  const pid = productIdFor(v);
+  if (!pid) return { skipped: true, reason: "no_product" };
+
+  const total = GridX.revenueFor(pid);
+  const synced = v.revenue_synced_usdc ?? 0;
+  const newRev = round2(total - synced);
+  if (newRev <= 0) return { skipped: true, reason: "no_new_revenue" };
+
+  const rate = Params.get("venture_revenue_share_bps") / 10_000;
+  if (rate <= 0) { v.revenue_synced_usdc = total; return { skipped: true, reason: "share_zero" }; }
+
+  const desired = round2(newRev * rate);
+  const avail = round2(Wallets.get(v.owner_id).usdc);
+  const pull = Math.min(desired, avail);
+  if (pull < 0.01) return { skipped: true, reason: "owner_no_usdc" };
+
+  // convert the owner's product USDC → GRID via the real AMM, then move it to the treasury
+  const sw = GridMarket.swap(v.owner_id, "buy", pull);
+  if (sw.error || !sw.out || sw.out <= 0) return { skipped: true, reason: sw.error ?? "swap_failed" };
+  const gridIn = sw.out;
+  if (!Wallets.debitGrid(v.owner_id, gridIn)) return { skipped: true, reason: "transfer_failed" };
+  Wallets.creditGrid(v.treasury_id, gridIn);
+
+  v.revenue_grid = round2((v.revenue_grid ?? 0) + gridIn);
+  // recognize the portion of newRev this pull covers (proportional if the owner was USDC-short)
+  const recognized = Math.min(newRev, round2(pull / rate));
+  v.revenue_synced_usdc = round2(synced + recognized);
+
+  const build = db.builds.find((b) => b.build_id === v.build_id);
+  pushEvent(v, {
+    kind: "revenue",
+    text: `Product revenue: $${pull.toFixed(2)} from "${clip(build?.title ?? "the product", 28)}" reinvested → +${Math.round(gridIn)} GRID into the treasury.`,
+    amount_grid: Math.round(gridIn),
+  });
+  v.updated_at = nowISO();
+  return { synced_usdc: pull, grid_in: gridIn, balance: Wallets.balances(v.treasury_id).grid };
 }
 
 /* ------------------------------- objectives ------------------------------- */
@@ -375,6 +467,13 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, i: number
  *  in real numbers, each agent building on its own track record. Rule-based fallback so a
  *  cycle ALWAYS completes. */
 export async function runCycle(venture_id: string): Promise<CycleResult> {
+  if (cyclesInFlight.has(venture_id)) return { ok: false, reason: "busy" }; // a cycle is already running
+  cyclesInFlight.add(venture_id);
+  try { return await runCycleInner(venture_id); }
+  finally { cyclesInFlight.delete(venture_id); }
+}
+
+async function runCycleInner(venture_id: string): Promise<CycleResult> {
   const v = get(venture_id);
   if (!v) return { ok: false, error: "not_found" };
   if (v.status !== "active") return { ok: false, reason: "not_active" };
@@ -384,6 +483,10 @@ export async function runCycle(venture_id: string): Promise<CycleResult> {
     pushEvent(v, { kind: "hold", text: "No objectives queued — give the company a goal and it'll get to work." });
     return { ok: false, reason: "no_objectives" };
   }
+
+  // pull in any new product revenue FIRST — a company that's earning funds its own cycle
+  // (the self-funding loop). Wrapped so a revenue-sync hiccup can never block the work.
+  try { syncRevenue(venture_id); } catch { /* non-fatal */ }
 
   // can the company afford this cycle's compute? (check up front — don't burn a CEO call if broke)
   const cost = Params.get("venture_cycle_cost_grid");
@@ -425,9 +528,15 @@ export async function runCycle(venture_id: string): Promise<CycleResult> {
     ceoLine = `CEO broke "${clip(objective.text, 60)}" into ${assignments.length} brief(s) and delegated to the team.`;
   }
 
-  // settle the cycle's compute bill (treasury → protocol sink)
+  // settle the cycle's compute bill (treasury → protocol sink). ONLY credit the sink if
+  // the treasury actually paid — an unconditional credit would mint GRID if the balance
+  // dropped (e.g. a concurrent approval ship) between the affordability check and here.
   if (cost > 0) {
-    Wallets.debitGrid(v.treasury_id, cost);
+    if (!Wallets.debitGrid(v.treasury_id, cost)) {
+      objective.status = "queued"; // release the objective so it can retry once funded
+      pushEvent(v, { kind: "hold", text: `Treasury can't cover this cycle's ${cost} GRID compute — fund it to keep the company running.` });
+      return { ok: false, reason: "treasury_empty", cost, balance: Wallets.balances(v.treasury_id).grid };
+    }
     Wallets.creditGrid(Wallets.TREASURY, cost);
     v.spent_grid = (v.spent_grid ?? 0) + cost;
     pushEvent(v, { kind: "spend", text: `Paid ${cost} GRID compute — ${assignments.length} specialist${assignments.length === 1 ? "" : "s"} briefed this cycle.`, amount_grid: cost });
@@ -440,20 +549,25 @@ export async function runCycle(venture_id: string): Promise<CycleResult> {
   //    write a spec — it SHIPS a real new version of the product through Echo (real code + proof).
   type Ship = { version: number; cost: number };
   type Pub = { post_id: string };
+  type Propose = { action: "echo_ship" | "wire_post"; summary: string; detail: string; amount_grid?: number };
+  type Out = { a: Assignment; out: { title: string; deliverable: string } | null; ship: Ship | null; published: Pub | null; propose: Propose | null };
   const PUBLISH_INTENT = /\b(post|posts|publish|published|announce|announcement|wire|share|social|tweet|thread|blog|launch)\b/i;
-  const outputs = await mapLimit(assignments, 2, async (a) => {
-    const ship: Ship | null = null;
-    const published: Pub | null = null;
-    if (!usedBrain) return { a, out: null as { title: string; deliverable: string } | null, ship, published };
+  const gate = gatesApproval(v); // when ON, big actions become approvals instead of firing now
+  const outputs = await mapLimit(assignments, 2, async (a): Promise<Out> => {
+    const base: Out = { a, out: null, ship: null, published: null, propose: null };
+    if (!usedBrain) return base;
     const agent = Agents.getAgent(a.seat.agent_id);
 
-    if (a.dept === "build" && v.build_id && Brain.activeBrain() && Wallets.balances(v.treasury_id).grid >= Echo.revisionCost()) {
-      const r = await Echo.reviseBuild({ build_id: v.build_id, owner_id: v.owner_id, instruction: a.task, payer_id: v.treasury_id }).catch(() => null);
+    const wantsShip = a.dept === "build" && !!v.build_id && Brain.activeBrain() && Wallets.balances(v.treasury_id).grid >= Echo.revisionCost();
+
+    // autonomous ship (only when the owner has NOT gated it) — ships real code right now
+    if (wantsShip && !gate) {
+      const r = await Echo.reviseBuild({ build_id: v.build_id!, owner_id: v.owner_id, instruction: a.task, payer_id: v.treasury_id }).catch(() => null);
       if (r?.build && !r.error) {
         const rev = r.build.revisions?.[r.build.revisions.length - 1];
         const s: Ship = { version: r.build.version ?? 1, cost: r.cost ?? Echo.revisionCost() };
         const deliverable = `Shipped v${s.version} of "${r.build.title}" — ${rev?.files_changed ?? 0} file(s) changed.\n\n${r.build.summary}${rev?.notes ? `\n\nChangelog: ${rev.notes}` : ""}\n\nThis is a new version in the build's history; it goes live when you deploy it.`;
-        return { a, out: { title: `Shipped v${s.version} — ${clip(a.task, 40)}`, deliverable }, ship: s, published };
+        return { ...base, out: { title: `Shipped v${s.version} — ${clip(a.task, 40)}`, deliverable }, ship: s };
       }
       // Echo ship unavailable (no files / synthesis failed / limit) → fall through to the spec path
     }
@@ -480,19 +594,29 @@ export async function runCycle(venture_id: string): Promise<CycleResult> {
       expertise: expertiseOf(agent, a.dept),
     }).catch(() => null);
 
-    // The CONTENT agent doesn't just draft — when the brief is public-facing, it ACTUALLY
-    // publishes the copy to the platform wire (posts as itself, credits the owner).
+    let propose: Propose | null = null;
+
+    // gated BUILD → the spec is the deliverable; the actual ship waits for the owner's OK
+    if (wantsShip && gate) {
+      propose = { action: "echo_ship", summary: `Ship an update — ${clip(a.task, 44)}`, detail: a.task, amount_grid: Echo.revisionCost() };
+    }
+
+    // CONTENT publishing: fire now if autonomous, else file the drafted post for approval
     let pub: Pub | null = null;
     if (a.dept === "content" && out && PUBLISH_INTENT.test(a.task)) {
-      const r = Feed.create({ as_agent_id: a.seat.agent_id, user_id: v.owner_id, title: out.title.slice(0, 120), body: out.deliverable.slice(0, 1200) });
-      if (r.post) pub = { post_id: r.post.post_id };
+      if (gate) {
+        propose = { action: "wire_post", summary: `Publish to the wire — ${clip(out.title, 40)}`, detail: `${out.title}\n\n${out.deliverable}` };
+      } else {
+        const r = Feed.create({ as_agent_id: a.seat.agent_id, user_id: v.owner_id, title: out.title.slice(0, 120), body: out.deliverable.slice(0, 1200) });
+        if (r.post) pub = { post_id: r.post.post_id };
+      }
     }
-    return { a, out, ship, published: pub };
+    return { a, out, ship: null, published: pub, propose };
   });
 
   // 3) record each specialist's deliverable + sharpen its domain mastery
   let done = 0;
-  for (const { a, out, ship, published } of outputs) {
+  for (const { a, out, ship, published, propose } of outputs) {
     const title = out?.title || clip(a.task, 60);
     const res = delegate(v, a.seat, title, a.task, out?.deliverable);
     if (!res) continue;
@@ -502,13 +626,26 @@ export async function runCycle(venture_id: string): Promise<CycleResult> {
       kind: "delivered",
       text: `${a.seat.title} · ${clip(title, 60)}`,
       detail: res.deliverable,
-      tool: published ? "posted · wire" : ship ? `shipped v${ship.version} · Echo` : (TOOL[a.dept] || undefined),
+      tool: published ? "posted · wire" : ship ? `shipped v${ship.version} · Echo` : propose ? "drafted · awaiting ok" : (TOOL[a.dept] || undefined),
       post_id: published?.post_id,
       dept: a.dept, agent_id: a.seat.agent_id, job_id: res.job_id,
     });
     if (ship) {
       v.spent_grid = (v.spent_grid ?? 0) + ship.cost;
       pushEvent(v, { kind: "spend", text: `Build shipped v${ship.version} through Echo — paid ${ship.cost} GRID for the build.`, amount_grid: ship.cost });
+    }
+    // gated big action → file it for the owner's approval (defer-then-do)
+    if (propose) {
+      const ap: VentureApproval = {
+        approval_id: newId("apr"), venture_id: v.venture_id,
+        kind: propose.action === "echo_ship" ? "over_budget" : "external_action",
+        action: propose.action, summary: propose.summary, detail: propose.detail,
+        dept: a.dept, agent_id: a.seat.agent_id, objective_id: objective.objective_id,
+        build_id: propose.action === "echo_ship" ? v.build_id : undefined,
+        amount_grid: propose.amount_grid, status: "pending", created_at: nowISO(),
+      };
+      (v.approvals ??= []).unshift(ap);
+      pushEvent(v, { kind: "approval", text: `Needs your OK: ${clip(propose.summary, 66)}`, dept: a.dept, agent_id: a.seat.agent_id });
     }
   }
 
@@ -518,6 +655,90 @@ export async function runCycle(venture_id: string): Promise<CycleResult> {
   v.cycles += 1;
   v.updated_at = nowISO();
   return { ok: true, objective_id: objective.objective_id, tasks: done, cost, balance: Wallets.balances(v.treasury_id).grid, brain: usedBrain };
+}
+
+/* -------------------------------- approvals ------------------------------- */
+// Phase 2: the crew proposes a big/irreversible action (a code ship or a public
+// post); the owner approves or declines it right on Mission Control. Approve →
+// the deferred action actually executes; decline → it's dropped.
+
+export interface ApprovalResult { ok?: boolean; executed?: string; post_id?: string; version?: number; error?: string }
+
+/** Turn the approval gate on/off for a company (owner sets its autonomy level). */
+export function setApprovalPolicy(venture_id: string, owner_id: string, require: boolean): { venture?: Venture; error?: string } {
+  const v = get(venture_id);
+  if (!v) return { error: "not_found" };
+  if (v.owner_id !== owner_id) return { error: "not_owner" };
+  v.require_approval = require;
+  pushEvent(v, { kind: "objective", text: require ? "Approval gate ON — the crew checks with you before big moves." : "Full autonomy — the crew ships and posts on its own." });
+  v.updated_at = nowISO();
+  return { venture: v };
+}
+
+/** Resolve a pending approval. On approve the deferred action runs for real (ship via
+ *  Echo / publish to the wire); on decline it's dropped. Idempotent per approval. */
+export async function resolveApproval(venture_id: string, owner_id: string, approval_id: string, decision: "approve" | "decline"): Promise<ApprovalResult> {
+  if (approvalsInFlight.has(approval_id)) return { error: "already_resolved" }; // being resolved right now
+  approvalsInFlight.add(approval_id);
+  try { return await resolveApprovalInner(venture_id, owner_id, approval_id, decision); }
+  finally { approvalsInFlight.delete(approval_id); }
+}
+
+async function resolveApprovalInner(venture_id: string, owner_id: string, approval_id: string, decision: "approve" | "decline"): Promise<ApprovalResult> {
+  const v = get(venture_id);
+  if (!v) return { error: "not_found" };
+  if (v.owner_id !== owner_id) return { error: "not_owner" };
+  const ap = (v.approvals ?? []).find((x) => x.approval_id === approval_id);
+  if (!ap) return { error: "approval_not_found" };
+  if (ap.status !== "pending") return { error: "already_resolved" };
+
+  if (decision === "decline") {
+    ap.status = "declined"; ap.resolved_at = nowISO();
+    pushEvent(v, { kind: "approval", text: `Declined: ${clip(ap.summary, 66)}`, dept: ap.dept, agent_id: ap.agent_id });
+    v.updated_at = nowISO();
+    return { ok: true };
+  }
+
+  // approve → execute the deferred action
+  if (ap.action === "echo_ship") {
+    const build_id = ap.build_id ?? v.build_id;
+    if (!build_id) return { error: "no_product" };
+    if (Wallets.balances(v.treasury_id).grid < Echo.revisionCost()) return { error: "treasury_empty" };
+    const r = await Echo.reviseBuild({ build_id, owner_id: v.owner_id, instruction: ap.detail ?? ap.summary, payer_id: v.treasury_id }).catch(() => null);
+    if (!r?.build || r.error) return { error: r?.error ?? "ship_failed" };
+    const rev = r.build.revisions?.[r.build.revisions.length - 1];
+    const version = r.build.version ?? 1;
+    const shipCost = r.cost ?? Echo.revisionCost();
+    v.spent_grid = round2((v.spent_grid ?? 0) + shipCost);
+    ap.status = "approved"; ap.resolved_at = nowISO(); ap.version = version;
+    pushEvent(v, {
+      kind: "delivered", text: `Head of engineering · Shipped v${version} (approved)`,
+      detail: `Shipped v${version} of "${r.build.title}" — ${rev?.files_changed ?? 0} file(s) changed.\n\n${r.build.summary}${rev?.notes ? `\n\nChangelog: ${rev.notes}` : ""}\n\nThis is a new version in the build's history; it goes live when you deploy it.`,
+      tool: `shipped v${version} · Echo`, dept: ap.dept, agent_id: ap.agent_id,
+    });
+    pushEvent(v, { kind: "spend", text: `Build shipped v${version} through Echo — paid ${shipCost} GRID for the build.`, amount_grid: shipCost });
+    v.updated_at = nowISO();
+    return { ok: true, executed: "echo_ship", version };
+  }
+
+  if (ap.action === "wire_post") {
+    const parts = (ap.detail ?? ap.summary).split("\n\n");
+    const title = parts[0] || ap.summary;
+    const body = parts.slice(1).join("\n\n") || title;
+    const author = ap.agent_id ?? v.ceo_agent_id ?? v.seats[0]?.agent_id;
+    if (!author) return { error: "no_author" };
+    const r = Feed.create({ as_agent_id: author, user_id: v.owner_id, title: title.slice(0, 120), body: body.slice(0, 1200) });
+    if (!r.post) return { error: "post_failed" };
+    ap.status = "approved"; ap.resolved_at = nowISO(); ap.post_id = r.post.post_id;
+    pushEvent(v, { kind: "delivered", text: `Head of content · Published to the wire (approved)`, detail: body, tool: "posted · wire", post_id: r.post.post_id, dept: ap.dept, agent_id: ap.agent_id });
+    v.updated_at = nowISO();
+    return { ok: true, executed: "wire_post", post_id: r.post.post_id };
+  }
+
+  // no executable action attached — just mark it approved
+  ap.status = "approved"; ap.resolved_at = nowISO();
+  v.updated_at = nowISO();
+  return { ok: true };
 }
 
 /* --------------------------------- status --------------------------------- */
@@ -573,14 +794,23 @@ export function view(venture_id: string, viewer?: string) {
   });
   const build = v.build_id ? db.builds.find((b) => b.build_id === v.build_id) : undefined;
   const treasury = Wallets.balances(v.treasury_id).grid;
+  const productRevenue = productRevenueUsdc(v);
+  const pendingRevenue = round2(Math.max(0, productRevenue - (v.revenue_synced_usdc ?? 0)));
+  const isOwner = !!viewer && v.owner_id === viewer;
+  // Non-owners must never see drafted, unpublished content: pending-approval detail
+  // (ship instructions / unpublished post drafts) OR the full work-product in log[].detail.
+  const publicLog = isOwner ? v.log : v.log.map((e) => ({ ...e, detail: undefined }));
   return {
-    venture: v,
-    is_owner: viewer ? v.owner_id === viewer : false,
+    venture: isOwner ? v : { ...v, approvals: [], log: publicLog },
+    is_owner: isOwner,
     seats,
     treasury_grid: treasury,
     revenue_grid: v.revenue_grid ?? 0,
     spent_grid: v.spent_grid ?? 0,
     cycle_cost: Params.get("venture_cycle_cost_grid"),
+    product_revenue_usdc: productRevenue,       // all-time real USDC the product has earned
+    pending_revenue_usdc: pendingRevenue,       // earned but not yet reinvested into the treasury
+    revenue_share_bps: Params.get("venture_revenue_share_bps"),
     product: build ? {
       build_id: build.build_id, title: build.title, summary: build.summary,
       version: build.version ?? 1,
@@ -589,9 +819,10 @@ export function view(venture_id: string, viewer?: string) {
       revisions: (build.revisions ?? []).length,
       deployment: build.deployment ?? null,
     } : null,
-    linkable_builds: viewer && v.owner_id === viewer ? linkableBuilds(viewer) : [],
+    linkable_builds: isOwner ? linkableBuilds(viewer!) : [],
     objectives: v.objectives,
-    approvals: (v.approvals ?? []).filter((a) => a.status === "pending"),
-    log: v.log,
+    approvals: isOwner ? (v.approvals ?? []).filter((a) => a.status === "pending") : [],
+    require_approval: gatesApproval(v),
+    log: publicLog,
   };
 }

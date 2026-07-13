@@ -115,6 +115,55 @@ export function Typewriter({
   );
 }
 
+/* ------------------------------ TypeCycle ------------------------------ */
+// Types each phrase, holds it, erases it, then moves to the next — forever.
+// Ideal for a "living" placeholder that suggests what you can type. Pass a STABLE
+// `phrases` array (module const or memoized) so it doesn't restart every render.
+
+export function TypeCycle({
+  phrases,
+  className,
+  speed = 42,
+  erase = 22,
+  hold = 1700,
+  gap = 400,
+  cursor = true,
+}: {
+  phrases: string[];
+  className?: string;
+  speed?: number;
+  erase?: number;
+  hold?: number;
+  gap?: number;
+  cursor?: boolean;
+}) {
+  const [out, setOut] = useState("");
+
+  useEffect(() => {
+    // defer the reduced-motion set so nothing sets state synchronously in the effect body
+    if (prefersReduced()) { const t = window.setTimeout(() => setOut(phrases[0] ?? ""), 0); return () => window.clearTimeout(t); }
+    let i = 0, dir = 1, cur = 0;
+    let timer = 0 as unknown as number;
+    const run = () => {
+      const text = phrases[cur % phrases.length] ?? "";
+      i += dir;
+      setOut(text.slice(0, Math.max(0, i)));
+      if (dir > 0 && i >= text.length) { timer = window.setTimeout(() => { dir = -1; run(); }, hold); return; }
+      if (dir < 0 && i <= 0) { dir = 1; cur += 1; timer = window.setTimeout(run, gap); return; }
+      timer = window.setTimeout(run, dir > 0 ? speed : erase);
+    };
+    const start = window.setTimeout(run, 450);
+    return () => { window.clearTimeout(timer); window.clearTimeout(start); };
+  }, [phrases, speed, erase, hold, gap]);
+
+  return (
+    <span className={className}>
+      {out}
+      {cursor && <Cursor />}
+    </span>
+  );
+}
+
 /* -------------------------------- Cursor ------------------------------- */
 
 export function Cursor({ className = "" }: { className?: string }) {
