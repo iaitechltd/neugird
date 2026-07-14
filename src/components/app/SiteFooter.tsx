@@ -6,10 +6,14 @@
  * socials, no dead ends.
  */
 
+"use client";
+
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import NeuGridMark from "@/components/NeuGridMark";
 
 const REPO = "https://github.com/iaitechltd/neugird";
+const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
 
 const COLS: { title: string; links: { label: string; href: string; external?: boolean }[] }[] = [
   {
@@ -56,9 +60,28 @@ const COLS: { title: string; links: { label: string; href: string; external?: bo
 ];
 
 export default function SiteFooter() {
+  const innerRef = useRef<HTMLDivElement>(null);
+
+  // fade + rise the footer in as it scrolls into view (driven off scroll position
+  // so it stays in step with the rest of the page and needs no animation-frame loop)
+  useEffect(() => {
+    const el = innerRef.current;
+    if (!el) return;
+    const set = (f: number) => { el.style.opacity = String(f); el.style.transform = `translateY(${((1 - f) * 34).toFixed(1)}px)`; };
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) { set(1); return; }
+    const apply = () => {
+      const r = el.getBoundingClientRect();
+      set(clamp01((window.innerHeight - r.top) / (window.innerHeight * 0.4)));
+    };
+    apply();
+    window.addEventListener("scroll", apply, { passive: true });
+    window.addEventListener("resize", apply);
+    return () => { window.removeEventListener("scroll", apply); window.removeEventListener("resize", apply); };
+  }, []);
+
   return (
     <footer className="relative z-10 border-t border-neon/15 bg-black">
-      <div className="mx-auto max-w-7xl px-6 py-12 sm:px-10">
+      <div ref={innerRef} className="mx-auto max-w-7xl px-6 py-12 sm:px-10" style={{ opacity: 0 }}>
         <div className="grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 lg:grid-cols-6">
           {/* brand — spans 2 on large */}
           <div className="col-span-2 sm:col-span-3 lg:col-span-2">

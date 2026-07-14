@@ -26,6 +26,7 @@ const short = (a: string) => (a.length > 10 ? `${a.slice(0, 4)}…${a.slice(-4)}
 
 export default function WalletConnect({ onChange, align = "right", className = "", redirectTo }: { onChange?: () => void; align?: "left" | "right"; className?: string; redirectTo?: string }) {
   const [wallets, setWallets] = useState<StdWallet[]>([]);
+  const [detected, setDetected] = useState<{ name: string; solana: boolean; signMsg: boolean }[]>([]);
   const [active, setActive] = useState<{ name: string; address: string } | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -38,8 +39,17 @@ export default function WalletConnect({ onChange, align = "right", className = "
       if (!alive) return;
       const api = getWallets();
       const sync = () => {
-        const list = (api.get() as unknown as StdWallet[]).filter(isSolana);
+        const all = api.get() as unknown as StdWallet[];
+        const list = all.filter(isSolana);
         setWallets(list);
+        setDetected(all.map((w) => ({
+          name: w.name,
+          solana: !!w.chains?.some((c) => c.startsWith("solana:")),
+          signMsg: !!w.features?.["solana:signMessage"],
+        })));
+        if (typeof console !== "undefined") {
+          console.log("[NeuGrid] wallets detected:", all.map((w) => `${w.name} · chains=[${(w.chains || []).join(", ")}] · features=[${Object.keys(w.features || {}).join(", ")}]`));
+        }
         const conn = list.find((w) => w.accounts.length > 0);
         setActive((cur) => (conn ? { name: conn.name, address: conn.accounts[0].address } : cur && list.some((w) => w.name === cur.name && w.accounts.length > 0) ? cur : conn ? cur : null));
       };
@@ -128,11 +138,27 @@ export default function WalletConnect({ onChange, align = "right", className = "
                 ))}
               </div>
             ) : (
-              <div className="px-1 py-1.5 text-[11px] leading-relaxed text-ink-dim">
-                No Solana wallet detected. Install{" "}
-                <a href="https://phantom.app" target="_blank" rel="noreferrer" className="text-neon hover:underline">Phantom</a>,{" "}
-                <a href="https://solflare.com" target="_blank" rel="noreferrer" className="text-neon hover:underline">Solflare</a>, or{" "}
-                <a href="https://backpack.app" target="_blank" rel="noreferrer" className="text-neon hover:underline">Backpack</a>, then reload.
+              <div className="space-y-2 px-1 py-1.5 text-[11px] leading-relaxed text-ink-dim">
+                {detected.length > 0 ? (
+                  <div>
+                    <div className="text-ink">Detected, but not Solana-ready:</div>
+                    <ul className="mt-1 space-y-0.5">
+                      {detected.map((d) => (
+                        <li key={d.name}>· {d.name} — <span className="text-amber">{d.solana ? (d.signMsg ? "ready — reload" : "no message signing") : "Solana account off"}</span></li>
+                      ))}
+                    </ul>
+                    <div className="mt-1.5 text-ink">MetaMask: update to the latest version, turn on its <span className="text-neon">Solana</span> account, then reload this page.</div>
+                  </div>
+                ) : (
+                  <div className="text-ink">No wallet found in <span className="text-neon">this</span> browser. Your wallet extension must live in the same browser as this tab — open NeuGrid in the browser where MetaMask is installed.</div>
+                )}
+                <div className="text-ink-faint">
+                  Get a wallet:{" "}
+                  <a href="https://metamask.io/download" target="_blank" rel="noreferrer" className="text-neon hover:underline">MetaMask</a>{" · "}
+                  <a href="https://phantom.app" target="_blank" rel="noreferrer" className="text-neon hover:underline">Phantom</a>{" · "}
+                  <a href="https://solflare.com" target="_blank" rel="noreferrer" className="text-neon hover:underline">Solflare</a>{" · "}
+                  <a href="https://backpack.app" target="_blank" rel="noreferrer" className="text-neon hover:underline">Backpack</a>
+                </div>
               </div>
             )}
             {msg && <p className="mt-1.5 px-1 text-[10px] text-ink-dim">{"// "}{msg}</p>}
