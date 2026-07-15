@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="iAI.tech">
+  <rect x="1.5" y="1.5" width="97" height="97" rx="16" fill="#000000" stroke="#ffffff" stroke-opacity="0.18" stroke-width="2.5"/>
+  <g fill="#ffffff">
+    <rect x="18" y="28" width="12" height="50"/>
+    <rect x="70" y="28" width="12" height="50"/>
+    <path fill-rule="evenodd" d="M50 18 L69 80 L31 80 Z M50 40 L59 74 L41 74 Z"/>
+    <circle cx="50" cy="62" r="5.5"/>
+  </g>
+</svg>

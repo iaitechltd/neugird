@@ -120,9 +120,28 @@ export default function SiteFooter() {
           ))}
         </div>
 
-        <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-neon/10 pt-5 font-mono text-[10.5px] text-ink-faint sm:flex-row sm:items-center">
-          <span>© 2026 NeuGrid · running on Solana devnet</span>
-          <span>Settled on Solana · logic on ICP · reputation soulbound</span>
+        <div className="mt-12 flex flex-col items-start justify-between gap-5 border-t border-neon/10 pt-5 sm:flex-row sm:items-center">
+          <div className="font-mono text-[10.5px] leading-relaxed text-ink-faint">
+            <span>© 2026 NeuGrid · running on Solana devnet</span>
+            <span className="mx-1.5 hidden opacity-50 sm:inline">·</span>
+            <span className="block sm:inline">Settled on Solana · logic on ICP · reputation soulbound</span>
+          </div>
+
+          {/* Backed by iAI.tech — the company behind NeuGrid */}
+          <a
+            href="https://iai.tech"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Backed by iAI.tech"
+            className="group inline-flex shrink-0 items-center gap-2.5"
+          >
+            <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-ink-faint">Backed by</span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/iai-tech-logo.svg" alt="iAI.tech logo" className="h-7 w-7 shrink-0" />
+            <span className="ng-title text-[14px] font-bold tracking-tight text-ink transition-colors group-hover:text-neon">
+              iAI<span className="text-ink-dim transition-colors group-hover:text-neon">.tech</span>
+            </span>
+          </a>
         </div>
       </div>
     </footer>

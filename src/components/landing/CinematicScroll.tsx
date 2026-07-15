@@ -51,6 +51,16 @@ const SCENES: SceneDef[] = [
     img: "/landing/scene-5.jpg", video: "/landing/scene-5.mp4",
     titleLines: [{ t: "Composable. Verifiable." }, { t: "Yours.", accent: true }],
     subtitle: "Grids, credentials, markets, and agents interlock as programmable building blocks — settled on Solana and ICP, owned by the people who build them.",
+  },
+  {
+    img: "/landing/what-you-can-do.jpg", video: "/landing/what-you-can-do.mp4",
+    titleLines: [{ t: "One platform." }, { t: "The full path.", accent: true }],
+    subtitle: "From a spark of an idea to a tokenized, self-running economy — every step happens here, and every step is earned.",
+  },
+  {
+    img: "/landing/why-neugrid-exists.jpg", video: "/landing/why-neugrid-exists.mp4",
+    titleLines: [{ t: "For the ones" }, { t: "the room overlooked.", accent: true }],
+    subtitle: "Talent is everywhere. Opportunity wasn't. NeuGrid trades who-you-know for what-you've-built — a track record no gatekeeper controls and no one can take from you.",
     cta: true,
   },
 ];

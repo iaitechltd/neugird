@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { IconCoins, IconUser, IconSettings } from "./ui";
+import { IconCoins, IconUser, IconSettings, IconConnect } from "./ui";
+import { signOutWallet } from "./walletSession";
 
 type Me = { id: string; username: string; wallet: string | null; pulse: number } | null;
 
@@ -17,15 +18,27 @@ const short = (a: string) => (a.length > 8 ? `${a.slice(0, 4)}…${a.slice(-4)}`
 export default function UserMenu() {
   const [open, setOpen] = useState(false);
   const [me, setMe] = useState<Me>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let alive = true;
+    // Clear to null on guest (no id) so the menu reflects a sign-out immediately.
     const load = () =>
-      fetch("/api/me").then((r) => r.json()).then((d) => { if (alive && d?.id) setMe(d); }).catch(() => {});
+      fetch("/api/me").then((r) => r.json()).then((d) => { if (alive) setMe(d?.id ? d : null); }).catch(() => {});
     load();
     window.addEventListener("neugrid:refresh-me", load);
     return () => { alive = false; window.removeEventListener("neugrid:refresh-me", load); };
   }, []);
+
+  async function signOut() {
+    if (busy) return;
+    setBusy(true);
+    await signOutWallet();
+    setMe(null);
+    setOpen(false);
+    // Back to the landing — the logged-out home, where "connect wallet" lives.
+    window.location.assign("/");
+  }
 
   const name = me?.username ?? "Guest";
   const initial = name.charAt(0).toUpperCase() || "?";
@@ -56,7 +69,15 @@ export default function UserMenu() {
                 </Link>
               ))}
               <div className="my-1 border-t border-neon/[0.07]" />
-              <div className="px-3 py-1.5 text-[10px] leading-relaxed text-ink-faint">{"// "}connect &amp; manage your wallet in Settings</div>
+              {me ? (
+                <div className="p-2">
+                  <button onClick={signOut} disabled={busy} className="ng-btn ng-btn-danger ng-btn--sm ng-btn--block disabled:opacity-40">
+                    <IconConnect className="h-3.5 w-3.5" /> {busy ? "signing out…" : "Disconnect & sign out"}
+                  </button>
+                </div>
+              ) : (
+                <div className="px-3 py-1.5 text-[10px] leading-relaxed text-ink-faint">{"// "}connect your wallet from the header</div>
+              )}
             </div>
           </div>
         </>

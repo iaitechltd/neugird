@@ -11,7 +11,6 @@ import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
 import NeuGridMark from "@/components/NeuGridMark";
 import SiteFooter from "@/components/app/SiteFooter";
-import PillarsSection from "@/components/landing/PillarsSection";
 import CinematicScroll from "@/components/landing/CinematicScroll";
 import WalletConnect from "@/components/app/WalletConnect";
 
@@ -37,11 +36,8 @@ export default function Landing() {
         </div>
       </motion.header>
 
-      {/* ── the cinematic (pinned, scroll-driven) ── */}
+      {/* ── the cinematic (pinned, scroll-driven) — all 7 scenes ── */}
       <CinematicScroll />
-
-      {/* ── grounding: what you can do (concrete paths under the film) ── */}
-      <PillarsSection />
 
       {/* ── the proper footer (shared with /about, /terms, /privacy) ── */}
       <SiteFooter />

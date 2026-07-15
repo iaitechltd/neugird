@@ -12,12 +12,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { IconConnect } from "./ui";
+import { signOutWallet } from "./walletSession";
 
 // Minimal Wallet-Standard shapes (hand-typed to avoid extra deps).
 type StdAccount = { address: string; publicKey: Uint8Array };
 type ConnectFeature = { connect: () => Promise<{ accounts: readonly StdAccount[] }> };
 type SignMessageFeature = { signMessage: (i: { account: StdAccount; message: Uint8Array }) => Promise<readonly { signature: Uint8Array }[]> };
-type DisconnectFeature = { disconnect?: () => Promise<void> };
 type StdWallet = { name: string; icon?: string; chains: readonly string[]; accounts: readonly StdAccount[]; features: Record<string, unknown> };
 
 const isSolana = (w: StdWallet) =>
@@ -97,14 +97,11 @@ export default function WalletConnect({ onChange, align = "right", className = "
   }, [redirectTo, wallets, active, connect]);
 
   const disconnect = useCallback(async () => {
-    const w = wallets.find((x) => x.name === active?.name) ?? wallets.find((x) => x.accounts.length > 0);
-    try { await (w?.features["standard:disconnect"] as DisconnectFeature | undefined)?.disconnect?.(); } catch { /* ignore */ }
-    // full sign-out: drop the wallet connection AND clear the session
-    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    // full sign-out: drop every wallet's connection + clear the session + refresh identity
+    await signOutWallet();
     setActive(null); setOpen(false); setMsg(null);
-    window.dispatchEvent(new Event("neugrid:refresh-me"));
     onChange?.();
-  }, [wallets, active, onChange]);
+  }, [onChange]);
 
   return (
     <div className={`relative ${className}`}>
