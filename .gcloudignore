@@ -13,3 +13,7 @@ Group 3
 docs/NeuGrid_Builder_Spec_Matrix.pdf
 tsconfig.tsbuildinfo
 contracts
+# ICP dfx local artifacts — not needed for the Next.js container, and dfx stamps
+# some generated .did files with pre-1980 mtimes that crash the gcloud ZIP upload.
+.dfx
+icp/.dfx
