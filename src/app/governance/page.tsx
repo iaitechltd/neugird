@@ -10,11 +10,11 @@
 import { useEffect, useMemo, useState } from "react";
 import NeuHeader from "@/components/app/NeuHeader";
 import OrbPanel from "@/components/app/OrbPanel";
-import { Panel, Mark, DataRow, ProgressBar, IconShield, IconActivity, IconLock, IconWallet, IconBolt, IconCheck, IconCoins , kpiColor } from "@/components/app/ui";
+import { Panel, Mark, DataRow, IconShield, IconActivity, IconLock, IconWallet, IconBolt, IconCheck, IconCoins , kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import { PanelChart, TProc } from "@/components/app/terminal";
 import Meter from "@/components/app/Meter";
-import { Tornado, Lollipop, Waffle, Dumbbell } from "@/components/app/charts";
+import { Tornado, Lollipop, Waffle, Dumbbell, LabeledBars, Bullet } from "@/components/app/charts";
 import type { GovProposal, GovProposalKind } from "@/lib/types";
 
 type GovView = GovProposal & { total_grid: number; for_pct: number; against_pct: number; quorum_pct: number; voters: number; my_vote: { support: boolean; grid: number } | null };
@@ -96,15 +96,15 @@ function ProposalCard({ p, me, meta, onChange }: { p: GovView; me: Me | null; me
         <span className="text-neon">For {grid(p.for_grid)}</span>
         <span className="text-[color:var(--ng-danger)]">{grid(p.against_grid)} Against</span>
       </div>
-      <div className="mt-1 flex h-2 overflow-hidden rounded-full bg-line">
+      <div className="mt-1 flex h-2.5 overflow-hidden bg-line">
         <div className="h-full bg-neon transition-all" style={{ width: `${p.total_grid ? p.for_pct : 50}%`, opacity: p.total_grid ? 1 : 0.25 }} />
         <div className="h-full bg-[color:var(--ng-danger)] transition-all" style={{ width: `${p.total_grid ? p.against_pct : 50}%`, opacity: p.total_grid ? 1 : 0.25 }} />
       </div>
 
-      {/* Quorum progress */}
+      {/* Quorum — for-GRID vs the quorum target (Bullet: bar + target marker) */}
       <div className="mt-3">
         <div className="mb-1 flex items-center justify-between text-[10px] text-ink-faint"><span>Quorum</span><span className="tnum">{grid(p.for_grid)} / {grid(p.quorum_grid)} GRID</span></div>
-        <ProgressBar percent={p.quorum_pct} />
+        <Bullet data={[{ value: p.for_grid, target: p.quorum_grid }]} w={260} rowH={12} gap={0} color="var(--ng-neon)" />
       </div>
 
       <div className="mt-2 flex items-center justify-between text-[10px] text-ink-faint">
@@ -305,6 +305,14 @@ export default function GovernancePage() {
               </div>
             ))}
           </div>
+
+          {/* center hero chart — total GRID locked (engagement) per proposal */}
+          {list.length > 0 && (
+            <Panel bodyClass="p-4">
+              <div className="ng-label mb-2 !text-ink-dim">GRID locked · by proposal</div>
+              <LabeledBars w={520} rowH={16} gap={8} data={list.slice(0, 8).map((p) => ({ label: p.title, value: p.total_grid, color: p.status === "open" ? "var(--ng-neon)" : "rgba(0,255,65,0.4)" }))} />
+            </Panel>
+          )}
 
           {/* Composer */}
           {composing && (

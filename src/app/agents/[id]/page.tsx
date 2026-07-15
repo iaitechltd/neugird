@@ -14,7 +14,7 @@ import { Decrypt, CountUp } from "@/components/app/typefx";
 import { MatrixAvatar, MatrixCover } from "@/components/app/MatrixAvatar";
 import OrbPanel from "@/components/app/OrbPanel";
 import { PanelChart, TMeter } from "@/components/app/terminal";
-import { Gauge, Spark, StackBars, Stream, Radar, Donut, SegBar, SERIES } from "@/components/app/charts";
+import { Gauge, Spark, StackBars, Stream, Radar, Donut, SegBar, Lollipop, Waterfall, SERIES } from "@/components/app/charts";
 import Meter from "@/components/app/Meter";
 import type { Agent, AgentPersona, AgentWorkSession, Job, LearnedSkill } from "@/lib/types";
 
@@ -219,10 +219,8 @@ export default function AgentDetail() {
     }
     return [...m.entries()].slice(-12).map(([key, v]) => ({ key, ...v }));
   })();
-  const earnMax = Math.max(1, ...earnMonths.map((b) => b.sum));
-  // inline-bar scales — the biggest reward in the history + the most-reused skill
+  // inline-bar scale — the biggest reward in the history
   const maxJobReward = Math.max(1, ...jobs.map((j) => j.reward_amount));
-  const maxSkillUses = Math.max(1, ...(work?.skills ?? []).map((s) => s.uses));
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
@@ -277,7 +275,7 @@ export default function AgentDetail() {
                     axes={CAP_DOMAINS}
                     values={CAP_DOMAINS.map((d) => (a.capabilities.some((c) => c.toLowerCase() === d) ? 100 : 0))}
                     size={132}
-                    color="#b388ff"
+                    color="var(--ng-neon)"
                   />
                 </div>
                 <div className="flex flex-wrap justify-center gap-2">{a.capabilities.map((c) => <Tag key={c}>{c}</Tag>)}</div>
@@ -410,6 +408,7 @@ export default function AgentDetail() {
               <Sec icon={<IconLayers className="h-3.5 w-3.5" />} title="Skill Library" action={<Mark plain className="!text-[10px]">{work.skills.length}</Mark>}>
                 {work.skills.length ? (
                   <div className="space-y-1.5">
+                    {work.skills.length > 1 && <div className="border-b border-neon/10 pb-2"><Lollipop w={280} rowH={13} gap={6} color="var(--ng-neon)" data={[...work.skills].sort((x, y) => y.uses - x.uses).slice(0, 8).map((s) => ({ value: s.uses, label: s.title }))} /></div>}
                     {work.skills.map((s) => {
                       const listed = listings.find((p) => p.skill_id === s.skill_id);
                       return (
@@ -417,8 +416,7 @@ export default function AgentDetail() {
                           <div className="flex items-center justify-between gap-2 text-[11px]">
                             <div className="flex min-w-0 items-center gap-1.5"><span className="truncate text-ink">{s.title}</span><Tag className="!text-[9px] shrink-0">{s.domain}</Tag>{s.from_published && <Mark plain accent="cyan" className="!text-[8px] shrink-0">installed</Mark>}</div>
                             <div className="flex shrink-0 items-center gap-2">
-                              <Meter value={s.uses} max={maxSkillUses} w={30} className="!h-[6px]" />
-                              <span className="text-[10px] text-neon" title="mastery (reuses) — bar vs this agent's most-reused skill">×{s.uses}</span>
+                              <span className="text-[10px] text-neon" title="mastery — times reused">×{s.uses}</span>
                               {listed ? (
                                 <span className="flex items-center gap-1 text-[9px] text-cyan">listed · {listed.installs}↓ <button onClick={() => delistSkill(listed.published_id)} disabled={busy} className="text-ink-faint hover:text-danger">delist</button></span>
                               ) : s.from_published ? null : (
@@ -449,15 +447,8 @@ export default function AgentDetail() {
                 <span className="ng-label !text-ink-dim">REWARDS OVER TIME</span>
                 <span className="text-ink-faint">{paidJobs.length} paid deliveries · ${lifetime.toLocaleString()} lifetime · split {Math.round((a.owner_split_bps ?? 0) / 100)}% to owner</span>
               </div>
-              <div className="flex items-end gap-4">
-                {earnMonths.map((b) => (
-                  <div key={b.key} className="flex w-14 flex-col items-center gap-1" title={`${b.key}: ${b.n} paid job(s) · $${b.sum.toLocaleString()}`}>
-                    <span className="text-[10px] font-bold text-neon tnum">${b.sum.toLocaleString()}</span>
-                    <div className="w-5 bg-neon/80" style={{ height: `${Math.max(4, Math.round((b.sum / earnMax) * 46))}px` }} />
-                    <span className="text-[9px] text-ink-faint">{b.key}</span>
-                  </div>
-                ))}
-              </div>
+              <Waterfall steps={earnMonths.map((b) => ({ value: b.sum, kind: "delta" as const }))} h={80} />
+              <div className="mt-1 flex items-center justify-between text-[9px] text-ink-faint"><span className="tnum">{earnMonths[0]?.key}</span><span>accumulating to ${lifetime.toLocaleString()}</span><span className="tnum">{earnMonths[earnMonths.length - 1]?.key}</span></div>
             </div>
           )}
 
@@ -502,7 +493,7 @@ export default function AgentDetail() {
                 {streamData.series.map((s, i) => (
                   <div key={s.kind}>
                     <div className="flex items-center justify-between text-[8.5px] text-ink-faint"><span>{s.kind}</span><span className="tnum">{s.n}</span></div>
-                    <Stream data={s.data} gid={`agstream-${a.agent_id}-${i}`} h={22} color={[SERIES[0], SERIES[3], SERIES[1]][i]} />
+                    <Stream data={s.data} gid={`agstream-${a.agent_id}-${i}`} h={22} color={["var(--ng-neon)", "rgba(0,255,65,0.6)", "rgba(0,255,65,0.32)"][i]} />
                   </div>
                 ))}
                 <div className="flex justify-between text-[8.5px] text-ink-faint"><span>{streamData.axis[0].slice(5)}</span><span>{streamData.axis[streamData.axis.length - 1].slice(5)}</span></div>

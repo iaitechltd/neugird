@@ -12,6 +12,7 @@ import {
 } from "@/components/app/ui";
 import { Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
+import { Donut, Waffle } from "@/components/app/charts";
 import type { Agent, ContributorSplit, Grid, Job, SubGrid, SubGridAccess, UserProfile } from "@/lib/types";
 
 type SplitRow = ContributorSplit & { pct: number; name: string; beneficiary_name?: string };
@@ -137,6 +138,8 @@ export default function SubgridDetail() {
   const isAdmin = !!viewer?.is_admin;
   const canJoin = viewer?.can_join;
   const stats: [string, number][] = [["Members", members.length], ["Agents", agents.length], ["Jobs", jobs.length], ["Pulse", s.pulse_score]];
+  const maxRep = Math.max(1, ...members.map((m) => Math.round(m.reputation?.total ?? m.pulse_score ?? 0)));
+  const maxEarn = Math.max(1, ...agents.map((a) => a.earnings ?? 0));
   const splitTotal = Object.values(draftSplits).reduce((n, p) => n + (Number(p) || 0), 0);
 
   return (
@@ -229,7 +232,13 @@ export default function SubgridDetail() {
                     <div className="min-w-0 flex-1"><div className="truncate text-sm font-bold text-ink">{m.username}{viewer?.id === m.id && <span className="ml-1 text-[9px] text-neon">you</span>}</div><div className="flex items-center gap-1.5 text-[10px] text-ink-dim"><Tag accent="amber"><IconShield className="h-3 w-3" />Human</Tag>{admins.has(m.id) && <Mark plain className="!text-[9px]">Admin</Mark>}</div></div>
                   </div>
                   {m.skills && m.skills.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{m.skills.slice(0, 3).map((sk) => <Tag key={sk}>{sk}</Tag>)}</div>}
-                  <div className="mt-2 ng-row !py-1 text-[11px]"><span className="ng-row__k">Reputation</span><Mark plain className="!text-[11px]">{Math.round(m.reputation?.total ?? m.pulse_score ?? 0)}</Mark></div>
+                  {(() => { const rep = Math.round(m.reputation?.total ?? m.pulse_score ?? 0); return (
+                    <div className="mt-2.5">
+                      <div className="ng-stat__v !text-lg !leading-none text-neon">{rep.toLocaleString()}</div>
+                      <div className="ng-stat__k !text-[8px]">reputation</div>
+                      <div className="mt-1 h-1 overflow-hidden bg-neon/10"><span className="block h-full bg-neon/50" style={{ width: `${Math.max(3, (rep / maxRep) * 100)}%` }} /></div>
+                    </div>
+                  ); })()}
                 </div>
               ))}
               {agents.map((a) => (
@@ -238,7 +247,11 @@ export default function SubgridDetail() {
                     <MatrixAvatar seed={a.agent_id} size={36} />
                     <div className="min-w-0 flex-1"><div className="truncate text-sm font-bold text-neon">{a.name}</div><div className="flex items-center gap-1.5 text-[10px] text-ink-dim"><Tag><IconBot className="h-3 w-3" />Agent</Tag><Mark plain accent={tierAccent(a.trust_tier)} className="!text-[9px]">{a.trust_tier ?? "trusted"}</Mark></div></div>
                   </div>
-                  <div className="mt-2 ng-row !py-1 text-[11px]"><span className="ng-row__k">Earnings</span><Mark plain className="!text-[11px]">{(a.earnings ?? 0).toLocaleString()} Pulse</Mark></div>
+                  <div className="mt-2.5">
+                    <div className="ng-stat__v !text-lg !leading-none text-neon">{(a.earnings ?? 0).toLocaleString()}</div>
+                    <div className="ng-stat__k !text-[8px]">Pulse earned</div>
+                    <div className="mt-1 h-1 overflow-hidden bg-neon/10"><span className="block h-full bg-neon/50" style={{ width: `${Math.max(3, ((a.earnings ?? 0) / maxEarn) * 100)}%` }} /></div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -285,6 +298,9 @@ export default function SubgridDetail() {
               <p className="text-[11px] text-ink-dim">No ownership agreement yet{isAdmin ? " — set who owns what % of the team's output." : "."}</p>
             ) : (
               <div className="space-y-2.5">
+                <div className="flex items-center justify-center pb-1">
+                  <Donut size={104} thickness={13} data={splits.map((sp) => sp.pct)} colors={splits.map((_, i) => `rgba(0,255,65,${Math.max(0.25, 0.95 - i * 0.13).toFixed(2)})`)} center={`${splits.length}`} />
+                </div>
                 {splits.map((sp) => (
                   <div key={sp.party_id}>
                     <div className="flex items-center justify-between text-[11px]">
@@ -329,6 +345,15 @@ export default function SubgridDetail() {
 
           <div className="ng-card p-3.5">
             <div className="ng-label mb-2 flex items-center gap-2 !text-ink-dim"><span className="text-neon"><IconStar className="h-3.5 w-3.5" /></span>Composition</div>
+            {members.length + agents.length > 0 && (
+              <div className="mb-3 flex items-center gap-3 border-b border-line pb-3">
+                <Waffle side={6} cell={9} gap={2} data={[{ value: members.length, color: "var(--ng-neon)" }, { value: agents.length, color: "rgba(0,255,65,0.32)" }]} />
+                <div className="space-y-1 text-[10px] text-ink-dim">
+                  <div className="flex items-center gap-1.5"><span className="inline-block h-1.5 w-1.5 bg-neon" />humans {members.length}</div>
+                  <div className="flex items-center gap-1.5"><span className="inline-block h-1.5 w-1.5" style={{ background: "rgba(0,255,65,0.32)" }} />agents {agents.length}</div>
+                </div>
+              </div>
+            )}
             <div className="divide-y divide-line text-[12px]">
               <div className="ng-row !py-2"><span className="ng-row__k">Humans</span><Mark plain>{members.length}</Mark></div>
               <div className="ng-row !py-2"><span className="ng-row__k">Agents</span><Mark plain>{agents.length}</Mark></div>

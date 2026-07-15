@@ -11,6 +11,7 @@ import { Proofs as ChainProofs } from "../chain";
 import { newId, nowISO } from "../id";
 import * as Jobs from "./jobs";
 import * as Wallets from "./wallets";
+import * as Params from "./params";
 import type { Agreement, Conversation, DirectMessage, DMAttachment, DMKind, DMOffer, DMTransfer, Settlement } from "../types";
 
 const pairKey = (a: string, b: string) => [a, b].sort().join("|");
@@ -216,7 +217,9 @@ export function resolveOffer(message_id: string, by_id: string, accept: boolean)
       reward_token: m.offer.asset,
       context: "talent_contract",
     });
-    const esc = Jobs.fundJobEscrow(job.job_id, m.from_id);
+    // an agent hirer funds from its owner's wallet (agents hold no USDC of their own)
+    const funder = db.agents.find((a) => a.agent_id === m.from_id)?.owner_id ?? m.from_id;
+    const esc = Jobs.fundJobEscrow(job.job_id, funder);
     if (esc.error) {
       db.jobs.splice(db.jobs.findIndex((j) => j.job_id === job.job_id), 1); // unwind the shell job
       return { error: esc.error }; // offer stays pending — the hirer can top up, the acceptor retry
@@ -249,6 +252,85 @@ export function resolveOffer(message_id: string, by_id: string, accept: boolean)
   return { message: m };
 }
 
+/* --------- In-chat hire lifecycle: deliver → approve/dispute → release ---------
+ * An accepted HIRE spawned an escrowed Job (money locked at accept). From here the
+ * WHOLE lifecycle happens inside the thread: the worker submits the delivery, the
+ * hirer approves (escrow auto-releases to the worker) or disputes (a neutral panel
+ * decides). If the hirer goes silent, the ghost-sweep auto-releases to the worker
+ * after `hire_autorelease_days` — so a silent hirer can't strand a worker's pay. */
+
+/** Live escrow/job state for an accepted-hire offer card, from `viewer_id`'s side. */
+export function hireJobView(job_id: string, viewer_id: string) {
+  const job = Jobs.getJob(job_id);
+  if (!job) return null;
+  const submitted_at = job.proof?.submitted_at;
+  const auto_release_at = submitted_at
+    ? new Date(Date.parse(submitted_at) + Params.get("hire_autorelease_days") * 86_400_000).toISOString()
+    : undefined;
+  return {
+    job_id,
+    status: job.status, // assigned | in_progress | submitted | paid | rejected …
+    amount: job.reward_amount,
+    asset: job.reward_token ?? "USDC",
+    escrow_locked: !!Jobs.heldEscrowFor(job_id),
+    is_worker: viewer_id === job.assignee_id,
+    is_hirer: viewer_id === job.created_by,
+    delivery_note: job.proof?.payload,
+    submitted_at,
+    auto_release_at,
+    dispute_deadline: job.dispute_deadline,
+  };
+}
+
+/** The hired worker submits their delivery from inside the thread (note + optional
+ *  file). Moves the escrowed Job to "submitted" and drops a delivery message. */
+export function submitHireDelivery(message_id: string, by_id: string, input: { note?: string; attachment?: { name?: string; mime?: string; data_uri?: string } }): { message?: DirectMessage; error?: string } {
+  const m = msgs().find((x) => x.message_id === message_id);
+  if (!m || !m.offer || m.offer.offer_kind !== "hire" || m.offer.result_kind !== "job" || !m.offer.result_ref) return { error: "not_found" };
+  const c = convos().find((x) => x.conversation_id === m.conversation_id);
+  if (!c || !c.participant_ids.includes(by_id)) return { error: "not_participant" };
+  const job = Jobs.getJob(m.offer.result_ref);
+  if (!job) return { error: "not_found" };
+  if (job.assignee_id !== by_id) return { error: "not_worker" };
+  if (!["assigned", "in_progress", "rejected"].includes(job.status)) return { error: "not_deliverable" };
+  const note = (input.note ?? "").trim().slice(0, 1000);
+  const att = cleanAttachment(input.attachment);
+  if (att.error) return { error: att.error };
+  if (!Jobs.submitProof(job.job_id, by_id, note || att.attachment?.name || "Delivered")) return { error: "submit_failed" };
+  const dm: DirectMessage = {
+    message_id: newId("dm"), conversation_id: m.conversation_id, from_id: by_id, kind: "text",
+    body: note || "Delivery submitted for review.", attachment: att.attachment,
+    read_by: [by_id], created_at: nowISO(),
+  };
+  msgs().push(dm);
+  c.last_at = dm.created_at;
+  return { message: dm };
+}
+
+/** The hirer approves the delivery (escrow releases to the worker + they earn
+ *  reputation) or disputes it (a neutral, reputation-staked panel decides). Only the
+ *  hirer, only while the delivery is awaiting review. */
+export function resolveHireDelivery(message_id: string, by_id: string, approve: boolean): { message?: DirectMessage; error?: string } {
+  const m = msgs().find((x) => x.message_id === message_id);
+  if (!m || !m.offer || m.offer.offer_kind !== "hire" || m.offer.result_kind !== "job" || !m.offer.result_ref) return { error: "not_found" };
+  const c = convos().find((x) => x.conversation_id === m.conversation_id);
+  if (!c || !c.participant_ids.includes(by_id)) return { error: "not_participant" };
+  const job = Jobs.getJob(m.offer.result_ref);
+  if (!job) return { error: "not_found" };
+  if (job.created_by !== by_id) return { error: "not_hirer" };
+  if (job.status !== "submitted") return { error: "not_reviewable" };
+  const amount = job.reward_amount, asset = job.reward_token ?? "USDC";
+  if (!Jobs.reviewJob(job.job_id, { reviewer_id: by_id, approve, quality_score: 80 })) return { error: "review_failed" };
+  const dm: DirectMessage = {
+    message_id: newId("dm"), conversation_id: m.conversation_id, from_id: by_id, kind: "text",
+    body: approve ? `Delivery approved — ${amount} ${asset} released from escrow.` : "Delivery disputed — sent to a neutral review panel.",
+    read_by: [by_id], created_at: nowISO(),
+  };
+  msgs().push(dm);
+  c.last_at = dm.created_at;
+  return { message: dm };
+}
+
 /** Struck deals + hire-jobs between two parties — the "what we've transacted" recap. */
 export function dealsBetween(a_id: string, b_id: string) {
   const ags = agreements()
@@ -276,6 +358,7 @@ export function thread(conversation_id: string, viewer_id: string) {
     messages: ms.map((m) => ({
       message_id: m.message_id, from_id: m.from_id, mine: m.from_id === viewer_id,
       from_name: resolveParty(m.from_id).name, kind: m.kind, body: m.body, offer: m.offer,
+      job: m.offer?.result_kind === "job" && m.offer.result_ref ? hireJobView(m.offer.result_ref, viewer_id) : undefined,
       attachment: m.attachment, transfer: m.transfer,
       ago: ago(m.created_at), created_at: m.created_at,
     })),

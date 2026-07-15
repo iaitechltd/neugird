@@ -15,8 +15,8 @@ import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import Meter from "@/components/app/Meter";
 import PostCard, { type WirePost } from "@/components/app/PostCard";
 import JobCard from "@/components/app/JobCard";
-import { TProc, TailLog, PanelChart, type LogLine } from "@/components/app/terminal";
-import { Radar, Bars, Ring, Gauge, LabeledBars } from "@/components/app/charts";
+import { TailLog, type LogLine } from "@/components/app/terminal";
+import { ConcentricRings, Bars, Ring, Gauge, LabeledBars } from "@/components/app/charts";
 import OrbPanel from "@/components/app/OrbPanel";
 import type { Agent, Build, Grid, Job } from "@/lib/types";
 
@@ -95,10 +95,14 @@ export default function HomePage() {
   const firstRun = meLoaded && buildsLoaded && agentsLoaded && rep === 0 && builds.length === 0 && agents.length === 0;
   const greeting = !meLoaded ? "Welcome to NeuGrid" : firstRun ? `Welcome to NeuGrid, ${me?.username ?? "builder"}` : `Welcome back, ${me?.username ?? "builder"}`;
   const repMax = Math.max(1, ...Object.values(repDims));
-  // reputation radar — canonical dimensions, normalized to the strongest
+  // reputation cockpit — the strongest dimensions as nested rings, each scaled to the
+  // strongest so the top dimension reads as a FULL ring; green shades (green-only rule)
   const RADAR_DIMS = ["builder", "creator", "backer", "reviewer", "agent", "trader"] as const;
-  const radarVals = RADAR_DIMS.map((d) => Math.round(((repDims[d] ?? 0) / repMax) * 100));
-  // activity bars — positive rep deltas across the recent curve (contribution cadence)
+  const GREEN_SHADES = ["var(--ng-neon)", "rgba(0,255,65,0.7)", "rgba(0,255,65,0.46)", "rgba(0,255,65,0.28)"];
+  const topDims = RADAR_DIMS.map((d) => ({ d, v: repDims[d] ?? 0 })).sort((a, b) => b.v - a.v).slice(0, 4);
+  const topDimNames = topDims.map((x) => x.d);
+  const repRings = topDims.map((x, i) => ({ pct: Math.round((x.v / repMax) * 100), color: GREEN_SHADES[i] }));
+  // activity spark — positive rep deltas across the recent curve (contribution cadence)
   const repSeries = me?.rep_series ?? [];
   const activity = repSeries.length > 1
     ? repSeries.slice(1).map((v, i) => Math.max(0, v - repSeries[i])).slice(-14)
@@ -154,31 +158,36 @@ export default function HomePage() {
         {/* LEFT */}
         <OrbPanel side="left" label="You" open={lOpen} onToggle={setLOpen} widthClass="lg:w-[320px] xl:w-[348px]">
           <Panel scroll title="YOUR GRID" icon={<IconUser className="h-4 w-4" />} action={<IconChevronDown className="h-4 w-4 text-ink-dim" />} bodyClass="p-3.5">
-            {/* profile */}
-            <div className="ng-card p-3.5">
-              <div className="flex items-center gap-3">
-                <MatrixAvatar seed={me?.username ?? "neo"} size={48} shape="square" />
-                <div className="min-w-0">
-                  <div className="truncate text-base font-semibold text-ink">{me?.username ?? "—"}</div>
-                  <Tag className="mt-0.5">Builder</Tag>
+            {/* the You COCKPIT — one bold instrument: your reputation dimensions as nested
+                green rings around the live Pulse, with identity + key stats folded in */}
+            <div className="ng-card p-4">
+              <div className="relative mx-auto" style={{ width: 190, height: 190 }}>
+                <ConcentricRings size={190} rings={repRings} />
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+                  <MatrixAvatar seed={me?.username ?? "neo"} size={28} shape="square" ring={false} />
+                  <div className="ng-stat__v mt-1 !text-[32px] !leading-none text-neon">{meLoaded ? <CountUp key={rep} value={rep} /> : "—"}</div>
+                  <div className="ng-stat__k !text-[9px]">Pulse · soulbound</div>
                 </div>
               </div>
-              <div className="mt-3 grid grid-cols-4 gap-2 text-center">
+              {/* which ring is which dimension */}
+              <div className="mt-2.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[9px] uppercase tracking-wide text-ink-dim">
+                {repRings.map((r, i) => (
+                  <span key={topDimNames[i]} className="inline-flex items-center gap-1"><span className="inline-block h-1.5 w-1.5" style={{ background: r.color }} />{topDimNames[i]}</span>
+                ))}
+              </div>
+              {/* identity + key stats */}
+              <div className="mt-3 flex items-center justify-center gap-2"><span className="text-base font-semibold text-ink">{me?.username ?? "—"}</span><Tag>Builder</Tag></div>
+              <div className="mt-2.5 grid grid-cols-4 gap-2 text-center">
                 {([["Rep", rep, meLoaded], ["Builds", builds.length, buildsLoaded], ["Agents", agents.length, agentsLoaded], ["Grids", myGrids.length, gridsLoaded && meLoaded]] as [string, number, boolean][]).map(([k, v, ok]) => (
                   <div key={k}><div className="ng-stat__v !text-base">{ok ? <CountUp key={v} value={v} /> : <span className="text-ink-faint">—</span>}</div><div className="ng-stat__k">{k}</div></div>
                 ))}
               </div>
-            </div>
-
-            {/* two live charts — the terminal readout (founder: charts on every rail) */}
-            <PanelChart title="Reputation · by dimension" read={`${rep} pulse`}>
-              <div className="flex justify-center py-1.5">
-                <Radar axes={[...RADAR_DIMS]} values={radarVals} size={156} />
+              {/* slim activity spark footer */}
+              <div className="mt-3 border-t border-line pt-2.5">
+                <div className="mb-1 flex items-center justify-between text-[9px]"><span className="ng-tag !text-ink-dim">activity</span><span className="text-ink-faint">{activity.reduce((a, b) => a + b, 0)} pts</span></div>
+                <Bars data={activity.length ? activity : [0]} h={38} />
               </div>
-            </PanelChart>
-            <PanelChart title="Activity · contribution cadence" read={`${activity.reduce((a, b) => a + b, 0)} pts`}>
-              <Bars data={activity.length ? activity : [0]} h={44} />
-            </PanelChart>
+            </div>
 
             <div className="mt-3 grid grid-cols-2 gap-2">
               <Link href="/echo" className="ng-btn ng-btn-primary ng-btn--sm ng-btn--block"><IconBolt className="h-3.5 w-3.5" /> Build</Link>
@@ -186,30 +195,37 @@ export default function HomePage() {
             </div>
             <Link href="/leaderboard" className="ng-btn ng-btn-ghost ng-btn--sm ng-btn--block mt-2"><IconActivity className="h-3.5 w-3.5" /> Discovery — Leaderboard</Link>
 
-            <Section icon={<IconGrid className="h-3.5 w-3.5" />} action={<Link href="/grids/explore" className="text-[11px] text-ink-dim transition hover:text-neon">All</Link>}>Your Grids</Section>
+            <Section icon={<IconGrid className="h-3.5 w-3.5" />} action={<Link href="/grids/explore" className="text-[11px] text-ink-dim transition hover:text-neon">All {myGrids.length}</Link>}>Your Grids</Section>
             {!(gridsLoaded && meLoaded) ? <p className="text-[11px] text-ink-faint">—</p> : myGrids.length ? (
-              <div className="divide-y divide-line">
-                {myGrids.map((g) => (
-                  <Link key={g.grid_id} href={`/grid/${g.slug}`} className="group flex items-center justify-between py-2.5 text-xs text-ink transition hover:text-neon">
-                    <span className="flex items-center gap-2 truncate"><MatrixAvatar seed={g.slug ?? g.name} size={18} shape="square" ring={false} />{g.name}</span>
-                    <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-ink-dim"><Meter value={g.member_count ?? 0} max={Math.max(1, ...myGrids.map((x) => x.member_count ?? 0))} w={34} />{g.member_count}</span>
+              <div className="grid grid-cols-2 gap-2">
+                {[...myGrids].sort((a, b) => (b.pulse_score ?? 0) - (a.pulse_score ?? 0)).slice(0, 6).map((g) => (
+                  <Link key={g.grid_id} href={`/grid/${g.slug}`} className="ng-card group flex flex-col items-center gap-1 p-2.5 text-center transition hover:border-neon/40">
+                    <MatrixAvatar seed={g.slug ?? g.name} size={26} shape="square" ring={false} />
+                    <span className="w-full truncate text-[10px] font-semibold text-ink transition group-hover:text-neon">{g.name}</span>
+                    <div className="ng-stat__v !text-[15px] !leading-none text-neon">{(g.pulse_score ?? 0).toLocaleString()}</div>
+                    <div className="ng-stat__k !text-[8px]">pulse · {(g.member_count ?? 0).toLocaleString()} mbr</div>
                   </Link>
                 ))}
               </div>
             ) : <p className="text-[11px] text-ink-dim">No grids yet — <Link href="/grids/explore" className="text-neon">explore</Link> or start one.</p>}
 
-            <Section icon={<IconBot className="h-3.5 w-3.5" />} action={<Link href="/agents" className="text-[11px] text-ink-dim transition hover:text-neon">Manage</Link>}>Your Agents · ps aux</Section>
+            <Section icon={<IconBot className="h-3.5 w-3.5" />} action={<Link href="/agents" className="text-[11px] text-ink-dim transition hover:text-neon">All {agents.length}</Link>}>Your Agents</Section>
             {!agentsLoaded ? <p className="text-[11px] text-ink-faint">—</p> : agents.length ? (
-              <div className="ng-card px-2.5 py-1.5">
-                {agents.slice(0, 6).map((a) => (
-                  <Link key={a.agent_id} href={`/agents/${a.agent_id}`} className="block">
-                    <TProc
-                      live={a.status === "active"}
-                      name={a.name}
-                      tag={a.trust_tier ?? "native"}
-                      tagColor={a.trust_tier === "trusted" ? "var(--ng-neon)" : "var(--ng-amber)"}
-                      meta={(a.earnings ?? 0).toLocaleString()}
-                    />
+              <div className="ng-card divide-y divide-line px-3">
+                {[...agents].sort((a, b) => (b.earnings ?? 0) - (a.earnings ?? 0)).slice(0, 6).map((a) => (
+                  <Link key={a.agent_id} href={`/agents/${a.agent_id}`} className="group flex items-center gap-2.5 py-2">
+                    <span className="relative shrink-0">
+                      <MatrixAvatar seed={a.name} size={22} shape="square" ring={false} />
+                      <span className={`absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full ${a.status === "active" ? "bg-neon" : "bg-ink-faint"}`} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[10.5px] font-semibold text-ink transition group-hover:text-neon">{a.name}</div>
+                      <div className="text-[8px] uppercase tracking-wide text-ink-faint">{a.trust_tier ?? "native"}</div>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <span className="text-[11px] font-bold text-neon">{(a.earnings ?? 0).toLocaleString()}</span>
+                      <Meter value={a.earnings ?? 0} max={Math.max(1, ...agents.map((x) => x.earnings ?? 0))} w={52} />
+                    </div>
                   </Link>
                 ))}
               </div>

@@ -25,6 +25,8 @@ const DECAY_RATE = 0.03; // fade 3% of the live total per run
 // Ghost deadline is GOVERNABLE (`campaign_ghost_days`, default 3) — a passed
 // set_param proposal changes it for the very next sweep.
 const ghostDeadlineMs = () => Params.get("campaign_ghost_days") * DAY;
+// In-chat hires auto-release after this GOVERNABLE window (`hire_autorelease_days`, default 5).
+const hireDeadlineMs = () => Params.get("hire_autorelease_days") * DAY;
 
 function ageMs(iso?: string): number {
   if (!iso) return Infinity;
@@ -58,17 +60,23 @@ export function decayStale(opts: { force?: boolean; rate?: number } = {}): { dec
   return { decayed, total_removed: removed };
 }
 
-/** A project that ghosts a delivery (never reviews it) past the deadline: its Grid's
- *  employer trust drops, and the worker is paid out (escrow auto-releases). */
+/** A hirer/project that ghosts a delivery (never reviews it) past the deadline: a
+ *  campaign posting's Grid loses employer trust; an in-chat hire has no grid to
+ *  penalise. Either way the worker delivered, so the escrow auto-releases to them —
+ *  the ghost-protection backstop so a silent hirer can't strand a worker's pay. */
 export function sweepGhosted(opts: { force?: boolean } = {}): { ghosted: number; auto_paid: number } {
-  const deadline = ghostDeadlineMs();
-  const stale = db.jobs.filter(
-    (j) => j.context === "campaign_task" && j.status === "submitted" && (opts.force || ageMs(j.proof?.submitted_at) >= deadline),
-  );
+  const campDeadline = ghostDeadlineMs();
+  const hireDeadline = hireDeadlineMs();
+  const stale = db.jobs.filter((j) => {
+    if (j.status !== "submitted") return false;
+    if (j.context === "campaign_task") return opts.force || ageMs(j.proof?.submitted_at) >= campDeadline;
+    if (j.context === "talent_contract") return opts.force || ageMs(j.proof?.submitted_at) >= hireDeadline; // in-chat hires
+    return false;
+  });
   let ghosted = 0;
   let paid = 0;
   for (const job of stale) {
-    if (job.grid_id) {
+    if (job.context === "campaign_task" && job.grid_id) {
       Pulse.recordEvent({
         target_type: "grid",
         target_id: job.grid_id,

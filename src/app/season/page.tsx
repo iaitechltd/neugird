@@ -14,7 +14,7 @@ import { Panel, Bracket, Mark, Tag, IconBolt, IconActivity, IconTarget, IconRock
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import { CountUp } from "@/components/app/typefx";
 import { Rise } from "@/components/app/motionfx";
-import { Bars, Ring } from "@/components/app/charts";
+import { Bars, Ring, Beeswarm } from "@/components/app/charts";
 
 type Racer = { rank: number; id: string; username: string; points: number };
 type SeasonData = {
@@ -130,26 +130,32 @@ export default function SeasonPage() {
           {/* the leaderboard */}
           <div className="ng-label mb-1 mt-2 flex items-center gap-2 !text-ink-dim"><span className="text-neon"><IconTarget className="h-3.5 w-3.5" /></span>The Board · {board.length} racers</div>
           {board.length ? (
-            <div className="space-y-2">
-              {board.map((r) => {
-                const mine = r.id === d?.me;
-                return (
-                  <Rise key={r.id}>
-                  <Link href={`/talent/${r.id}`} className={`ng-card group flex items-center gap-3 p-3 transition hover:!border-neon/50 ${mine ? "!border-neon/50 bg-neon/[0.04]" : ""}`}>
-                    <span className={`ng-stat__v w-10 shrink-0 text-center !text-xl ${r.rank <= 3 ? "text-neon" : "text-ink-dim"}`}>{r.rank}</span>
-                    <MatrixAvatar seed={r.username} size={34} shape="square" />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 truncate text-[13px] font-bold text-ink transition group-hover:text-neon">{r.username}{mine && <Mark plain accent="cyan" className="!text-[8px]">YOU</Mark>}</div>
-                      <div className="mt-1 h-1 w-full overflow-hidden bg-neon/10"><div className="h-full bg-neon" style={{ width: `${Math.round((r.points / maxPts) * 100)}%` }} /></div>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <div className="ng-stat__v !text-lg leading-none text-neon tnum">{r.points.toLocaleString()}</div>
-                      <div className="text-[9px] uppercase tracking-wide text-ink-faint">points</div>
-                    </div>
-                  </Link>
-                  </Rise>
-                );
-              })}
+            <div className="space-y-3">
+              <div className="ng-card p-3">
+                <div className="mb-1 flex items-center justify-between text-[9px] text-ink-faint"><span>the pack · every racer&apos;s points</span><span>← more →</span></div>
+                <Beeswarm data={board.map((r) => ({ value: r.points, color: r.id === d?.me ? "var(--ng-neon)" : "rgba(0,255,65,0.35)" }))} h={64} />
+              </div>
+              <div className="space-y-2">
+                {board.map((r) => {
+                  const mine = r.id === d?.me;
+                  return (
+                    <Rise key={r.id}>
+                    <Link href={`/talent/${r.id}`} className={`ng-card group flex items-center gap-3 p-3 transition hover:!border-neon/50 ${mine ? "!border-neon/50 bg-neon/[0.04]" : ""}`}>
+                      <span className={`ng-stat__v w-10 shrink-0 text-center !text-xl ${r.rank <= 3 ? "text-neon" : "text-ink-dim"}`}>{r.rank}</span>
+                      <MatrixAvatar seed={r.username} size={34} shape="square" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 truncate text-[13px] font-bold text-ink transition group-hover:text-neon">{r.username}{mine && <Mark plain accent="cyan" className="!text-[8px]">YOU</Mark>}</div>
+                        <div className="mt-1 h-1.5 w-full overflow-hidden bg-neon/10"><div className="h-full bg-neon" style={{ width: `${Math.round((r.points / maxPts) * 100)}%` }} /></div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="ng-stat__v !text-lg leading-none text-neon tnum">{r.points.toLocaleString()}</div>
+                        <div className="text-[9px] uppercase tracking-wide text-ink-faint">points</div>
+                      </div>
+                    </Link>
+                    </Rise>
+                  );
+                })}
+              </div>
             </div>
           ) : (
             <p className="text-[12px] text-ink-dim">{loaded ? "No one's on the board yet — be the first. Ship something and your points land here." : "—"}</p>
@@ -165,10 +171,17 @@ export default function SeasonPage() {
               <p className="mt-2"><span className="text-neon">No pay-to-win.</span> You can&#39;t buy rank. Merit is the only ticket.</p>
             </div>
             <div className="ng-label mb-2 mt-5 !text-ink-dim">Top 3 · this season</div>
-            {board.slice(0, 3).map((r) => (
-              <div key={r.id} className="ng-row flex items-center !py-2 text-[12px]"><span className="ng-row__k flex items-center gap-2 text-ink"><span className="text-neon">{r.rank}</span>{r.username}</span><span className="ng-row__v tnum text-neon">{r.points.toLocaleString()}</span></div>
-            ))}
-            {!board.length && <p className="text-[11px] text-ink-faint">The podium is empty — claim it.</p>}
+            {board.length ? (
+              <div className="grid grid-cols-3 gap-2">
+                {board.slice(0, 3).map((r) => (
+                  <Link key={r.id} href={`/talent/${r.id}`} className="ng-card flex flex-col items-center gap-1 p-2.5 text-center transition hover:!border-neon/40">
+                    <Ring percent={Math.round((r.points / Math.max(1, board[0].points)) * 100)} value={`#${r.rank}`} size={44} stroke={4} />
+                    <span className="w-full truncate text-[10px] font-semibold text-ink">{r.username}</span>
+                    <span className="text-[10px] tnum text-neon">{r.points.toLocaleString()}</span>
+                  </Link>
+                ))}
+              </div>
+            ) : <p className="text-[11px] text-ink-faint">The podium is empty — claim it.</p>}
             <Link href="/leaderboard" className="ng-btn ng-btn-ghost ng-btn--sm ng-btn--block mt-4">All-time leaderboard →</Link>
           </Panel>
         </OrbPanel>

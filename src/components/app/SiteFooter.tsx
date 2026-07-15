@@ -135,10 +135,10 @@ export default function SiteFooter() {
             aria-label="Backed by iAI.tech"
             className="group inline-flex shrink-0 items-center gap-2.5"
           >
-            <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-ink-faint">Backed by</span>
+            <span className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-ink-faint">Backed by</span>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/iai-tech-logo.svg" alt="iAI.tech logo" className="h-7 w-7 shrink-0" />
-            <span className="ng-title text-[14px] font-bold tracking-tight text-ink transition-colors group-hover:text-neon">
+            <img src="/iai-tech-logo.png" alt="iAI.tech" className="h-[26px] w-auto shrink-0 translate-y-[0.5px] opacity-90 transition group-hover:opacity-100" />
+            <span className="ng-title text-[15px] font-bold leading-none tracking-tight text-ink transition-colors group-hover:text-neon">
               iAI<span className="text-ink-dim transition-colors group-hover:text-neon">.tech</span>
             </span>
           </a>

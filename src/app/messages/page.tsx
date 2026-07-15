@@ -19,7 +19,8 @@ type Party = { id: string; type: "user" | "agent"; name: string; reputation?: nu
 type Offer = { offer_kind: "deal" | "hire"; amount: number; asset?: string; terms: string; success_metric?: string; status: "pending" | "accepted" | "declined"; result_ref?: string; result_kind?: "job" | "agreement" };
 type Attachment = { name: string; mime: string; size: number; data_uri: string };
 type Transfer = { amount: number; asset: string; settlement_id: string; status: string };
-type Msg = { message_id: string; from_id: string; mine: boolean; from_name: string; kind: "text" | "deal" | "hire" | "transfer"; body: string; offer?: Offer; attachment?: Attachment; transfer?: Transfer; ago: string };
+type HireJob = { job_id: string; status: string; amount: number; asset: string; escrow_locked: boolean; is_worker: boolean; is_hirer: boolean; delivery_note?: string; submitted_at?: string; auto_release_at?: string; dispute_deadline?: string };
+type Msg = { message_id: string; from_id: string; mine: boolean; from_name: string; kind: "text" | "deal" | "hire" | "transfer"; body: string; offer?: Offer; job?: HireJob | null; attachment?: Attachment; transfer?: Transfer; ago: string };
 type Ctx = { label: string; href?: string } | null;
 type DealRow = { id: string; kind: "deal" | "hire"; amount: number; asset?: string; terms: string; status: string };
 type Convo = { conversation_id: string; counterparty: Party; context: Ctx; last_text: string; last_ago: string; unread: number; pending_offer: boolean };
@@ -27,6 +28,14 @@ type Thread = { conversation_id: string; counterparty: Party; context: Ctx; deal
 type DirEntry = { id: string; name: string; type: "user" | "agent" };
 
 const money = (n: number, asset?: string) => `${n.toLocaleString()}${asset ? ` ${asset}` : ""}`;
+/** "in 4d" / "in 6h" / "soon" — client-only (thread loads after mount, so no hydration issue). */
+const relTime = (iso?: string) => {
+  if (!iso) return "";
+  const ms = Date.parse(iso) - Date.now();
+  if (ms <= 0) return "soon";
+  const d = Math.floor(ms / 86_400_000), h = Math.floor((ms % 86_400_000) / 3_600_000);
+  return d > 0 ? `in ${d}d` : h > 0 ? `in ${h}h` : "soon";
+};
 
 export default function MessagesPage() {
   const [convos, setConvos] = useState<Convo[]>([]);
@@ -41,6 +50,8 @@ export default function MessagesPage() {
   const [busy, setBusy] = useState(false);
   const [attach, setAttach] = useState<Attachment | null>(null);
   const [attachErr, setAttachErr] = useState<string | null>(null);
+  const [deliverFor, setDeliverFor] = useState<string | null>(null); // message_id whose delivery composer is open
+  const [deliverNote, setDeliverNote] = useState<Record<string, string>>({});
   const fileRef = useRef<HTMLInputElement>(null);
   const [composing, setComposing] = useState(false);
   const [newTo, setNewTo] = useState("");
@@ -128,6 +139,23 @@ export default function MessagesPage() {
   async function resolveOffer(message_id: string, accept: boolean) {
     if (!activeId) return;
     const r = await fetch(`/api/messages/${activeId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "resolve", message_id, accept }) }).then((x) => x.json()).catch(() => null);
+    if (r?.conversation_id) { setThread(r); loadConvos(); }
+  }
+  // in-chat hire lifecycle — the worker submits the delivery; the hirer approves (escrow
+  // releases) or disputes. All settle the escrowed Job behind the offer card.
+  async function deliverWork(message_id: string) {
+    if (!activeId || busy) return;
+    setBusy(true);
+    const note = (deliverNote[message_id] ?? "").trim();
+    const r = await fetch(`/api/messages/${activeId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "deliver", message_id, note }) }).then((x) => x.json()).catch(() => null);
+    setBusy(false);
+    if (r?.conversation_id) { setThread(r); setDeliverFor(null); setDeliverNote((d) => ({ ...d, [message_id]: "" })); loadConvos(); }
+  }
+  async function reviewWork(message_id: string, approve: boolean) {
+    if (!activeId || busy) return;
+    setBusy(true);
+    const r = await fetch(`/api/messages/${activeId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: approve ? "approve" : "dispute", message_id }) }).then((x) => x.json()).catch(() => null);
+    setBusy(false);
     if (r?.conversation_id) { setThread(r); loadConvos(); }
   }
   async function startConversation() {
@@ -244,7 +272,52 @@ export default function MessagesPage() {
                             </div>
                           )}
                           {m.offer.status === "pending" && m.mine && <p className="mt-2 text-center text-[10px] text-ink-faint">Awaiting their response…</p>}
-                          {m.offer.status === "accepted" && m.offer.result_kind === "job" && <Link href="/jobs" className="mt-2 flex items-center justify-center gap-1 rounded border border-neon/25 bg-neon/[0.06] py-1.5 text-[10px] text-neon transition hover:bg-neon/10"><IconCheck className="h-3 w-3" /> Escrowed job created → Job board</Link>}
+                          {m.offer.status === "accepted" && m.offer.result_kind === "job" && (m.job ? (
+                            <div className="mt-2 rounded border border-neon/20 bg-black/40 p-2">
+                              <div className="flex items-center justify-between text-[10px]">
+                                <span className="flex items-center gap-1 text-ink-dim"><IconCoins className="h-3 w-3" /> Escrow {m.job.status === "paid" ? "released" : m.job.escrow_locked ? "locked" : "—"} · {money(m.job.amount, m.job.asset)}</span>
+                                <Mark plain accent={m.job.status === "paid" ? "neon" : m.job.status === "rejected" ? "danger" : m.job.status === "submitted" ? "cyan" : "amber"} className="!text-[8px]">{m.job.status === "paid" ? "released" : m.job.status === "submitted" ? "delivered" : m.job.status === "rejected" ? "disputed" : "in progress"}</Mark>
+                              </div>
+
+                              {/* worker: submit the delivery */}
+                              {m.job.is_worker && ["assigned", "in_progress", "rejected"].includes(m.job.status) && (deliverFor === m.message_id ? (
+                                <div className="mt-2 space-y-1.5">
+                                  <textarea value={deliverNote[m.message_id] ?? ""} onChange={(e) => setDeliverNote((d) => ({ ...d, [m.message_id]: e.target.value }))} rows={2} placeholder="Delivery note / link to the work…" className="ng-input w-full !py-1.5 text-[11px]" />
+                                  <div className="flex gap-1.5">
+                                    <button disabled={busy} onClick={() => deliverWork(m.message_id)} className="ng-btn ng-btn-primary ng-btn--sm ng-btn--block"><IconCheck className="h-3.5 w-3.5" /> Submit delivery</button>
+                                    <button onClick={() => setDeliverFor(null)} className="ng-btn ng-btn--sm">Cancel</button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button onClick={() => setDeliverFor(m.message_id)} className="ng-btn ng-btn-primary ng-btn--sm ng-btn--block mt-2"><IconArrowRight className="h-3.5 w-3.5" /> Submit delivery</button>
+                              ))}
+
+                              {/* hirer: waiting for delivery */}
+                              {m.job.is_hirer && ["assigned", "in_progress"].includes(m.job.status) && <p className="mt-1.5 text-[10px] text-ink-faint">{m.job.escrow_locked ? "Funds locked — " : ""}waiting for {cp?.name ?? "them"} to deliver.</p>}
+
+                              {/* hirer: review the delivery */}
+                              {m.job.is_hirer && m.job.status === "submitted" && (
+                                <div className="mt-2 space-y-1.5">
+                                  <div className="flex gap-1.5">
+                                    <button disabled={busy} onClick={() => reviewWork(m.message_id, true)} className="ng-btn ng-btn-primary ng-btn--sm ng-btn--block"><IconCheck className="h-3.5 w-3.5" /> Approve &amp; release</button>
+                                    <button disabled={busy} onClick={() => reviewWork(m.message_id, false)} className="ng-btn ng-btn-danger ng-btn--sm ng-btn--block"><IconClose className="h-3.5 w-3.5" /> Dispute</button>
+                                  </div>
+                                  {m.job.auto_release_at && <p className="text-center text-[9px] text-ink-faint">Auto-releases {relTime(m.job.auto_release_at)} if not reviewed</p>}
+                                </div>
+                              )}
+
+                              {/* worker: awaiting the hirer's review */}
+                              {m.job.is_worker && m.job.status === "submitted" && <p className="mt-1.5 text-[10px] text-ink-faint">Delivered — awaiting approval{m.job.auto_release_at ? ` · auto-releases ${relTime(m.job.auto_release_at)}` : ""}.</p>}
+
+                              {/* settled / disputed */}
+                              {m.job.status === "paid" && <p className="mt-1.5 flex items-center gap-1 text-[10px] text-neon"><IconCheck className="h-3 w-3" /> {money(m.job.amount, m.job.asset)} released to the worker.</p>}
+                              {m.job.status === "rejected" && <p className="mt-1.5 text-[10px] text-amber">Disputed — a neutral review panel will decide.</p>}
+
+                              <Link href="/jobs" className="mt-1.5 block text-right text-[9px] text-ink-faint underline-offset-2 transition hover:text-neon">View on Job board →</Link>
+                            </div>
+                          ) : (
+                            <Link href="/jobs" className="mt-2 flex items-center justify-center gap-1 rounded border border-neon/25 bg-neon/[0.06] py-1.5 text-[10px] text-neon transition hover:bg-neon/10"><IconCheck className="h-3 w-3" /> Escrowed job created → Job board</Link>
+                          ))}
                           {m.offer.status === "accepted" && m.offer.result_kind === "agreement" && <div className="mt-2 flex items-center justify-center gap-1 rounded border border-neon/25 bg-neon/[0.06] py-1.5 text-[10px] text-neon"><IconCheck className="h-3 w-3" /> Agreement struck — on both sides&apos; record</div>}
                           <div className="mt-1 text-right text-[9px] text-ink-faint">{m.ago}</div>
                         </div>

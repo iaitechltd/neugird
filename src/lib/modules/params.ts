@@ -11,7 +11,7 @@
 
 import { db } from "../store";
 
-export type ParamKey = "tradex_fee_bps" | "echo_build_cost_grid" | "grid_market_fee_bps" | "gov_quorum_grid" | "grid_fee_discount_bps" | "campaign_ghost_days" | "echo_revision_cost_grid" | "echo_ask_cost_grid" | "echo_deploy_cost_grid" | "fraud_flag_quorum" | "agent_perf_fee_bps" | "genesis_raise_days" | "genesis_stall_days" | "gridx_fee_bps" | "affiliate_fee_share_bps" | "backer_allocation_bps" | "starter_credit_grid" | "dispute_quorum" | "dispute_window_days" | "skill_market_fee_bps" | "starter_gate_tier" | "rewards_gate_tier" | "max_trade_impact_bps" | "perp_oi_cap_bps" | "buyback_bps" | "season_days" | "venture_cycle_cost_grid" | "venture_revenue_share_bps" | "trade_reward_bps" | "post_reward_pulse" | "emission_epoch_days" | "emission_epoch_bps" | "gov_quorum_bps";
+export type ParamKey = "tradex_fee_bps" | "echo_build_cost_grid" | "grid_market_fee_bps" | "gov_quorum_grid" | "grid_fee_discount_bps" | "campaign_ghost_days" | "hire_autorelease_days" | "echo_revision_cost_grid" | "echo_ask_cost_grid" | "echo_deploy_cost_grid" | "fraud_flag_quorum" | "agent_perf_fee_bps" | "genesis_raise_days" | "genesis_stall_days" | "gridx_fee_bps" | "affiliate_fee_share_bps" | "backer_allocation_bps" | "starter_credit_grid" | "dispute_quorum" | "dispute_window_days" | "skill_market_fee_bps" | "starter_gate_tier" | "rewards_gate_tier" | "max_trade_impact_bps" | "perp_oi_cap_bps" | "buyback_bps" | "season_days" | "venture_cycle_cost_grid" | "venture_revenue_share_bps" | "trade_reward_bps" | "post_reward_pulse" | "emission_epoch_days" | "emission_epoch_bps" | "gov_quorum_bps";
 
 export type ParamUnit = "bps" | "grid" | "days" | "count";
 
@@ -22,6 +22,7 @@ export const DEFAULTS: Record<ParamKey, number> = {
   gov_quorum_grid: 50_000, // absolute FLOOR for the FOR-GRID quorum (the effective quorum SCALES with circulating GRID — see gov_quorum_bps)
   grid_fee_discount_bps: 2500, // discount for paying protocol fees in GRID (25% off)
   campaign_ghost_days: 3, // a submitted campaign delivery unreviewed this long = ghosted
+  hire_autorelease_days: 5, // an in-chat hire delivery unreviewed this long auto-releases escrow to the worker
   echo_revision_cost_grid: 100, // GRID metered per Echo build REVISION (the iterate loop)
   echo_ask_cost_grid: 5, // GRID metered per Echo Personal/Analyst/Observer question
   echo_deploy_cost_grid: 50, // GRID metered per deploy to NeuGrid hosting (/d/<slug>)
@@ -59,6 +60,7 @@ export const META: Record<ParamKey, { label: string; unit: ParamUnit; min: numbe
   gov_quorum_grid: { label: "Governance quorum floor", unit: "grid", min: 1_000, max: 100_000_000 },
   grid_fee_discount_bps: { label: "GRID fee discount", unit: "bps", min: 0, max: 5_000 }, // ≤50% off
   campaign_ghost_days: { label: "Campaign ghost deadline", unit: "days", min: 1, max: 30 },
+  hire_autorelease_days: { label: "Hire auto-release window", unit: "days", min: 1, max: 30 },
   echo_revision_cost_grid: { label: "Echo revision cost", unit: "grid", min: 0, max: 5_000 },
   echo_ask_cost_grid: { label: "Echo question cost", unit: "grid", min: 0, max: 500 },
   echo_deploy_cost_grid: { label: "Echo deploy cost", unit: "grid", min: 0, max: 5_000 },

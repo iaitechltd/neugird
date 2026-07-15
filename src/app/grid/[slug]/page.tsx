@@ -14,7 +14,7 @@ import { useParams, useRouter } from "next/navigation";
 import NeuHeader from "@/components/app/NeuHeader";
 import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, DataRow, Mark, Tag, ProgressBar, IconActivity, IconNetwork, IconLayers, IconUser, IconBot, IconPlus, IconExternal, IconFlag, IconCheck, IconMessage, IconBriefcase, IconTarget, IconLock, IconCoins } from "@/components/app/ui";
-import { Area, LabeledBars, Donut, Bars } from "@/components/app/charts";
+import { Area, LabeledBars, Donut, Bars, Scatter } from "@/components/app/charts";
 import { Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar, MatrixCover } from "@/components/app/MatrixAvatar";
 import PostComposer from "@/components/app/PostComposer";
@@ -283,12 +283,28 @@ export default function GridDetailPage() {
                       <IconBriefcase className="h-3.5 w-3.5" />
                       {employer.tier === "trusted_employer" ? "Trusted employer" : employer.tier === "reliable" ? "Reliable employer" : employer.tier === "ghost_risk" ? "Ghost risk" : "Unrated employer"}
                     </div>
-                    <div className="mt-2 divide-y divide-line">
-                      <DataRow k="Promo jobs posted" v={employer.postings} />
-                      <DataRow k="Paid on delivery" v={employer.paid} accent="neon" />
-                      {employer.ghosted > 0 && <DataRow k="Ghosted deliveries" v={employer.ghosted} accent="danger" />}
-                      {employer.rejected > 0 && <DataRow k="Rejected" v={employer.rejected} />}
-                      {employer.in_flight > 0 && <DataRow k="Hiring now" v={employer.in_flight} accent="cyan" />}
+                    <div className="mt-2">
+                      {(() => {
+                        const segs = [
+                          { label: "paid", v: employer.paid, c: "var(--ng-neon)" },
+                          { label: "hiring", v: employer.in_flight, c: "var(--ng-cyan)" },
+                          { label: "rejected", v: employer.rejected, c: "rgba(0,255,65,0.28)" },
+                          { label: "ghosted", v: employer.ghosted, c: "var(--ng-danger)" },
+                        ].filter((s) => s.v > 0);
+                        const total = segs.reduce((s, x) => s + x.v, 0) || 1;
+                        return (
+                          <>
+                            <div className="flex h-3.5 overflow-hidden border border-line">
+                              {segs.map((s) => <span key={s.label} style={{ width: `${(s.v / total) * 100}%`, background: s.c }} title={`${s.label}: ${s.v}`} />)}
+                              {segs.length === 0 && <span className="w-full bg-neon/8" />}
+                            </div>
+                            <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-ink-dim">
+                              <span className="text-ink-faint">{employer.postings} posted</span>
+                              {segs.map((s) => <span key={s.label} className="inline-flex items-center gap-1"><span className="inline-block h-1.5 w-1.5" style={{ background: s.c }} />{s.label} {s.v}</span>)}
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                     <p className="mt-1.5 text-[10px] leading-relaxed text-ink-faint">Earned by paying workers on delivery — fades if the Grid ghosts a delivery.</p>
                   </>
@@ -446,13 +462,16 @@ export default function GridDetailPage() {
                     {summary.recent_pulse.length === 0 ? (
                       <p className="text-xs text-ink-dim">No Pulse activity in this Grid yet.</p>
                     ) : (
-                      <div className="space-y-2.5">
-                        {summary.recent_pulse.map((e) => (
-                          <div key={e.event_id} className="flex items-start justify-between gap-3">
-                            <span className="text-xs text-ink-dim">{e.reason}</span>
-                            <Mark plain accent="cyan" className="shrink-0 text-[11px]">+{e.weight}</Mark>
+                      <div className="space-y-2">
+                        {(() => { const maxW = Math.max(1, ...summary.recent_pulse.map((e) => e.weight)); return summary.recent_pulse.map((e) => (
+                          <div key={e.event_id}>
+                            <div className="flex items-start justify-between gap-3">
+                              <span className="text-xs text-ink-dim">{e.reason}</span>
+                              <Mark plain accent="cyan" className="shrink-0 text-[11px]">+{e.weight}</Mark>
+                            </div>
+                            <div className="mt-1 h-1 overflow-hidden bg-neon/10"><span className="block h-full bg-neon/50" style={{ width: `${Math.max(3, (e.weight / maxW) * 100)}%` }} /></div>
                           </div>
-                        ))}
+                        )); })()}
                       </div>
                     )}
                   </Panel>
@@ -641,13 +660,19 @@ export default function GridDetailPage() {
                     </Panel>
                     <Panel title="AGENT PERFORMANCE" icon={<IconBot className="h-4 w-4" />} bodyClass="p-3.5">
                       {analytics.agent_performance.length === 0 ? <p className="text-xs text-ink-dim">No agents on this Grid yet.</p> : (
-                        <div className="divide-y divide-line">
-                          {analytics.agent_performance.map((a) => (
-                            <Link key={a.agent_id} href={`/agents/${a.agent_id}`} className="flex items-center justify-between py-2 text-[11px]">
-                              <span className="flex items-center gap-1.5 text-neon"><IconBot className="h-3 w-3" />{a.name}</span>
-                              <span className="flex items-center gap-2 text-ink-dim"><span>★ {a.rating.toFixed(1)}</span><span>·</span><span>{a.jobs} jobs</span><Mark plain className="!text-[10px]">{a.earnings.toLocaleString()}</Mark></span>
-                            </Link>
-                          ))}
+                        <div className="space-y-3">
+                          <div>
+                            <div className="mb-1 flex items-center justify-between text-[9px] text-ink-faint"><span>↑ earnings · ● jobs</span><span>rating →</span></div>
+                            <Scatter data={analytics.agent_performance.map((a) => ({ x: a.rating, y: a.earnings, size: a.jobs }))} h={96} />
+                          </div>
+                          <div className="divide-y divide-line">
+                            {analytics.agent_performance.map((a) => (
+                              <Link key={a.agent_id} href={`/agents/${a.agent_id}`} className="flex items-center justify-between py-2 text-[11px]">
+                                <span className="flex items-center gap-1.5 text-neon"><IconBot className="h-3 w-3" />{a.name}</span>
+                                <span className="flex items-center gap-2 text-ink-dim"><span>★ {a.rating.toFixed(1)}</span><span>·</span><span>{a.jobs} jobs</span><Mark plain className="!text-[10px]">{a.earnings.toLocaleString()}</Mark></span>
+                              </Link>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </Panel>
@@ -710,13 +735,16 @@ export default function GridDetailPage() {
             {members.length === 0 ? (
               <p className="text-[11px] text-ink-dim">No members yet — be the first to join.</p>
             ) : (
-              <div className="space-y-1.5">
-                {members.slice(0, 12).map((mem) => (
-                  <Link key={mem.id} href={`/talent/${mem.id}`} className="flex items-center justify-between gap-2 text-[11px] transition hover:text-neon">
-                    <span className="flex min-w-0 items-center gap-1.5"><MatrixAvatar seed={mem.username} size={20} /><span className="truncate">{mem.username}</span></span>
-                    <Mark plain accent={mem.is_owner ? "neon" : ROLE_ACCENT[mem.role]} className="!text-[9px]">{mem.is_owner ? "founder" : mem.role}</Mark>
+              <div className="space-y-2">
+                {(() => { const maxRep = Math.max(1, ...members.map((m) => m.reputation)); return members.slice(0, 12).map((mem) => (
+                  <Link key={mem.id} href={`/talent/${mem.id}`} className="block transition hover:text-neon">
+                    <div className="flex items-center justify-between gap-2 text-[11px]">
+                      <span className="flex min-w-0 items-center gap-1.5"><MatrixAvatar seed={mem.username} size={20} /><span className="truncate">{mem.username}</span></span>
+                      <Mark plain accent={mem.is_owner ? "neon" : ROLE_ACCENT[mem.role]} className="!text-[9px]">{mem.is_owner ? "founder" : mem.role}</Mark>
+                    </div>
+                    <div className="ml-[26px] mt-1 flex items-center gap-1.5"><span className="h-1 flex-1 overflow-hidden bg-neon/10"><span className="block h-full bg-neon/50" style={{ width: `${Math.max(3, (mem.reputation / maxRep) * 100)}%` }} /></span><span className="w-10 shrink-0 text-right text-[8px] text-ink-faint">{mem.reputation.toLocaleString()}</span></div>
                   </Link>
-                ))}
+                )); })()}
                 {members.length > 12 && <button onClick={() => setTab("members")} className="mt-1 text-[10px] text-ink-faint transition hover:text-neon">+{members.length - 12} more →</button>}
               </div>
             )}

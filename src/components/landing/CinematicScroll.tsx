@@ -109,6 +109,8 @@ export default function CinematicScroll() {
   const scaleRefs = useRef<(HTMLDivElement | null)[]>([]);   // inner layer → transform (push-in)
   const textRefs = useRef<(HTMLDivElement | null)[]>([]);    // copy block → opacity + translateY
   const lineRefs = useRef<(HTMLSpanElement | null)[][]>([]); // per scene → per headline line (reveal target)
+  const subRefs = useRef<(HTMLSpanElement | null)[]>([]);    // per scene → subtitle reveal target (types in)
+  const ctaRef = useRef<HTMLDivElement | null>(null);        // finale CTA (a third, latest beat)
   const videoRefs = useRef<(HTMLVideoElement | null)[][]>([]); // per scene → [copy A, copy B]
   const frontRef = useRef<number[]>([]);                     // per scene → which copy is showing (0|1)
   const tickRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -153,19 +155,40 @@ export default function CinematicScroll() {
     }
   };
 
-  // hero (scene 0) types in on load; rAF drives it live, a timeout guarantees full.
+  // the subtitle types in exactly like the headline — chars revealed by scroll with
+  // a thin cursor on the frontier. It's one wrapped paragraph, so the revealed text
+  // sits over an invisible full-text copy: the layout is reserved up front and the
+  // words just fill in, no reflow.
+  const renderSubtitle = (i: number, frac: number) => {
+    const el = subRefs.current[i];
+    if (!el) return;
+    const text = SCENES[i].subtitle;
+    const revealed = Math.round(clamp01(frac) * text.length);
+    el.textContent = text.slice(0, revealed);
+    if (frac > 0 && frac < 1) {
+      const cur = document.createElement("span");
+      cur.className = "ng-tcursor";
+      el.appendChild(cur);
+    }
+  };
+
+  // hero (scene 0) reveals on load in two beats: the title types itself in, then
+  // the subtitle types a moment later — the same title-then-subtitle staging the
+  // scrolled scenes use. rAF drives it live; a timeout guarantees the final state
+  // (the preview tab throttles rAF, so that safety write is what shows there).
   useEffect(() => {
     if (reduce) return;
     let raf = 0;
-    const startTs = typeof performance !== "undefined" ? performance.now() : 0;
-    const DUR = 1200;
+    const t0 = typeof performance !== "undefined" ? performance.now() : 0;
+    const TITLE = 1100, SUB_DELAY = 850, SUB = 1600;
     const tick = () => {
-      const f = clamp01((performance.now() - startTs) / DUR);
-      renderHeadline(0, f);
-      if (f < 1) raf = requestAnimationFrame(tick);
+      const now = performance.now();
+      renderHeadline(0, clamp01((now - t0) / TITLE));
+      renderSubtitle(0, clamp01((now - t0 - SUB_DELAY) / SUB));
+      if (now - t0 < SUB_DELAY + SUB) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    const safety = window.setTimeout(() => { cancelAnimationFrame(raf); renderHeadline(0, 1); }, 1500);
+    const safety = window.setTimeout(() => { cancelAnimationFrame(raf); renderHeadline(0, 1); renderSubtitle(0, 1); }, SUB_DELAY + SUB + 500);
     return () => { cancelAnimationFrame(raf); window.clearTimeout(safety); };
   }, [reduce]);
 
@@ -181,8 +204,9 @@ export default function CinematicScroll() {
       const p = clamp01((window.scrollY - top) / px);
 
       for (let i = 0; i < total; i++) {
-        const start = i / total, end = (i + 1) / total, fade = seg * 0.34, mid = (start + end) / 2;
+        const start = i / total, end = (i + 1) / total, fade = seg * 0.34;
         const isFirst = i === 0, isLast = i === total - 1;
+        const u = clamp01((p - start) / seg); // local progress within this scene (0→1)
 
         let bo: number;
         if (isFirst) bo = 1 - clamp01((p - (end - fade)) / (2 * fade));
@@ -192,25 +216,36 @@ export default function CinematicScroll() {
         const s0 = Math.max(0, start - seg), s1 = Math.min(1, end + seg);
         const sc = lerp(1.05, 1.19, clamp01((p - s0) / (s1 - s0)));
 
-        const inA = start + seg * 0.02, inB = start + seg * 0.09;
-        const outA = end - seg * 0.30, outB = end - seg * 0.14;
+        // container envelope: the whole copy block fades in as the scene arrives
+        // and out as it leaves, with a WIDE hold in between so it stays readable.
         let to: number;
-        if (isFirst) to = 1 - clamp01((p - outA) / (outB - outA));
-        else if (isLast) to = clamp01((p - inA) / (inB - inA));
-        else to = Math.min(clamp01((p - inA) / (inB - inA)), 1 - clamp01((p - outA) / (outB - outA)));
-
-        let ty: number;
-        if (isFirst) ty = lerp(0, -30, clamp01((p - mid) / (outB - mid)));
-        else if (isLast) ty = lerp(30, 0, clamp01((p - inA) / (mid - inA)));
-        else ty = p < mid ? lerp(30, 0, clamp01((p - inA) / (mid - inA))) : lerp(0, -30, clamp01((p - mid) / (outB - mid)));
+        if (isFirst) to = 1 - clamp01((u - 0.74) / 0.20);        // hero: only fades out on the way past
+        else if (isLast) to = clamp01((u - 0.04) / 0.11);        // finale: fades in, then stays
+        else to = Math.min(clamp01((u - 0.04) / 0.11), 1 - clamp01((u - 0.86) / 0.12));
+        const ty = lerp(20, -14, u);                             // gentle parallax rise across the scene
 
         const bg = bgRefs.current[i]; if (bg) bg.style.opacity = String(bo);
         const scl = scaleRefs.current[i]; if (scl) scl.style.transform = `scale(${sc.toFixed(4)})`;
         const txt = textRefs.current[i]; if (txt) { txt.style.opacity = String(to); txt.style.transform = `translateY(${ty.toFixed(1)}px)`; }
 
+        // BEAT 1 — the title types itself in first, early in the scene, spread over
+        // a good stretch of scroll so you watch it appear (the hero types on load).
+        if (i >= 1) renderHeadline(i, clamp01((u - 0.06) / 0.30));
+
+        // BEAT 2 — the subtitle TYPES itself in the same way, a beat after the title
+        // finishes: scroll → watch the title type → scroll a little more → the subtitle
+        // types in too, over a good stretch of scroll (not a sudden block of text). The
+        // hero types on load.
         if (i >= 1) {
-          const ts = start + seg * 0.09, te = start + seg * 0.42;
-          renderHeadline(i, clamp01((p - ts) / (te - ts)));
+          const ss = isLast ? 0.28 : 0.40, se = isLast ? 0.62 : 0.76;
+          renderSubtitle(i, clamp01((u - ss) / (se - ss)));
+        }
+
+        // BEAT 3 — the finale CTA settles in last, after the subtitle.
+        if (isLast && ctaRef.current) {
+          const c = clamp01((u - 0.52) / 0.16);
+          ctaRef.current.style.opacity = String(c);
+          ctaRef.current.style.transform = `translateY(${lerp(12, 0, c).toFixed(1)}px)`;
         }
       }
 
@@ -252,7 +287,7 @@ export default function CinematicScroll() {
   if (reduce) return <StackedFallback />;
 
   return (
-    <div ref={containerRef} style={{ height: `${total * 100 + 20}vh` }} className="relative">
+    <div ref={containerRef} style={{ height: `${total * 140 + 20}vh` }} className="relative">
       <div className="sticky top-0 h-screen w-full overflow-hidden bg-black">
         {/* frames (z-0) — two stacked video copies per scene for the seamless loop */}
         {SCENES.map((s, i) => (
@@ -288,9 +323,12 @@ export default function CinematicScroll() {
                   </span>
                 ))}
               </h1>
-              <p className="mt-6 max-w-3xl text-[13.5px] leading-relaxed text-ink-dim sm:text-[15px]">{s.subtitle}</p>
+              <p className="relative mt-6 max-w-3xl text-[13.5px] leading-relaxed text-ink-dim sm:text-[15px]">
+                <span aria-hidden className="invisible">{s.subtitle}</span>
+                <span ref={(el) => { subRefs.current[i] = el; }} className="absolute inset-0 left-0 top-0" />
+              </p>
               {s.cta && (
-                <div className="pointer-events-auto mt-9 flex flex-wrap items-center gap-3">
+                <div ref={ctaRef} style={{ opacity: 0 }} className="pointer-events-auto mt-9 flex flex-wrap items-center gap-3">
                   <Link href="/home" className="ng-btn ng-btn-primary">Start building <IconArrowRight className="h-4 w-4" /></Link>
                   <Link href="/markets" className="ng-btn ng-btn-ghost">See the markets</Link>
                 </div>

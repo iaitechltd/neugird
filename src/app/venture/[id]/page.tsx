@@ -249,9 +249,13 @@ export default function VentureCockpit() {
                       <div className="flex items-center gap-2.5">
                         <span className={`text-[12px] ${done ? "text-neon" : "text-cyan"}`}>{done ? "✓" : "▸"}</span>
                         <div className="min-w-0 flex-1 truncate text-[12px] text-ink">{o.text}</div>
-                        <span className="text-[8.5px] uppercase tracking-wide text-ink-faint">{done && total ? `${doneN}/${total}` : o.status}</span>
+                        <span className="text-[8.5px] uppercase tracking-wide text-ink-faint">{total > 0 ? `${doneN}/${total}` : o.status}</span>
                       </div>
-                      <div className="mt-1.5 ml-5 h-px bg-line"><div className="h-px bg-neon transition-all duration-700 ease-out" style={{ width: `${pct}%` }} /></div>
+                      <div className="mt-1.5 ml-5 flex gap-0.5">
+                        {Array.from({ length: 14 }).map((_, i) => (
+                          <span key={i} className="h-1 flex-1 transition-colors duration-700" style={{ background: i < Math.round((pct / 100) * 14) ? "var(--ng-neon)" : "rgba(0,255,65,0.12)" }} />
+                        ))}
+                      </div>
                     </div>
                   );
                 })}

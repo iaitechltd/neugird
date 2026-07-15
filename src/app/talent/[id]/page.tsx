@@ -15,12 +15,12 @@ import NeuHeader from "@/components/app/NeuHeader";
 import OrbPanel from "@/components/app/OrbPanel";
 import {
   Mark, Tag, Bracket, ProgressBar, DataRow,
-  IconUser, IconStar, IconShield, IconCode, IconBriefcase, IconCoins, IconBot, IconArrowRight, IconCheck, IconActivity, IconLayers, IconRocket, IconMessage,
+  IconUser, IconShield, IconCode, IconBriefcase, IconCoins, IconBot, IconArrowRight, IconCheck, IconActivity, IconLayers, IconRocket, IconMessage,
 } from "@/components/app/ui";
 import { Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar, MatrixCover } from "@/components/app/MatrixAvatar";
 import { PanelChart } from "@/components/app/terminal";
-import { Radar, Waffle, StepArea, Pie, SERIES, VIOLET } from "@/components/app/charts";
+import { Radar, Waffle, StepArea, Pie, LabeledBars, DivergingBars, Ring, SERIES, VIOLET } from "@/components/app/charts";
 
 type Profile = { id: string; username: string; wallet: string; bio: string; skills: string[]; pulse: number; reputation: number; by_dimension: Record<string, number>; grids: number; created_at: string; earned_usdc?: number; follows?: { followers: number; following: number }; is_following?: boolean };
 type JobRow = { job_id: string; title: string; reward: number; status: string; skills: string[] };
@@ -298,19 +298,22 @@ export default function TalentProfile() {
           <section>
             <div className="ng-label mb-3 flex items-center gap-2 !text-base !tracking-normal !text-neon"><IconBriefcase className="h-4 w-4" />Delivered Work</div>
             {tr.jobs.length === 0 ? <p className="text-[11px] text-ink-faint">No jobs on record yet.</p> : (
-              <div className="space-y-2">
-                {tr.jobs.map((j) => (
-                  <div key={j.job_id} className="ng-card flex items-center justify-between gap-3 p-3.5">
-                    <div className="min-w-0">
-                      <div className="truncate text-[13px] text-ink">{j.title}</div>
-                      {j.skills.length > 0 && <div className="mt-0.5 truncate text-[10px] text-ink-dim">{j.skills.join(" · ")}</div>}
+              <div className="space-y-3">
+                <div className="ng-card p-3"><LabeledBars w={320} rowH={15} gap={7} data={[...tr.jobs].sort((a, b) => b.reward - a.reward).slice(0, 8).map((j) => ({ label: j.title, value: j.reward, color: j.status === "paid" || j.status === "verified" ? "var(--ng-neon)" : "rgba(0,255,65,0.38)" }))} /></div>
+                <div className="space-y-2">
+                  {tr.jobs.map((j) => (
+                    <div key={j.job_id} className="ng-card flex items-center justify-between gap-3 p-3.5">
+                      <div className="min-w-0">
+                        <div className="truncate text-[13px] text-ink">{j.title}</div>
+                        {j.skills.length > 0 && <div className="mt-0.5 truncate text-[10px] text-ink-dim">{j.skills.join(" · ")}</div>}
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="text-[13px] font-bold text-neon tnum">{j.reward.toLocaleString()}</div>
+                        <Mark plain accent={J_ACCENT[j.status] ?? "amber"} className="!text-[9px]">{j.status}</Mark>
+                      </div>
                     </div>
-                    <div className="shrink-0 text-right">
-                      <div className="text-[13px] font-bold text-neon tnum">{j.reward.toLocaleString()}</div>
-                      <Mark plain accent={J_ACCENT[j.status] ?? "amber"} className="!text-[9px]">{j.status}</Mark>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             )}
           </section>
@@ -321,12 +324,15 @@ export default function TalentProfile() {
               <div className="ng-label mb-3 flex items-center gap-2 !text-base !tracking-normal !text-neon"><IconCoins className="h-4 w-4" />Raises</div>
               {tr.proposals.length === 0 ? <p className="text-[11px] text-ink-faint">No Fund proposals yet.</p> : (
                 <div className="space-y-2">
-                  {tr.proposals.map((pr) => (
-                    <Link key={pr.proposal_id} href={`/genesis/${pr.proposal_id}`} className="ng-card flex items-center justify-between gap-3 p-3 transition hover:!border-neon/40">
-                      <div className="min-w-0"><div className="truncate text-[12px] text-ink">{pr.title}</div><div className="text-[10px] text-ink-dim">{pr.category}</div></div>
-                      <div className="shrink-0 text-right"><div className="text-[12px] text-neon tnum">{pr.ask.toLocaleString()}</div><Mark plain accent={pr.status === "funded" ? "neon" : "cyan"} className="!text-[9px]">{pr.status}</Mark></div>
+                  {(() => { const maxAsk = Math.max(1, ...tr.proposals.map((x) => x.ask)); return tr.proposals.map((pr) => (
+                    <Link key={pr.proposal_id} href={`/genesis/${pr.proposal_id}`} className="ng-card block p-3 transition hover:!border-neon/40">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0"><div className="truncate text-[12px] text-ink">{pr.title}</div><div className="text-[10px] text-ink-dim">{pr.category}</div></div>
+                        <div className="shrink-0 text-right"><div className="text-[12px] text-neon tnum">{pr.ask.toLocaleString()}</div><Mark plain accent={pr.status === "funded" ? "neon" : "cyan"} className="!text-[9px]">{pr.status}</Mark></div>
+                      </div>
+                      <div className="mt-2 h-1.5 overflow-hidden bg-neon/10"><span className="block h-full" style={{ width: `${Math.max(3, (pr.ask / maxAsk) * 100)}%`, background: pr.status === "funded" ? "var(--ng-neon)" : "rgba(0,255,65,0.4)" }} /></div>
                     </Link>
-                  ))}
+                  )); })()}
                 </div>
               )}
             </section>
@@ -338,7 +344,7 @@ export default function TalentProfile() {
                     <Link key={a.agent_id} href={`/agents/${a.agent_id}`} className="ng-card flex items-center gap-2.5 p-3 transition hover:!border-neon/40">
                       <MatrixAvatar seed={a.name} size={24} />
                       <div className="min-w-0 flex-1"><div className="truncate text-[12px] text-ink">{a.name}</div><div className="truncate text-[10px] text-ink-dim">{a.capabilities.slice(0, 2).join(" · ") || "general"}</div></div>
-                      <span className="flex shrink-0 items-center gap-0.5 text-[10px] text-neon"><IconStar className="h-3 w-3" />{a.rating.toFixed(1)}</span>
+                      <span className="shrink-0"><Ring percent={Math.min(100, (a.rating / 5) * 100)} value={a.rating.toFixed(1)} size={40} stroke={4} /></span>
                     </Link>
                   ))}
                 </div>
@@ -390,7 +396,8 @@ export default function TalentProfile() {
           {(view.rep_events?.length ?? 0) > 0 && (
             <div className="ng-card p-3.5">
               <div className="ng-label mb-2 flex items-center gap-2 !text-ink-dim"><span className="text-neon"><IconActivity className="h-4 w-4" /></span>Recent Movement</div>
-              <div className="divide-y divide-line">
+              <DivergingBars data={view.rep_events!.slice(0, 14).map((e) => e.weight)} h={52} />
+              <div className="mt-2 divide-y divide-line">
                 {view.rep_events!.map((e, i) => (
                   <div key={i} className="flex items-start justify-between gap-2 py-2 first:pt-0 last:pb-0">
                     <div className="min-w-0">

@@ -19,7 +19,7 @@ import {
 import { Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import { PanelChart } from "@/components/app/terminal";
-import { Area, Donut, Dumbbell, Funnel } from "@/components/app/charts";
+import { Area, Donut, Dumbbell, Funnel, Waterfall, StepArea } from "@/components/app/charts";
 import type { Milestone, Proposal } from "@/lib/types";
 
 type Backer = { backer_id: string; name?: string; amount: number; created_at: string };
@@ -191,7 +191,6 @@ export default function ProposalDetail() {
     }
     return [...m.entries()].slice(-14).map(([key, v]) => ({ key, ...v }));
   })();
-  const flowMax = Math.max(1, ...flowDays.map((d) => d.amt));
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
@@ -323,15 +322,8 @@ export default function ProposalDetail() {
                 <span className="ng-label !text-ink-dim">BACKING FLOW · BY DAY</span>
                 <span className="text-ink-faint">{view.backer_list.length} backing{view.backer_list.length === 1 ? "" : "s"} · ${view.raised.toLocaleString()} of ${p.ask_amount.toLocaleString()} escrowed</span>
               </div>
-              <div className="flex items-end gap-4">
-                {flowDays.map((d) => (
-                  <div key={d.key} className="flex w-12 flex-col items-center gap-1" title={`${d.n} backing${d.n === 1 ? "" : "s"} · $${d.amt.toLocaleString()}`}>
-                    <span className="text-[10px] font-bold text-cyan tnum">{fmtUsd(d.amt)}</span>
-                    <div className="w-5 bg-cyan/80" style={{ height: `${Math.max(4, Math.round((d.amt / flowMax) * 46))}px` }} />
-                    <span className="text-[9px] text-ink-faint">{d.key}</span>
-                  </div>
-                ))}
-              </div>
+              <StepArea data={flowDays.map((d) => d.amt)} gid={`flow-${p.proposal_id}`} color="var(--ng-cyan)" w={620} h={72} />
+              <div className="mt-1 flex items-center justify-between text-[9px] text-ink-faint"><span className="tnum">{flowDays[0]?.key}</span><span>{flowDays.length} days · escrowed inflow</span><span className="tnum">{flowDays[flowDays.length - 1]?.key}</span></div>
             </div>
           )}
 
@@ -381,6 +373,12 @@ export default function ProposalDetail() {
           {/* roadmap / milestones — real, with actions when funded */}
           <section>
             <div className="ng-label mb-3 flex items-center gap-2 !text-base !tracking-normal !text-neon"><IconLayers className="h-4 w-4" />{p.status === "funded" ? "Milestone escrow" : "Proposed roadmap"}</div>
+            {p.status !== "funded" && p.roadmap.length > 0 && (
+              <div className="ng-card mb-3 p-3">
+                <div className="mb-1 flex items-center justify-between text-[10px]"><span className="ng-label !text-[10px] !text-ink-dim">Milestone tranches → ask</span><span className="text-ink-faint">{fmtUsd(p.roadmap.reduce((s, m) => s + m.amount, 0))} of {fmtUsd(p.ask_amount)}</span></div>
+                <Waterfall steps={p.roadmap.map((m) => ({ value: m.amount, kind: "delta" as const }))} h={90} />
+              </div>
+            )}
             <div className="space-y-2">
               {p.status === "funded" && view.milestones.length > 0
                 ? view.milestones.map((m, i) => (
@@ -488,12 +486,15 @@ export default function ProposalDetail() {
               ? <p className="text-[11px] text-ink-dim">No backers yet{isOpen && !view.is_author ? " — be the first." : "."}</p>
               : (
                 <div className="space-y-2">
-                  {view.backer_list.map((b, i) => (
-                    <div key={i} className="flex items-center justify-between gap-2">
-                      <span className="flex min-w-0 items-center gap-2"><MatrixAvatar seed={b.name ?? b.backer_id} size={20} shape="circle" /><span className="truncate text-[11px] text-ink-dim">{b.backer_id === view.me.id ? "you" : b.name ?? b.backer_id}</span></span>
-                      <span className="shrink-0 text-[11px] text-neon tnum">${b.amount.toLocaleString()}</span>
+                  {(() => { const maxB = Math.max(1, ...view.backer_list.map((x) => x.amount)); return view.backer_list.map((b, i) => (
+                    <div key={i}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="flex min-w-0 items-center gap-2"><MatrixAvatar seed={b.name ?? b.backer_id} size={20} shape="circle" /><span className="truncate text-[11px] text-ink-dim">{b.backer_id === view.me.id ? "you" : b.name ?? b.backer_id}</span></span>
+                        <span className="shrink-0 text-[11px] text-neon tnum">${b.amount.toLocaleString()}</span>
+                      </div>
+                      <div className="ml-[28px] mt-1 h-1 overflow-hidden bg-neon/10"><span className="block h-full bg-neon/50" style={{ width: `${Math.max(3, (b.amount / maxB) * 100)}%` }} /></div>
                     </div>
-                  ))}
+                  )); })()}
                 </div>
               )}
           </div>

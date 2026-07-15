@@ -21,7 +21,7 @@ import { Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import OrbPanel from "@/components/app/OrbPanel";
 import { PanelChart } from "@/components/app/terminal";
-import { ConcentricRings, LineMulti, Histogram, Bullet, SERIES } from "@/components/app/charts";
+import { ConcentricRings, LineMulti, Histogram, Bullet, LabeledBars, Lollipop, SERIES } from "@/components/app/charts";
 import type { Build, Grid, Product } from "@/lib/types";
 
 type EnrichedProduct = Product & { opens_30d?: number; purchases?: number };
@@ -343,6 +343,12 @@ export default function GridXDetail() {
           {/* VERIFIED REVIEWS */}
           <section>
             <div className="ng-label mb-3 flex items-center gap-2 !text-base !tracking-normal !text-neon"><IconCheck className="h-4 w-4" />Verified reviews {p.review_count ? <Mark plain className="!text-[11px]">{p.rating} · {p.review_count}</Mark> : null}</div>
+            {reviews.length > 0 && (
+              <div className="ng-card mb-3 p-3">
+                <div className="ng-label mb-1.5 !text-[10px] !text-ink-dim">Rating distribution</div>
+                <LabeledBars w={300} rowH={13} gap={7} data={[5, 4, 3, 2, 1].map((star) => ({ label: `${star}★`, value: scores.filter((s) => Math.round(s) === star).length }))} />
+              </div>
+            )}
             {me.can_review && (
               <div className="ng-card mb-3 p-3.5">
                 <div className="flex items-center gap-3">
@@ -385,6 +391,31 @@ export default function GridXDetail() {
           {/* PROOF OF BUILD + PROVENANCE */}
           <section>
             <div className="ng-label mb-3 flex items-center gap-2 !text-base !tracking-normal !text-neon"><IconShield className="h-4 w-4" />Proof of Build &amp; Provenance</div>
+            <div className="ng-card mb-3 p-4">
+              {(() => {
+                const steps = [
+                  { label: "Built · Echo", done: !!(a?.built_with_echo ?? build) },
+                  { label: "Witnessed", done: (build?.steps.length ?? 0) > 0, sub: build ? `${build.steps.length}` : undefined },
+                  { label: "Funded", done: !!build?.proposal_id },
+                  { label: "Reviewed", done: reviews.length > 0, sub: reviews.length ? `${reviews.length}` : undefined },
+                  { label: "Tokenized", done: !!market, sub: market?.stage },
+                ];
+                return (
+                  <div className="flex items-start">
+                    {steps.map((s, i) => (
+                      <div key={s.label} className="flex flex-1 items-start">
+                        <div className="flex flex-1 flex-col items-center gap-1 text-center">
+                          <span className={`grid h-7 w-7 shrink-0 place-items-center border text-[11px] ${s.done ? "border-neon bg-neon/15 text-neon" : "border-line text-ink-faint"}`}>{s.done ? "✓" : i + 1}</span>
+                          <span className={`text-[9px] leading-tight ${s.done ? "text-ink" : "text-ink-faint"}`}>{s.label}</span>
+                          {s.sub && <span className="text-[8px] text-ink-faint">{s.sub}</span>}
+                        </div>
+                        {i < steps.length - 1 && <span className={`mt-3.5 h-px flex-1 ${steps[i + 1].done ? "bg-neon/50" : "bg-line"}`} />}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
             <div className="grid grid-cols-1 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 2 + closed } as React.CSSProperties}>
               <div className="ng-card p-3.5">
                 <div className="ng-label mb-2 !text-ink-dim">Artifact</div>
@@ -411,6 +442,10 @@ export default function GridXDetail() {
             <section>
               <div className="ng-label mb-3 flex items-center gap-2 !text-base !tracking-normal !text-neon"><IconLayers className="h-4 w-4" />Version history</div>
               <div className="ng-card p-3.5">
+                <div className="mb-3 border-b border-line pb-3">
+                  <div className="ng-label mb-1.5 !text-[10px] !text-ink-dim">Files changed · per version</div>
+                  <Lollipop w={300} rowH={14} gap={7} color="var(--ng-neon)" data={revisions.map((r) => ({ label: `v${r.version}`, value: r.files_changed }))} />
+                </div>
                 <div className="divide-y divide-line">
                   {revisions.map((r) => (
                     <div key={r.version} className="py-2.5">

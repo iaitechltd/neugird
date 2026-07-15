@@ -16,7 +16,7 @@ import { useParams } from "next/navigation";
 import NeuHeader from "@/components/app/NeuHeader";
 import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, Stat, Mark, Tag, IconChart, IconActivity, IconBolt, IconCoins, IconArrowRight, IconShield, IconNetwork, IconCheck, IconLock, IconLayers, IconClose, IconUser } from "@/components/app/ui";
-import { Candles, Gauge, Ring, Spark, type Candle } from "@/components/app/charts";
+import { Candles, Gauge, Ring, Spark, Waterfall, Donut, type Candle } from "@/components/app/charts";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import { Decrypt } from "@/components/app/typefx";
 import type { Market } from "@/lib/types";
@@ -661,25 +661,55 @@ export default function MarketTerminal() {
                     </div>
                   ) : <p className="text-xs text-ink-dim">No open orders.</p>)}
 
-                  {activeTab === "Tnx" && (d.trades.length ? (
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between px-1 text-[9px] uppercase tracking-wide text-ink-faint"><span className="w-12">Side</span><span className="flex-1 text-right">Amount</span><span className="flex-1 text-right">USDC</span><span className="flex-1 text-right">Price</span></div>
-                      {d.trades.map((t, i) => <div key={i} className="flex items-center justify-between px-1 text-[11px]"><span className={`w-12 font-semibold ${t.side === "buy" ? "text-neon" : "text-danger"}`}>{t.side.toUpperCase()}</span><span className="flex-1 text-right text-ink-dim">{t.base.toFixed(0)}</span><span className="flex-1 text-right text-ink-dim">${t.quote.toFixed(2)}</span><span className="flex-1 text-right text-ink">${t.price.toFixed(5)}</span></div>)}
-                    </div>
-                  ) : <p className="text-xs text-ink-dim">No trades yet — be the first.</p>)}
+                  {activeTab === "Tnx" && (d.trades.length ? (() => {
+                    const maxQ = Math.max(1, ...d.trades.map((x) => x.quote));
+                    return (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 px-1 text-[9px] uppercase tracking-wide text-ink-faint"><span className="w-11">Side</span><span className="w-16">Volume</span><span className="flex-1 text-right">Amount</span><span className="flex-1 text-right">USDC</span><span className="flex-1 text-right">Price</span></div>
+                        {d.trades.map((t, i) => <div key={i} className="flex items-center gap-2 px-1 text-[11px]"><span className={`w-11 font-semibold ${t.side === "buy" ? "text-neon" : "text-danger"}`}>{t.side.toUpperCase()}</span><span className="h-1.5 w-16 shrink-0 overflow-hidden bg-neon/8"><span className={`block h-full ${t.side === "buy" ? "bg-neon/55" : "bg-danger/55"}`} style={{ width: `${Math.max(3, (t.quote / maxQ) * 100)}%` }} /></span><span className="flex-1 text-right text-ink-dim">{t.base.toFixed(0)}</span><span className="flex-1 text-right text-ink-dim">${t.quote.toFixed(2)}</span><span className="flex-1 text-right text-ink">${t.price.toFixed(5)}</span></div>)}
+                      </div>
+                    );
+                  })() : <p className="text-xs text-ink-dim">No trades yet — be the first.</p>)}
 
-                  {activeTab === "Holders" && (d.holders.length ? (
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-3 px-1 text-[9px] uppercase tracking-wide text-ink-faint"><span className="w-5">#</span><span className="w-28">Address</span><span className="w-12 text-right">%</span><span className="flex-1" /><span className="w-20 text-right">Amount</span><span className="w-24 text-right">Value</span></div>
-                      {d.holders.map((hd, i) => (
-                        <div key={i} className="flex items-center gap-3 px-1 text-[11px]"><span className="w-5 text-ink-faint">{i + 1}</span><span className="w-28 truncate text-ink">{shortAddr(hd.address)}</span><span className="w-12 text-right text-neon">{hd.pct.toFixed(2)}%</span><span className="h-1.5 flex-1 overflow-hidden rounded-full bg-neon/10"><span className="block h-full rounded-full bg-neon/60" style={{ width: `${Math.min(100, hd.pct)}%` }} /></span><span className="w-20 text-right text-ink-dim">{compact(hd.amount)}</span><span className="w-24 text-right text-ink-dim">{money(hd.value)}</span></div>
-                      ))}
-                    </div>
-                  ) : <p className="text-xs text-ink-dim">No holders yet.</p>)}
+                  {activeTab === "Holders" && (d.holders.length ? (() => {
+                    const top5 = Math.min(100, d.holders.slice(0, 5).reduce((s, h) => s + (h.pct || 0), 0));
+                    return (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-4 border-b border-line pb-3">
+                          <Donut size={92} thickness={12} data={[top5, Math.max(0, 100 - top5)]} colors={["var(--ng-neon)", "rgba(0,255,65,0.14)"]} center={`${Math.round(top5)}%`} />
+                          <div className="text-[11px] leading-relaxed text-ink-dim">
+                            <div className="ng-label !text-[10px]">Concentration</div>
+                            <div className="mt-1">Top 5 hold <span className="font-semibold text-neon">{Math.round(top5)}%</span></div>
+                            <div className="text-ink-faint">{d.holder_count.toLocaleString()} holders total</div>
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-3 px-1 text-[9px] uppercase tracking-wide text-ink-faint"><span className="w-5">#</span><span className="w-28">Address</span><span className="w-12 text-right">%</span><span className="flex-1" /><span className="w-20 text-right">Amount</span><span className="w-24 text-right">Value</span></div>
+                          {d.holders.map((hd, i) => (
+                            <div key={i} className="flex items-center gap-3 px-1 text-[11px]"><span className="w-5 text-ink-faint">{i + 1}</span><span className="w-28 truncate text-ink">{shortAddr(hd.address)}</span><span className="w-12 text-right text-neon">{hd.pct.toFixed(2)}%</span><span className="h-1.5 flex-1 overflow-hidden bg-neon/10"><span className="block h-full bg-neon/60" style={{ width: `${Math.min(100, hd.pct)}%` }} /></span><span className="w-20 text-right text-ink-dim">{compact(hd.amount)}</span><span className="w-24 text-right text-ink-dim">{money(hd.value)}</span></div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })() : <p className="text-xs text-ink-dim">No holders yet.</p>)}
 
-                  {activeTab === "Traders" && (traders.length ? (
-                    <div className="space-y-1.5">{traders.map((tr, i) => <div key={i} className="flex items-center gap-3 px-1 text-[11px]"><span className="w-5 text-ink-faint">{i + 1}</span><span className="flex-1 truncate text-ink">{shortAddr(tr.user)}</span><span className="text-ink-dim">{tr.n} txns</span><span className="w-24 text-right text-neon">{money(tr.vol)}</span></div>)}</div>
-                  ) : <p className="text-xs text-ink-dim">No traders yet.</p>)}
+                  {activeTab === "Traders" && (traders.length ? (() => {
+                    const maxVol = Math.max(1, ...traders.map((x) => x.vol));
+                    return (
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-3 px-1 text-[9px] uppercase tracking-wide text-ink-faint"><span className="w-5">#</span><span className="w-24">Trader</span><span className="flex-1">Volume</span><span className="w-20 text-right">USDC</span><span className="w-12 text-right">Txns</span></div>
+                        {traders.map((tr, i) => (
+                          <div key={i} className="flex items-center gap-3 px-1 text-[11px]">
+                            <span className="w-5 text-ink-faint">{i + 1}</span>
+                            <span className="w-24 truncate text-ink">{shortAddr(tr.user)}</span>
+                            <span className="h-2 flex-1 overflow-hidden bg-neon/10"><span className="block h-full bg-neon/60" style={{ width: `${Math.max(3, (tr.vol / maxVol) * 100)}%` }} /></span>
+                            <span className="w-20 text-right text-neon">{money(tr.vol)}</span>
+                            <span className="w-12 text-right text-ink-dim">{tr.n}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })() : <p className="text-xs text-ink-dim">No traders yet.</p>)}
 
                   {activeTab === "My Position" && (
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><Stat label={`${m.base_symbol} held`} value={Math.round(d.holding ?? 0)} accent="neon" /><Stat label="Value" value={Math.round(posValue)} prefix="$" /><Stat label="USDC" value={Math.round(d.wallet.usdc)} prefix="$" /><Stat label="GRID" value={Math.round(d.wallet.grid)} /></div>
@@ -742,9 +772,20 @@ export default function MarketTerminal() {
                     );
                   })() : <p className="text-xs text-ink-dim">No provenance data.</p>)}
 
-                  {activeTab === "Roadmap" && (d.roadmap.length ? (
-                    <div className="space-y-2">{d.roadmap.map((ms, i) => <div key={i} className="flex items-center gap-3 text-[11px]"><span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[9px] ${ms.status === "released" ? "bg-neon/15 text-neon" : "bg-neon/5 text-ink-faint"}`}>{ms.status === "released" ? "✓" : i + 1}</span><span className="flex-1 text-ink">{ms.title}</span><Mark plain className="!text-[10px]">{money(ms.amount)}</Mark><span className="w-16 text-right text-[10px] capitalize text-ink-faint">{ms.status}</span></div>)}</div>
-                  ) : <p className="text-xs text-ink-dim">No roadmap milestones.</p>)}
+                  {activeTab === "Roadmap" && (d.roadmap.length ? (() => {
+                    const ms = [...d.roadmap].sort((a, b) => a.order - b.order);
+                    const total = ms.reduce((s, m) => s + (m.amount || 0), 0);
+                    const released = ms.filter((m) => m.status === "released").reduce((s, m) => s + (m.amount || 0), 0);
+                    return (
+                      <div className="space-y-3">
+                        <div className="border-b border-line pb-3">
+                          <div className="mb-1 flex items-center justify-between text-[10px]"><span className="ng-label !text-[10px]">Milestone tranches → ask</span><span className="text-ink-faint">{money(released)} released / {money(total)}</span></div>
+                          <Waterfall steps={ms.map((m) => ({ value: m.amount, kind: "delta" as const }))} h={92} />
+                        </div>
+                        <div className="space-y-2">{ms.map((m, i) => <div key={i} className="flex items-center gap-3 text-[11px]"><span className={`grid h-5 w-5 shrink-0 place-items-center text-[9px] ${m.status === "released" ? "bg-neon/15 text-neon" : "bg-neon/5 text-ink-faint"}`}>{m.status === "released" ? "✓" : i + 1}</span><span className="flex-1 text-ink">{m.title}</span><Mark plain className="!text-[10px]">{money(m.amount)}</Mark><span className="w-16 text-right text-[10px] capitalize text-ink-faint">{m.status}</span></div>)}</div>
+                      </div>
+                    );
+                  })() : <p className="text-xs text-ink-dim">No roadmap milestones.</p>)}
                 </div>
               </Panel>
             </>

@@ -17,7 +17,7 @@ import PostCard, { type WirePost } from "@/components/app/PostCard";
 import PostComposer from "@/components/app/PostComposer";
 import ShareButton from "@/components/app/ShareButton";
 import OrbPanel from "@/components/app/OrbPanel";
-import { Area, Bars, Radar, LabeledBars, Ring, StepArea, Stream, RadialProgress } from "@/components/app/charts";
+import { Area, Bars, Radar, LabeledBars, Ring, StepArea, Stream, RadialProgress, Bullet, Donut } from "@/components/app/charts";
 import { PanelChart, barStr } from "@/components/app/terminal";
 import type { Agent, Build, Grid, Product } from "@/lib/types";
 
@@ -329,14 +329,14 @@ export default function MePage() {
             <div className="grid grid-cols-1 gap-3 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": 2 + closed } as React.CSSProperties}>
               {myProducts.map((p) => {
                 const maxRev = Math.max(1, ...myProducts.map((x) => x.onchain_revenue ?? 0));
-                const maxUsers = Math.max(1, ...myProducts.map((x) => x.active_users ?? 0));
                 return (
                   <Link key={p.product_id} href={`/gridx/${p.product_id}`} className="ng-card p-3.5">
                     <div className="flex items-center justify-between gap-2"><span className="truncate text-[13px] font-bold text-neon">{p.name}</span><Tag>{p.category}</Tag></div>
-                    <div className="mt-2 space-y-1 font-mono text-[10px]">
-                      <div className="flex items-center gap-2"><span className="w-16 shrink-0 text-ink-faint">revenue</span><span className="text-neon">{barStr((p.onchain_revenue ?? 0) / maxRev, 12)}</span><span className="ml-auto text-ink-dim">${(p.onchain_revenue ?? 0).toLocaleString()}</span></div>
-                      <div className="flex items-center gap-2"><span className="w-16 shrink-0 text-ink-faint">users</span><span className="text-cyan">{barStr((p.active_users ?? 0) / maxUsers, 12)}</span><span className="ml-auto text-ink-dim">{(p.active_users ?? 0).toLocaleString()}</span></div>
+                    <div className="mt-2.5 flex items-end justify-between">
+                      <div><div className="ng-stat__v !text-xl !leading-none text-neon">${(p.onchain_revenue ?? 0).toLocaleString()}</div><div className="ng-stat__k !text-[8px]">on-chain revenue</div></div>
+                      <div className="text-right"><div className="text-[13px] font-bold text-ink">{(p.active_users ?? 0).toLocaleString()}</div><div className="ng-stat__k !text-[8px]">active users</div></div>
                     </div>
+                    <div className="mt-2"><Bullet data={[{ value: p.onchain_revenue ?? 0, target: maxRev }]} w={260} rowH={11} gap={0} color="var(--ng-neon)" /></div>
                   </Link>
                 );
               })}
@@ -401,13 +401,17 @@ export default function MePage() {
               <div className="flex items-baseline justify-between"><span className="ng-stat__v !text-xl text-neon">{(me?.reward?.sybil_adjusted ?? 0).toLocaleString()}</span><span className="text-[11px] text-ink-dim">earned · vests at TGE</span></div>
               <p className="mt-1 text-[10px] leading-relaxed text-ink-faint">GRID is <span className="text-ink-dim">earned, not sold</span> — verified contribution accrues a sybil-filtered allocation that converts to GRID at the platform TGE.</p>
               {me?.reward?.breakdown?.length ? (
-                <div className="mt-3 space-y-2">
-                  {me.reward.breakdown.map((b) => (
-                    <div key={b.dimension}>
-                      <div className="mb-0.5 flex items-center justify-between text-[11px]"><span className="capitalize text-ink-dim">{b.dimension} <span className="text-ink-faint">· {b.events}</span></span><Mark plain className="!text-[11px]">{b.units.toLocaleString()}</Mark></div>
-                      <ProgressBar percent={Math.round((b.units / Math.max(1, me.reward!.accrued)) * 100)} />
-                    </div>
-                  ))}
+                <div className="mt-3 flex items-center gap-3">
+                  <Donut size={98} thickness={12} data={me.reward.breakdown.map((b) => b.units)} colors={me.reward.breakdown.map((_, i) => `rgba(0,255,65,${Math.max(0.3, 0.95 - i * 0.16).toFixed(2)})`)} center={(me.reward.accrued ?? 0) >= 1000 ? `${Math.round((me.reward.accrued ?? 0) / 1000)}k` : `${Math.round(me.reward.accrued ?? 0)}`} />
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    {me.reward.breakdown.map((b, i) => (
+                      <div key={b.dimension} className="flex items-center gap-1.5 text-[10px]">
+                        <span className="inline-block h-1.5 w-1.5 shrink-0" style={{ background: `rgba(0,255,65,${Math.max(0.3, 0.95 - i * 0.16).toFixed(2)})` }} />
+                        <span className="capitalize text-ink-dim">{b.dimension} <span className="text-ink-faint">· {b.events}</span></span>
+                        <span className="ml-auto font-semibold text-ink">{b.units.toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : <p className="mt-2 text-[11px] text-ink-dim">No allocation yet — ship verified work to earn GRID.</p>}
               <div className="mt-3 divide-y divide-line text-[11px]">
