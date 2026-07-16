@@ -852,6 +852,7 @@ create table if not exists ventures (
   revenue_synced_usdc numeric    default 0, -- high-water mark of product USDC revenue reinvested (self-funding loop)
   spent_grid         numeric     default 0,
   log                jsonb       default '[]', -- VentureEvent[] (bounded activity feed)
+  reports            jsonb       default '[]', -- VentureReport[] (durable per-cycle report archive)
   created_at         timestamptz not null default now(),
   updated_at         timestamptz
 );

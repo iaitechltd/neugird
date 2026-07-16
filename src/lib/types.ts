@@ -1483,7 +1483,10 @@ export interface VentureObjective {
 /** One line in the company's activity log — what the CEO / department agents did. */
 export type VentureEventKind =
   | "created" | "hired" | "objective" | "delegated" | "delivered"
-  | "spend" | "revenue" | "fund" | "hold" | "approval" | "paused";
+  | "spend" | "revenue" | "fund" | "hold" | "approval" | "paused"
+  | "recruited"   // the crew posted a real open job to the board to bring in help
+  | "reached"     // the crew sent a real outreach DM to a relevant user (owner-approved)
+  | "raised";     // the crew opened a real funding raise on the product (owner-approved)
 export interface VentureEvent {
   at: ISODate;
   kind: VentureEventKind;
@@ -1501,7 +1504,7 @@ export interface VentureEvent {
  *  seat's budget, or anything reaching outside the platform). Phase 1 raises
  *  these for over-budget spend; Phase 2 adds external/public actions. */
 export type VentureApprovalStatus = "pending" | "approved" | "declined";
-export type VentureApprovalAction = "echo_ship" | "wire_post";
+export type VentureApprovalAction = "echo_ship" | "wire_post" | "recruit_job" | "outreach_dm" | "open_raise";
 export interface VentureApproval {
   approval_id: ID;
   venture_id: ID;
@@ -1513,12 +1516,44 @@ export interface VentureApproval {
   agent_id?: ID;                  // the specialist that proposed it
   objective_id?: ID;              // the objective it came from
   build_id?: ID;                  // target build for an echo_ship
+  to_id?: ID;                     // outreach_dm recipient (a real user)
+  to_name?: string;               // outreach_dm recipient's display name
+  raise?: { title: string; summary: string; category: string; ask_amount: number; roadmap: { title: string; description: string; amount: number }[] }; // open_raise draft
   amount_grid?: number;
   status: VentureApprovalStatus;
   post_id?: ID;                   // set once a wire_post approval publishes
   version?: number;               // set once an echo_ship approval ships
+  job_id?: ID;                    // set once a recruit_job approval posts the open job
+  conversation_id?: ID;           // set once an outreach_dm approval sends the message
+  proposal_id?: ID;               // set once an open_raise approval opens the real raise
+  report_id?: ID;                 // the cycle report this action belongs to (so the report stays complete on execution)
   created_at: ISODate;
   resolved_at?: ISODate;
+}
+
+/** One entry in a cycle report — a specialist's deliverable and any REAL action it
+ *  took (shipped code, published a post, posted an open job to recruit help…). */
+export type VentureReportAction = "shipped" | "posted" | "recruited" | "reached" | "raised" | "researched" | "budgeted" | "planned" | "drafted";
+export interface VentureReportItem {
+  dept: VentureDept;
+  agent_id?: ID;
+  title: string;
+  detail?: string;                // the full work product
+  action: VentureReportAction;    // what the specialist actually did
+  link?: string;                  // where the real artifact lives (/post/<id>, /jobs, /d/<slug>…)
+  status: "done" | "pending_approval";
+}
+/** A durable, per-cycle report the owner can read in full — the complete archive of
+ *  what the company did, cycle by cycle (unlike the bounded activity log). */
+export interface VentureReport {
+  report_id: ID;
+  venture_id: ID;
+  cycle: number;                  // the cycle number this report covers
+  objective: string;              // the goal that drove the cycle
+  headline: string;               // the CEO's one-line summary of the cycle
+  items: VentureReportItem[];     // one per specialist deliverable / action
+  actions: number;                // how many items were REAL actions (ship/post/recruit)
+  created_at: ISODate;
 }
 
 export interface Venture {
@@ -1541,6 +1576,7 @@ export interface Venture {
   revenue_synced_usdc?: number; // high-water mark: product USDC revenue already recognized (self-funding loop)
   spent_grid?: number;        // cumulative GRID spent on compute + work
   log: VentureEvent[];        // bounded recent activity feed
+  reports?: VentureReport[];  // durable per-cycle reports — the complete, uncapped archive the owner audits
   created_at: ISODate;
   updated_at?: ISODate;
 }

@@ -15,7 +15,7 @@ import { Panel, Mark, DataRow, IconChart, IconActivity , kpiColor } from "@/comp
 import { PanelChart, TMeter } from "@/components/app/terminal";
 import Meter from "@/components/app/Meter";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
-import { Area, Gauge, DivergingBars, Depth, Bubble, Candles, type Candle } from "@/components/app/charts";
+import { Area, Gauge, DivergingBars, Depth, Bubble, Funnel, Candles, type Candle } from "@/components/app/charts";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import type { Market, MarketStage } from "@/lib/types";
 
@@ -154,6 +154,14 @@ export default function MarketsPage() {
   })();
   const hasDepth = depth.asks.length > 1 && (depth.asks[depth.asks.length - 1] > 0 || depth.bids[depth.bids.length - 1] > 0);
 
+  // graduation funnel — REAL count of live markets at each stage (alpha → spot → futures),
+  // narrowing as tokens ascend. Green shades brighten toward the entry stage.
+  const gradStages = ([
+    ["alpha", "gated first liquidity — graduates only", "rgba(0,255,65,0.9)"],
+    ["spot", "unlocked by real traction (holders)", "rgba(0,255,65,0.58)"],
+    ["futures", "deep liquidity + licensing, last", "rgba(0,255,65,0.34)"],
+  ] as const).map(([st, desc, color]) => ({ st, desc, color, n: list.filter((m) => m.stage === st).length }));
+
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
       <NeuHeader title="Trade" collapsed={!lOpen && !rOpen} onToggleCollapse={() => { const v = lOpen || rOpen; setLOpen(!v); setROpen(!v); }} />
@@ -251,19 +259,28 @@ export default function MarketsPage() {
         {/* RIGHT */}
         <OrbPanel side="right" label="Graduation" open={rOpen} onToggle={setROpen}>
           <Panel scroll title="GRADUATION" icon={<IconActivity className="h-4 w-4" />} bodyClass="p-3.5">
-            {/* each rung shows its REAL live-market count vs all markets */}
-            <ol className="space-y-2 text-[11px] text-ink-dim">
-              {([["alpha", "amber", "gated first liquidity — graduates only"], ["spot", "neon", "unlocked by real traction (holders)"], ["futures", "cyan", "deep liquidity + licensing, last"]] as const).map(([st, accent, desc]) => {
-                const n = list.filter((m) => m.stage === st).length;
-                return (
-                  <li key={st} className="flex items-center gap-2">
-                    <Mark plain accent={accent} className="!text-[9px]">{st}</Mark>
-                    <span className="min-w-0 flex-1 truncate">{desc}</span>
-                    <span className="flex shrink-0 items-center gap-1.5" title={`${n} live market${n === 1 ? "" : "s"}`}><Meter value={n} max={list.length || 1} w={28} color={stageColor(st)} /><span className="tnum text-ink-faint">{n}</span></span>
-                  </li>
-                );
-              })}
-            </ol>
+            {/* graduation funnel — REAL count of live markets at each stage, narrowing as tokens ascend */}
+            <div className="mb-2 flex items-baseline justify-between gap-2">
+              <div className="ng-label !text-ink-dim">Graduation funnel</div>
+              <span className="tnum text-[9.5px] text-ink-faint">markets per stage</span>
+            </div>
+            {list.length > 0 ? (
+              <>
+                <Funnel data={gradStages.map((g) => ({ value: g.n, color: g.color }))} h={84} gap={6} />
+                <ol className="mt-2 space-y-1.5 text-[11px] text-ink-dim">
+                  {gradStages.map((g) => (
+                    <li key={g.st} className="flex items-center gap-2" title={`${g.n} live market${g.n === 1 ? "" : "s"}`}>
+                      <span className="h-2 w-2 shrink-0" style={{ background: g.color }} />
+                      <span className="w-12 shrink-0 text-[9px] uppercase tracking-wide text-neon">{g.st}</span>
+                      <span className="min-w-0 flex-1 truncate text-ink-faint">{g.desc}</span>
+                      <span className="tnum shrink-0 text-neon">{g.n}</span>
+                    </li>
+                  ))}
+                </ol>
+              </>
+            ) : (
+              <p className="py-2 text-[11px] text-ink-faint">No markets yet.</p>
+            )}
 
             <PanelChart title={`Price · ${lead?.base_symbol ?? "leader"}`} read={lead ? money(lead.marketcap ?? 0) : "—"}>
               {leadCandles.length > 1

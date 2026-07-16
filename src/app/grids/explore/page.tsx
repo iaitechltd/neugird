@@ -16,7 +16,7 @@ import { CountUp, Decrypt } from "@/components/app/typefx";
 import Meter from "@/components/app/Meter";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import { PanelChart } from "@/components/app/terminal";
-import { PolarArea, Heatmap, Bullet, SegBar } from "@/components/app/charts";
+import { PolarArea, Heatmap, Bullet, Funnel, RadialProgress } from "@/components/app/charts";
 import type { Grid } from "@/lib/types";
 
 type GridRow = Grid & { subgrid_count?: number; agent_count?: number; earnings?: number };
@@ -77,9 +77,9 @@ export default function GridsExplorePage() {
   // RIGHT-2 · SegBar — share of grids running subgrids
   const withSub = list.filter((g) => (g.subgrid_count ?? 0) > 0).length;
   const subShare = list.length ? Math.round((withSub / list.length) * 100) : 0;
-  // RIGHT-3 · Lifecycle — real count of grids sitting at each pipeline stage
+  // RIGHT-3 · Lifecycle — real count of grids at each pipeline stage (funnel; green brightens toward the entry stage)
   const stageCounts = STAGES.map((s) => list.filter((g) => g.lifecycle_stage === s).length);
-  const maxStage = Math.max(1, ...stageCounts);
+  const LIFE_SHADES = ["rgba(0,255,65,0.9)", "rgba(0,255,65,0.72)", "rgba(0,255,65,0.56)", "rgba(0,255,65,0.44)", "rgba(0,255,65,0.34)", "rgba(0,255,65,0.24)"];
   // LEFT · category filter rows — each category's real share of all grids
   const catMax = Math.max(1, list.length);
 
@@ -201,7 +201,9 @@ export default function GridsExplorePage() {
               {memberBullet.length ? <Bullet data={memberBullet} /> : <p className="text-[11px] text-ink-faint">No grids yet.</p>}
             </PanelChart>
             <PanelChart title="SubGrids · network share" read={`${withSub}/${list.length}`}>
-              {list.length > 0 ? <div className="py-2"><SegBar percent={subShare} /><div className="mt-1.5 text-[9px] text-ink-faint">{subShare}% of grids run subgrids ({withSub}/{list.length})</div></div> : <p className="text-[11px] text-ink-faint">No grids yet.</p>}
+              {list.length > 0
+                ? <div className="flex flex-col items-center py-2"><RadialProgress percent={subShare} value={`${subShare}%`} size={104} /><div className="mt-1.5 text-[9px] text-ink-faint">{subShare}% of grids run subgrids ({withSub}/{list.length})</div></div>
+                : <p className="text-[11px] text-ink-faint">No grids yet.</p>}
             </PanelChart>
             <div className="ng-label mb-2 mt-5 !text-ink-dim">Top by Pulse</div>
             <div className="space-y-2">
@@ -220,16 +222,22 @@ export default function GridsExplorePage() {
               <div className="ng-label !text-ink-dim">Lifecycle</div>
               <span className="tnum text-[9.5px] text-ink-faint">grids per stage</span>
             </div>
-            <div className="space-y-1.5 text-[11px] text-ink-dim">
-              {STAGES.map((s, i) => (
-                <div key={s} className="flex items-center gap-2">
-                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-neon" />
-                  <span className="min-w-0 flex-1 truncate">{s}</span>
-                  <Meter value={stageCounts[i]} max={maxStage} w={40} />
-                  <span className="tnum w-4 shrink-0 text-right text-[10px] text-ink-faint">{stageCounts[i]}</span>
+            {list.length > 0 ? (
+              <>
+                <Funnel data={stageCounts.map((n, i) => ({ value: n, color: LIFE_SHADES[i] }))} h={104} gap={5} />
+                <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
+                  {STAGES.map((s, i) => (
+                    <div key={s} className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 shrink-0" style={{ background: LIFE_SHADES[i] }} />
+                      <span className="min-w-0 flex-1 truncate capitalize text-ink-dim">{s}</span>
+                      <span className="tnum shrink-0 text-neon">{stageCounts[i]}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            ) : (
+              <p className="text-[11px] text-ink-faint">No grids yet.</p>
+            )}
           </Panel>
         </OrbPanel>
       </div>

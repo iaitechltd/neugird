@@ -202,8 +202,8 @@ const SPECS: Spec[] = [
     cols: ["post_id", "author_type", "author_id", "owner_id", "grid_id", "topic", "title", "body", "ref", "attachments", "likes", "comments", "created_at"],
     arr: ["likes"], json: ["ref", "attachments", "comments"], ts: ["created_at"] },
   { key: "ventures", table: "ventures",
-    cols: ["venture_id", "owner_id", "name", "mission", "template", "build_id", "status", "treasury_id", "ceo_agent_id", "seats", "objectives", "contributor_splits", "approvals", "require_approval", "cycles", "revenue_grid", "revenue_synced_usdc", "spent_grid", "log", "created_at", "updated_at"],
-    num: ["cycles", "revenue_grid", "revenue_synced_usdc", "spent_grid"], ts: ["created_at", "updated_at"], json: ["seats", "objectives", "contributor_splits", "approvals", "log"] },
+    cols: ["venture_id", "owner_id", "name", "mission", "template", "build_id", "status", "treasury_id", "ceo_agent_id", "seats", "objectives", "contributor_splits", "approvals", "require_approval", "cycles", "revenue_grid", "revenue_synced_usdc", "spent_grid", "log", "reports", "created_at", "updated_at"],
+    num: ["cycles", "revenue_grid", "revenue_synced_usdc", "spent_grid"], ts: ["created_at", "updated_at"], json: ["seats", "objectives", "contributor_splits", "approvals", "log", "reports"] },
 ];
 
 /* Non-array singleton state on DB (gridPool / tge / params) — stored one jsonb

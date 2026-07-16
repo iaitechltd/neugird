@@ -18,7 +18,8 @@ import { Panel, IconRocket, IconTarget, IconCoins, IconChevronDown, IconArrowRig
 import { Rise } from "@/components/app/motionfx";
 import { CountUp } from "@/components/app/typefx";
 import { PulseDot, ScanSweep, ConsoleFrame } from "@/components/app/venture-ui";
-import { VentureReactor, VitalTrace, Telemetry, AreaPulse, ReadoutRows, CrewRadar, ActivityRing, RunwayArc, MoneyFlow } from "@/components/app/venture-reactor";
+import { VentureReactor, VitalTrace, Telemetry, AreaPulse, ReadoutRows, CrewRadar, ActivityRing, RunwayArc, MoneyFlow, FlowWaterfall } from "@/components/app/venture-reactor";
+import { TMeter } from "@/components/app/terminal";
 
 const NEON = "#00ff00";
 const CYAN = "#48f5ff";
@@ -90,6 +91,8 @@ export default function VenturesPage() {
     deliveries: ventures.reduce((a, v) => a + (v.log || []).filter((e) => e.kind === "delivered").length, 0),
   };
   const funded = Math.round(ventures.reduce((a, v) => a + Math.max(0, v.treasury_grid + (v.spent_grid || 0) - (v.revenue_grid || 0)), 0));
+  const totalObjectives = ventures.reduce((a, v) => a + v.objectives.length, 0);
+  const activeCompanies = ventures.filter((v) => v.venture.status === "active").length;
 
   // OUTPUT PULSE — real activity binned over time from the fleet's event logs (work happens
   // in cycle bursts, so the trace spikes at each cycle instead of being flat decoration).
@@ -103,13 +106,7 @@ export default function VenturesPage() {
     return buckets;
   })();
 
-  // GRID economy (in → out → balance) and crew throughput by department (real runs).
-  const economy = [
-    { label: "Funded", value: funded, tone: "neon" as const },
-    { label: "Revenue", value: fleet.revenue, tone: "cyan" as const },
-    { label: "Spent", value: fleet.spent, tone: "dim" as const },
-    { label: "Treasury", value: fleet.treasury, tone: "neon" as const },
-  ];
+  // Crew throughput by department (real runs). GRID economy flow is drawn from funded/revenue/spent/treasury inline below.
   const DEPTS: { key: string; label: string }[] = [
     { key: "build", label: "Build" }, { key: "marketing", label: "Market" }, { key: "content", label: "Content" }, { key: "finance", label: "Finance" },
   ];
@@ -204,16 +201,14 @@ export default function VenturesPage() {
 
             {fleet.companies > 0 && (
               <>
-                <div className="ng-label mb-2 mt-5 !text-ink-dim">◤ your fleet</div>
-                <div className="space-y-2 border-l border-line/50 pl-3 text-[11px]">
-                  <div className="flex items-center justify-between"><span className="text-ink-faint">companies</span><span className="tnum text-neon">{fleet.companies}</span></div>
-                  <div className="flex items-center justify-between"><span className="text-ink-faint">agents live</span><span className="tnum text-cyan">{fleet.agents}</span></div>
-                  <div className="flex items-center justify-between"><span className="text-ink-faint">cycles run</span><span className="tnum text-neon">{fleet.cycles}</span></div>
-                  <div className="flex items-center justify-between"><span className="text-ink-faint">shipped</span><span className="tnum text-neon">{fleet.shipped}</span></div>
-                  <div className="flex items-center justify-between"><span className="text-ink-faint">revenue</span><span className="tnum text-cyan">{fleet.revenue}<span className="ml-0.5 text-[8px] text-ink-faint">g</span></span></div>
-                  <div className="flex items-center justify-between"><span className="text-ink-faint">treasury</span><span className="tnum text-cyan">{fleet.treasury}<span className="ml-0.5 text-[8px] text-ink-faint">g</span></span></div>
-                  {fleet.pending > 0 && <div className="flex items-center justify-between"><span className="text-cyan">pending approvals</span><span className="tnum text-cyan">{fleet.pending}</span></div>}
+                <div className="ng-label mb-2 mt-5 !text-ink-dim">◤ fleet vitals</div>
+                <div className="border-l border-line/50 pl-3">
+                  <TMeter label="delivery" pct={totalObjectives ? Math.round((fleet.shipped / totalObjectives) * 100) : 0} value={`${fleet.shipped}/${totalObjectives}`} />
+                  <TMeter label="self-fund" pct={fleet.spent ? Math.min(100, Math.round((fleet.revenue / fleet.spent) * 100)) : fleet.revenue > 0 ? 100 : 0} value={`${fleet.revenue}/${fleet.spent}g`} color={CYAN} />
+                  <TMeter label="live crew" pct={fleet.companies ? Math.round((activeCompanies / fleet.companies) * 100) : 0} value={`${activeCompanies}/${fleet.companies}`} />
+                  {fleet.pending > 0 && <div className="mt-1.5 flex items-baseline justify-between text-[12px]"><span className="text-cyan">pending approvals</span><span className="tnum text-cyan">{fleet.pending}</span></div>}
                 </div>
+                <p className="mt-2 pl-3 text-[9px] leading-relaxed text-ink-faint">delivery = objectives shipped · self-fund = revenue ÷ spend · live = active companies.</p>
               </>
             )}
           </Panel>
@@ -270,8 +265,13 @@ export default function VenturesPage() {
                   {/* the money + who's shipping */}
                   <div className="space-y-3.5">
                     <div>
-                      <div className="mb-1.5 text-[9px] uppercase tracking-[0.14em] text-ink-faint">◦ grid economy</div>
-                      <ReadoutRows rows={economy} />
+                      <div className="mb-1.5 text-[9px] uppercase tracking-[0.14em] text-ink-faint">◦ grid economy · flow</div>
+                      <FlowWaterfall steps={[
+                        { label: "Funded", value: funded, kind: "in" },
+                        { label: "Revenue", value: fleet.revenue, kind: "in" },
+                        { label: "Spent", value: fleet.spent, kind: "out" },
+                        { label: "Treasury", value: fleet.treasury, kind: "total" },
+                      ]} />
                     </div>
                     <div>
                       <div className="mb-1.5 text-[9px] uppercase tracking-[0.14em] text-ink-faint">◦ crew throughput · runs</div>

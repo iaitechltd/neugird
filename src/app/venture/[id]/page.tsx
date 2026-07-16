@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import NeuHeader from "@/components/app/NeuHeader";
@@ -38,8 +39,12 @@ type View = {
   approvals: Approval[];
   require_approval: boolean;
   log: Ev[];
+  reports: Report[];
 };
-type Approval = { approval_id: string; action?: "echo_ship" | "wire_post"; kind: string; summary: string; detail?: string; dept?: Dept; amount_grid?: number };
+type Approval = { approval_id: string; action?: "echo_ship" | "wire_post" | "recruit_job" | "outreach_dm" | "open_raise"; kind: string; summary: string; detail?: string; dept?: Dept; amount_grid?: number; to_name?: string };
+type ReportItem = { dept: Dept; agent_id?: string; title: string; detail?: string; action: string; link?: string; status: "done" | "pending_approval" };
+type Report = { report_id: string; cycle: number; objective: string; headline: string; items: ReportItem[]; actions: number; created_at: string };
+const linkLabel = (href: string) => (href.startsWith("/post") ? "view the post" : href.startsWith("/jobs") ? "view the open job" : href.startsWith("/messages") ? "view the message" : href.startsWith("/genesis") ? "view the raise" : href.startsWith("/d/") ? "open the live app" : "open");
 
 const GLYPH: Record<string, { g: string; c: string }> = {
   delivered: { g: "✓", c: "text-neon" },
@@ -50,7 +55,83 @@ const GLYPH: Record<string, { g: string; c: string }> = {
   hold: { g: "!", c: "text-cyan" },
   objective: { g: "▸", c: "text-ink-dim" },
   created: { g: "◆", c: "text-neon/70" },
+  recruited: { g: "◈", c: "text-neon" },
+  reached: { g: "↗", c: "text-neon" },
+  raised: { g: "◎", c: "text-neon" },
 };
+
+const REAL_ACTIONS = new Set(["shipped", "posted", "recruited"]);
+// The agent behind each department, and a plain-English line for what it did this cycle.
+const ROLE: Record<string, string> = { build: "Engineering", marketing: "Marketing", content: "Content", finance: "Finance", ceo: "CEO" };
+const DID: Record<string, string> = {
+  posted: "published an update to the wire",
+  recruited: "opened a hiring post to bring in help",
+  reached: "reached out to a relevant user",
+  raised: "opened a funding raise on the product",
+  shipped: "shipped a new version of the product",
+  researched: "ran live market research",
+  budgeted: "reviewed the budget & runway",
+  planned: "drafted a plan",
+  drafted: "drafted the work",
+};
+
+/** One cycle report as a SUBTLE, agentic readout — each specialist agent, in plain words,
+ *  with what it actually did and a link to the real artifact it produced. No charts; the
+ *  full write-up is one tap away. */
+function ReportCard({ report, latest = false }: { report: Report; latest?: boolean }) {
+  const reduce = useReducedMotion();
+  return (
+    <motion.div
+      initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: "easeOut" }}
+      className={`border-l-2 py-2 pl-3 pr-1 ${latest ? "border-neon/50" : "mt-1 border-line"}`}
+    >
+      {/* header — cycle · how many agents acted */}
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[9px] uppercase tracking-[0.14em] text-ink-faint">cycle {report.cycle}{latest && <span className="ml-1.5 text-neon/70">· latest</span>}</span>
+        <span className="text-[9px] uppercase tracking-wide text-ink-faint">{report.actions} agent{report.actions === 1 ? "" : "s"} acted</span>
+      </div>
+      {/* the CEO's directive that drove the cycle */}
+      <div className="mt-1 text-[11px] leading-snug text-ink-dim"><span className="text-neon/55">CEO ›</span> {report.headline || report.objective}</div>
+      {/* per-agent activity — plain lines, real actions lit, internal work dim */}
+      <div className="mt-1.5">
+        {report.items.map((it, i) => {
+          const real = REAL_ACTIONS.has(it.action) && it.status === "done";
+          const pending = it.status === "pending_approval";
+          return (
+            <motion.div
+              key={i} title={it.title}
+              initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25, delay: reduce ? 0 : 0.05 + i * 0.05 }}
+              className="flex items-baseline gap-2 py-[3px] text-[11px]"
+            >
+              <PulseDot tone={real ? "neon" : pending ? "cyan" : "dim"} size={4} />
+              <span className={`w-[76px] shrink-0 font-semibold ${real ? "text-ink" : "text-ink-dim"}`}>{ROLE[it.dept] ?? it.dept}</span>
+              <span className="min-w-0 flex-1 truncate text-ink-faint">{pending ? (it.action === "reached" ? "drafting outreach — awaiting your ok" : it.action === "raised" ? "drafting a raise — awaiting your ok" : "drafted it — awaiting your ok") : it.action === "reached" ? it.title.replace(/^Outreach to /i, "reached out to ") : (DID[it.action] ?? it.action)}</span>
+              {it.link ? (
+                <Link href={it.link} className="shrink-0 text-[9px] uppercase tracking-wide text-neon/80 transition hover:text-neon">{linkLabel(it.link)} →</Link>
+              ) : (
+                <span className="shrink-0 text-[8.5px] uppercase tracking-wide text-ink-faint/70">{pending ? "pending" : "internal"}</span>
+              )}
+            </motion.div>
+          );
+        })}
+      </div>
+      {/* the full write-up — one tap away, nothing lost */}
+      {report.items.some((it) => it.detail) && (
+        <details className="mt-1.5">
+          <summary className="cursor-pointer list-none text-[9px] uppercase tracking-wide text-ink-faint transition hover:text-neon [&::-webkit-details-marker]:hidden"><span className="text-neon/50">▸ </span>full write-up</summary>
+          <div className="mt-1.5 space-y-2">
+            {report.items.filter((it) => it.detail).map((it, i) => (
+              <div key={i} className="border-l border-neon/20 pl-2.5">
+                <div className="text-[9px] uppercase tracking-wide text-neon/60">{ROLE[it.dept] ?? it.dept} · <span className="text-ink-dim">{it.title}</span></div>
+                <div className="mt-1 whitespace-pre-wrap text-[10px] leading-relaxed text-ink-dim">{it.detail}</div>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+    </motion.div>
+  );
+}
 
 export default function VentureCockpit() {
   const { id } = useParams<{ id: string }>();
@@ -196,7 +277,7 @@ export default function VentureCockpit() {
                           <div className="text-[12px] font-bold text-ink">{ap.summary}</div>
                           {ap.detail && <p className="mt-0.5 line-clamp-2 text-[10px] leading-snug text-ink-faint">{ap.detail}</p>}
                           <div className="mt-1 flex items-center gap-2 text-[8px] uppercase tracking-wide text-ink-faint">
-                            <span className="border border-cyan/30 px-1 text-cyan/80">{ap.action === "echo_ship" ? "ship · echo" : "post · wire"}</span>
+                            <span className="border border-cyan/30 px-1 text-cyan/80">{ap.action === "echo_ship" ? "ship · echo" : ap.action === "recruit_job" ? "hiring · board" : ap.action === "outreach_dm" ? `message · ${ap.to_name ?? "user"}` : ap.action === "open_raise" ? "raise · genesis" : "post · wire"}</span>
                             {typeof ap.amount_grid === "number" && ap.amount_grid > 0 && <span>{ap.amount_grid} grid</span>}
                           </div>
                         </div>
@@ -235,27 +316,22 @@ export default function VentureCockpit() {
             </div>
           )}
 
-          {/* objectives */}
+          {/* objectives — subtle, meaningful state (the CEO breaks each into agent tasks) */}
           {(v?.objectives.length ?? 0) > 0 && (
             <div>
               <div className="ng-label mb-1 !text-ink-dim">◤ objectives</div>
               <div className="border-t border-line/50">
                 {v!.objectives.slice(0, 6).map((o) => {
                   const total = o.tasks_total ?? 0, doneN = o.tasks_done ?? 0;
-                  const pct = o.status === "done" ? 100 : total > 0 ? Math.round((doneN / total) * 100) : 4;
                   const done = o.status === "done";
+                  const running = o.status === "running";
                   return (
-                    <div key={o.objective_id} className="border-b border-line/50 py-2">
-                      <div className="flex items-center gap-2.5">
-                        <span className={`text-[12px] ${done ? "text-neon" : "text-cyan"}`}>{done ? "✓" : "▸"}</span>
-                        <div className="min-w-0 flex-1 truncate text-[12px] text-ink">{o.text}</div>
-                        <span className="text-[8.5px] uppercase tracking-wide text-ink-faint">{total > 0 ? `${doneN}/${total}` : o.status}</span>
-                      </div>
-                      <div className="mt-1.5 ml-5 flex gap-0.5">
-                        {Array.from({ length: 14 }).map((_, i) => (
-                          <span key={i} className="h-1 flex-1 transition-colors duration-700" style={{ background: i < Math.round((pct / 100) * 14) ? "var(--ng-neon)" : "rgba(0,255,65,0.12)" }} />
-                        ))}
-                      </div>
+                    <div key={o.objective_id} className="flex items-baseline gap-2.5 border-b border-line/40 py-2">
+                      <span className={`shrink-0 text-[11px] leading-none ${done ? "text-neon" : running ? "text-cyan" : "text-ink-faint"}`}>{done ? "✓" : running ? "▸" : "○"}</span>
+                      <div className="min-w-0 flex-1 truncate text-[12px] text-ink" title={o.text}>{o.text}</div>
+                      <span className="shrink-0 text-[8.5px] uppercase tracking-wide text-ink-faint">
+                        {done ? `done · ${total} agent task${total === 1 ? "" : "s"}` : running ? `running · ${doneN}/${total}` : "queued"}
+                      </span>
                     </div>
                   );
                 })}
@@ -263,9 +339,26 @@ export default function VentureCockpit() {
             </div>
           )}
 
-          {/* mission log */}
-          <div>
-            <div className="ng-label mb-1 mt-1 flex items-center gap-2 !text-ink-dim"><span className="text-neon"><IconActivity className="h-3.5 w-3.5" /></span>◤ mission log</div>
+          {/* REPORTS — the durable, complete archive the owner audits (latest + every past cycle) */}
+          {v?.is_owner && (v.reports?.length ?? 0) > 0 && (
+            <div>
+              <div className="ng-label mb-1.5 flex items-center justify-between !text-ink-dim">
+                <span>◤ reports · {v.reports.length}</span>
+                <span className="text-[8.5px] uppercase tracking-wide text-ink-faint">complete archive · latest first</span>
+              </div>
+              <ReportCard report={v.reports[0]} latest />
+              {v.reports.length > 1 && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer list-none border border-line bg-black/20 px-3 py-2 text-[10px] uppercase tracking-wide text-ink-faint transition hover:text-neon [&::-webkit-details-marker]:hidden"><span className="text-neon/60">▸ </span>{v.reports.length - 1} earlier report{v.reports.length - 1 === 1 ? "" : "s"} — every cycle, nothing dropped</summary>
+                  <div className="mt-1">{v.reports.slice(1).map((r) => <ReportCard key={r.report_id} report={r} />)}</div>
+                </details>
+              )}
+            </div>
+          )}
+
+          {/* mission log — raw activity, collapsed by default (the Reports above carry the story) */}
+          <details>
+            <summary className="ng-label mb-1 mt-1 flex cursor-pointer list-none items-center gap-2 !text-ink-dim transition hover:text-neon [&::-webkit-details-marker]:hidden"><span className="text-neon"><IconActivity className="h-3.5 w-3.5" /></span>◤ raw activity feed <span className="text-[8.5px] font-normal tracking-wide text-ink-faint">· {v?.log.length ?? 0} events</span></summary>
             {(v?.log.length ?? 0) > 0 ? (
               <div className="font-mono">
                 {v!.log.map((e, i) => {
@@ -293,7 +386,7 @@ export default function VentureCockpit() {
             ) : (
               <p className="text-[12px] text-ink-dim">{loaded ? "No transmissions yet — issue an objective and execute a cycle to watch the crew work." : "— booting —"}</p>
             )}
-          </div>
+          </details>
         </main>
 
         {/* RIGHT — telemetry + the self-funding loop */}

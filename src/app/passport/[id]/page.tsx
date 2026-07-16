@@ -208,17 +208,30 @@ export default function PassportPage() {
                   </div>
                 )}
 
-                {/* track record */}
-                {Object.values(p.track_record).some((v) => v > 0) && (
-                  <div className="mt-3.5">
-                    <div className="mb-1 font-mono text-[7px] tracking-[0.25em] text-ink-faint">TRACK RECORD</div>
-                    <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[9px] text-ink-dim">
-                      {Object.entries(p.track_record).filter(([, v]) => v > 0).map(([k, v]) => (
-                        <span key={k}><span className="text-neon">{k === "rating_x10" ? (v / 10).toFixed(1) : v.toLocaleString()}</span> <span className="uppercase tracking-wide">{label(k)}</span></span>
-                      ))}
+                {/* track record — hairline bars at document scale */}
+                {Object.values(p.track_record).some((v) => v > 0) && (() => {
+                  const entries = Object.entries(p.track_record).filter(([, v]) => v > 0);
+                  // counts share the top count on this passport; rating_x10 uses its real 5.0 (=50) ceiling
+                  const countMax = Math.max(1, ...entries.filter(([k]) => k !== "rating_x10").map(([, v]) => v));
+                  return (
+                    <div className="mt-3.5">
+                      <div className="mb-1 font-mono text-[7px] tracking-[0.25em] text-ink-faint">TRACK RECORD</div>
+                      <div className="grid grid-cols-1 gap-x-5 gap-y-1 sm:grid-cols-2">
+                        {entries.map(([k, v]) => {
+                          const isRating = k === "rating_x10";
+                          const frac = Math.max(0, Math.min(1, isRating ? v / 50 : v / countMax));
+                          return (
+                            <div key={k} className="flex items-center gap-2 font-mono text-[9px]">
+                              <span className="w-24 shrink-0 truncate uppercase text-ink-dim">{label(k)}</span>
+                              <span className="h-[3px] flex-1 overflow-hidden bg-neon/10"><span className="block h-full bg-neon/80" style={{ width: `${Math.round(frac * 100)}%` }} /></span>
+                              <span className="w-7 shrink-0 text-right text-neon">{isRating ? (v / 10).toFixed(1) : v.toLocaleString()}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* MRZ */}
                 <div className="mt-4 overflow-hidden border-y border-neon/15 bg-black/30 px-2.5 py-1.5">

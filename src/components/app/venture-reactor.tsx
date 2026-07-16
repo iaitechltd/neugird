@@ -313,6 +313,93 @@ export function MoneyFlow({ inSeries, outSeries, height = 66 }: { inSeries: numb
   );
 }
 
+/** Money-flow waterfall — a reactor-native staircase: inflows build up, the outflow
+ *  drops, and the final total settles at the treasury balance. Amounts sit beneath. */
+export function FlowWaterfall({ steps, height = 74 }: { steps: { label: string; value: number; kind: "in" | "out" | "total" }[]; height?: number }) {
+  const bars: { from: number; to: number; kind: string }[] = [];
+  let run = 0;
+  for (const s of steps) {
+    if (s.kind === "total") { bars.push({ from: 0, to: s.value, kind: s.kind }); }
+    else { const from = run; run += s.kind === "out" ? -Math.abs(s.value) : Math.abs(s.value); bars.push({ from, to: run, kind: s.kind }); }
+  }
+  const max = Math.max(1, ...bars.map((b) => Math.max(b.from, b.to)));
+  const n = Math.max(1, bars.length);
+  const W = 120, pad = 3;
+  const col = (k: string) => (k === "total" ? NEON : k === "out" ? "#ff8b8b" : CYAN);
+  const yAt = (v: number) => height - pad - (Math.max(0, v) / max) * (height - 2 * pad);
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${height}`} width="100%" height={height} preserveAspectRatio="none" style={{ display: "block" }} aria-hidden>
+        {bars.map((b, i) => {
+          const slot = W / n, bw = slot * 0.5, x = slot * i + (slot - bw) / 2;
+          const yTop = Math.min(yAt(b.from), yAt(b.to)), h = Math.max(1.5, Math.abs(yAt(b.from) - yAt(b.to)));
+          const c = col(b.kind);
+          return (
+            <g key={i}>
+              <rect x={x.toFixed(1)} y={yTop.toFixed(1)} width={bw.toFixed(1)} height={h.toFixed(1)} fill={c} fillOpacity={0.55} stroke={c} strokeWidth={0.8} vectorEffect="non-scaling-stroke" />
+              {i < n - 1 && <line x1={(x + bw).toFixed(1)} x2={(slot * (i + 1) + (slot - bw) / 2).toFixed(1)} y1={yAt(b.to).toFixed(1)} y2={yAt(b.to).toFixed(1)} stroke="rgba(0,255,0,0.22)" strokeWidth={0.8} strokeDasharray="2 2" vectorEffect="non-scaling-stroke" />}
+            </g>
+          );
+        })}
+      </svg>
+      <div className="mt-1 flex">
+        {steps.map((s) => (
+          <div key={s.label} className="min-w-0 flex-1 text-center">
+            <div className="tnum text-[10.5px] font-bold leading-none" style={{ color: col(s.kind) }}>{Math.round(s.value).toLocaleString()}<span className="ml-0.5 text-[7px] text-ink-faint">g</span></div>
+            <div className="mt-0.5 truncate text-[7.5px] uppercase tracking-[0.08em] text-ink-faint">{s.label}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** CYCLE FLOW — one cycle's work drawn as a live signal chain: a pulsing source core
+ *  feeding a streaming data-rail, each department a node on the rail; a real action fires
+ *  a bright pulse-ring, a passive one stays dim, a pending one glows cyan. Reactor-native,
+ *  fully animated — replaces the flat "stat-box" grid. */
+export function CycleFlow({ nodes, active = false }: { nodes: { dept: string; action: string; real: boolean; pending: boolean }[]; active?: boolean }) {
+  const reduce = useReducedMotion();
+  const n = Math.max(1, nodes.length);
+  const step = 68, x0 = 40, H = 78, midY = 30;
+  const W = x0 + n * step;
+  return (
+    <motion.svg viewBox={`0 0 ${W} ${H}`} width="100%" preserveAspectRatio="xMidYMid meet" style={{ display: "block" }}
+      initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }} aria-hidden>
+      {/* source core — the cycle brain */}
+      <polygon points={hexPoints(16, midY, 9)} fill="rgba(0,255,0,0.06)" stroke={active ? CYAN : NEON} strokeWidth={1.3} />
+      <circle cx={16} cy={midY} r={2.4} fill={active ? CYAN : NEON}>{!reduce && <animate attributeName="opacity" values="1;0.3;1" dur="1.6s" repeatCount="indefinite" />}</circle>
+      {/* the data-rail — flowing */}
+      <line x1={26} y1={midY} x2={W - 8} y2={midY} stroke="rgba(0,255,0,0.14)" strokeWidth={1} />
+      <line x1={26} y1={midY} x2={W - 8} y2={midY} stroke={active ? CYAN : NEON} strokeWidth={1} strokeDasharray="2 8" opacity={0.7}>
+        {!reduce && <animate attributeName="stroke-dashoffset" from="0" to="-10" dur={active ? "0.5s" : "0.9s"} repeatCount="indefinite" />}
+      </line>
+      {nodes.map((nd, i) => {
+        const x = x0 + i * step + step / 2;
+        const col = nd.real ? NEON : nd.pending ? CYAN : DIM;
+        const d = nd.real ? 13 : 9;
+        return (
+          <g key={i}>
+            <rect x={x - d / 2} y={midY - d / 2} width={d} height={d} transform={`rotate(45 ${x} ${midY})`}
+              fill={nd.real ? "rgba(0,255,0,0.10)" : "rgba(0,255,0,0.03)"} stroke={col} strokeWidth={nd.real ? 1.6 : 1} />
+            <circle cx={x} cy={midY} r={2.1} fill={col}>
+              {!reduce && (nd.real || nd.pending) && <animate attributeName="opacity" values="1;0.35;1" dur={nd.real ? "1s" : "1.5s"} repeatCount="indefinite" />}
+            </circle>
+            {!reduce && nd.real && (
+              <circle cx={x} cy={midY} r={d / 2} fill="none" stroke={NEON} strokeWidth={1}>
+                <animate attributeName="r" values={`${d / 2};${d / 2 + 10}`} dur="1.8s" repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0.65;0" dur="1.8s" repeatCount="indefinite" />
+              </circle>
+            )}
+            <text x={x} y={midY + 23} textAnchor="middle" fill={nd.real ? NEON : "rgba(0,255,0,0.72)"} fontSize={8.5} fontFamily="ui-monospace,monospace" fontWeight={700} letterSpacing={0.4}>{LABEL[nd.dept] ?? nd.dept.toUpperCase()}</text>
+            <text x={x} y={midY + 34} textAnchor="middle" fill={nd.real ? NEON : nd.pending ? CYAN : "rgba(0,255,0,0.42)"} fontSize={7} fontFamily="ui-monospace,monospace" letterSpacing={0.3}>{nd.pending ? "awaiting ok" : nd.action}</text>
+          </g>
+        );
+      })}
+    </motion.svg>
+  );
+}
+
 /** Inline glanceable telemetry — a reading, not a boxed stat card. */
 export function Telemetry({ label, value, unit, tone = "neon", big = false }: { label: string; value: ReactNode; unit?: string; tone?: "neon" | "cyan"; big?: boolean }) {
   return (

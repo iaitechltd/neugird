@@ -27,12 +27,16 @@ import * as Echo from "./echo";
 import * as Feed from "./feed";
 import * as GridX from "./gridx";
 import * as GridMarket from "./gridMarket";
+import * as Messaging from "./messaging";
+import * as Genesis from "./genesis";
 import * as Brain from "../brain";
 import type {
-  Agent, AgentPersona, ContributorSplit, Venture, VentureApproval, VentureDept, VentureEvent, VentureObjective, VentureSeat,
+  Agent, AgentPersona, ContributorSplit, Job, Venture, VentureApproval, VentureDept, VentureEvent, VentureObjective, VentureReport, VentureReportItem, VentureSeat,
 } from "../types";
 
 const LOG_MAX = 40;
+const REPORTS_MAX = 50;    // durable per-cycle reports kept — the complete archive (the log stays a short recent feed)
+const RECRUIT_PULSE = 25;  // reputation bounty on an open recruit job (Pulse — no treasury debit, no mint risk; real rep for real help)
 
 // Per-venture / per-approval in-flight guards — a real mutex in the single-instance
 // process so two concurrent requests (e.g. a double-click during the multi-second LLM
@@ -390,6 +394,79 @@ function delegate(v: Venture, seat: VentureSeat, title: string, desc: string, br
   return { job_id: job.job_id, deliverable: out };
 }
 
+/* --- RECRUIT: the crew brings in real help by posting a REAL open job --- */
+
+/** The product shape used to frame a recruit post (title + live URL if deployed). */
+function productShape(v: Venture): { title: string; url?: string } | null {
+  const build = v.build_id ? db.builds.find((b) => b.build_id === v.build_id) : undefined;
+  return build ? { title: build.title, url: build.deployment?.slug ? `/d/${build.deployment.slug}` : undefined } : null;
+}
+function recruitSkills(v: Venture, agent_id?: string): string[] {
+  const agent = agent_id ? Agents.getAgent(agent_id) : undefined;
+  const build = v.build_id ? db.builds.find((b) => b.build_id === v.build_id) : undefined;
+  return (agent?.capabilities ?? build?.stack ?? []).slice(0, 4);
+}
+/** The public description for a recruit job — frames it as helping the company grow. */
+function recruitBody(v: Venture, product: { title: string; url?: string } | null, ask: string): string {
+  const what = product ? `“${product.title}”${product.url ? ` (live at ${product.url})` : ""}` : (v.mission || "the project");
+  return `${ask}\n\nPosted by ${v.name}'s crew to help grow ${what}. Deliver real, verifiable work — ${v.name}'s owner reviews submissions and awards reputation for genuine help.`.slice(0, 1600);
+}
+/** Post the recruit job on the community board. When `paid`, escrow a REAL bounty: sell a GRID
+ *  slice of the treasury for USDC and fund the job's escrow — the proven USDC job-escrow path
+ *  pays the real worker on the owner's delivery approval (and refunds on rejection). Conserved:
+ *  a real AMM sell, no mint. Falls back to reputation (Pulse) when unpaid / unaffordable / dry.
+ *  The Jobs self-deal gate blocks the owner's own agents from farming it either way. */
+function createRecruitJob(v: Venture, title: string, description: string, skills: string[], paid: boolean): { job: Job; bountyGrid?: number; bountyUsdc?: number } {
+  const base = { context: "talent_contract" as const, title: clip(title, 90), description, required_skills: skills.slice(0, 4), executor_kind: "any" as const, created_by: v.owner_id };
+  if (paid) {
+    const bountyGrid = Params.get("venture_bounty_grid");
+    if (bountyGrid > 0 && Wallets.balances(v.treasury_id).grid >= bountyGrid) {
+      const sw = GridMarket.swap(v.treasury_id, "sell", bountyGrid); // treasury GRID → treasury USDC (real trade)
+      const usdc = round2(sw.out ?? 0);
+      if (usdc > 0) {
+        const fj = Jobs.postFundedJob({ ...base, reward_amount: usdc }, v.treasury_id); // escrows the USDC bounty
+        if (fj.job) { v.spent_grid = round2((v.spent_grid ?? 0) + bountyGrid); return { job: fj.job, bountyGrid, bountyUsdc: usdc }; }
+        // couldn't fund → the swapped USDC stays in the treasury; fall through to a reputation post
+      }
+    }
+  }
+  return { job: Jobs.createJob({ ...base, reward_amount: RECRUIT_PULSE, reward_token: "Pulse" }) };
+}
+/* --- REACH: the crew sends a real outreach DM to a relevant user (always owner-approved) --- */
+
+/** Real users worth reaching — community leaders (grid owners) + high-reputation builders —
+ *  excluding the owner, the venture's own wallets, and anyone already contacted (no spam). */
+function outreachCandidates(v: Venture): { id: string; name: string; why: string }[] {
+  const reached = new Set((v.approvals ?? []).filter((a) => a.action === "outreach_dm" && a.to_id).map((a) => a.to_id));
+  const gridOwners = new Map<string, string>();
+  for (const g of db.grids) if (g.owner_id && g.owner_id !== v.owner_id && !gridOwners.has(g.owner_id)) gridOwners.set(g.owner_id, g.name);
+  return db.users
+    .filter((u) => u.id !== v.owner_id && !reached.has(u.id) && !u.id.startsWith("neugrid:"))
+    .map((u) => {
+      const rep = Math.round(Math.max(u.pulse_score ?? 0, u.reputation?.total ?? 0));
+      const grid = gridOwners.get(u.id);
+      return { id: u.id, name: u.username ?? u.id, why: grid ? `runs the “${grid}” community` : `${rep} reputation builder`, reach: (grid ? 100000 : 0) + rep };
+    })
+    .sort((a, b) => b.reach - a.reach)
+    .slice(0, 6)
+    .map(({ id, name, why }) => ({ id, name, why }));
+}
+/** A safe outreach message if the brain is unavailable — real names + product only, no fabrication. */
+function outreachFallback(v: Venture, product: { title: string; summary?: string } | null, cand: { name: string; why: string }): string {
+  const p = product ? `${product.title}${product.summary ? ` — ${clip(product.summary, 90)}` : ""}` : "a new product";
+  return `Hi ${cand.name}, I'm reaching out from ${v.name}. We're building ${p}, and given that you ${cand.why}, I thought there could be a real fit. Would you be open to a short conversation about ways we might help each other grow?`;
+}
+
+/** Mark a report's pending item done once its gated action executes — keeps the archive accurate. */
+function completeReportItem(v: Venture, report_id: string | undefined, agent_id: string | undefined, patch: Partial<VentureReportItem>): void {
+  if (!report_id) return;
+  const rep = (v.reports ?? []).find((r) => r.report_id === report_id);
+  if (!rep) return;
+  const item = rep.items.find((it) => it.status === "pending_approval" && (!agent_id || it.agent_id === agent_id));
+  if (item) Object.assign(item, patch);
+  rep.actions = rep.items.filter((it) => it.status === "done" && (it.action === "shipped" || it.action === "posted" || it.action === "recruited" || it.action === "reached" || it.action === "raised")).length;
+}
+
 export interface CycleResult { ok: boolean; reason?: string; objective_id?: string; tasks?: number; cost?: number; balance?: number; brain?: boolean; error?: string }
 
 /* --- specialist domains, tools, memory, and real grounding --- */
@@ -539,12 +616,17 @@ async function runCycleInner(venture_id: string): Promise<CycleResult> {
   //    write a spec — it SHIPS a real new version of the product through Echo (real code + proof).
   type Ship = { version: number; cost: number };
   type Pub = { post_id: string };
-  type Propose = { action: "echo_ship" | "wire_post"; summary: string; detail: string; amount_grid?: number };
-  type Out = { a: Assignment; out: { title: string; deliverable: string } | null; ship: Ship | null; published: Pub | null; propose: Propose | null };
+  type Recruit = { job_id: string; title: string };
+  type Raise = { title: string; summary: string; category: string; ask_amount: number; roadmap: { title: string; description: string; amount: number }[] };
+  type Propose = { action: "echo_ship" | "wire_post" | "recruit_job" | "outreach_dm" | "open_raise"; summary: string; detail: string; amount_grid?: number; to_id?: string; to_name?: string; raise?: Raise };
+  type Out = { a: Assignment; out: { title: string; deliverable: string } | null; ship: Ship | null; published: Pub | null; recruited: Recruit | null; propose: Propose | null };
   const PUBLISH_INTENT = /\b(post|posts|publish|published|announce|announcement|wire|share|social|tweet|thread|blog|launch)\b/i;
+  const RECRUIT_INTENT = /\b(recruit|recruiting|hire|hiring|find help|bring on|team up|contributor|contributors|freelancer|designer|developer|engineer|writer|marketer|specialist|onboard|staff up)\b/i;
+  const REACH_INTENT = /\b(reach out|reaching out|outreach|message|contact|get in touch|connect with|partner|partnership|influencer|creator|collab|collaborate|introduce)\b/i;
+  const FUND_INTENT = /\b(fundrais|funding|raise (capital|money|funding|a round|from)|raise for|seek(ing)? (funding|investment|capital|backers)|investment|investors?|backers|capital|genesis|get funded|open a raise)\b/i;
   const gate = gatesApproval(v); // when ON, big actions become approvals instead of firing now
   const outputs = await mapLimit(assignments, 2, async (a): Promise<Out> => {
-    const base: Out = { a, out: null, ship: null, published: null, propose: null };
+    const base: Out = { a, out: null, ship: null, published: null, recruited: null, propose: null };
     if (!usedBrain) return base;
     const agent = Agents.getAgent(a.seat.agent_id);
 
@@ -560,6 +642,43 @@ async function runCycleInner(venture_id: string): Promise<CycleResult> {
         return { ...base, out: { title: `Shipped v${s.version} — ${clip(a.task, 40)}`, deliverable }, ship: s };
       }
       // Echo ship unavailable (no files / synthesis failed / limit) → fall through to the spec path
+    }
+
+    // REACH — draft a real outreach DM to a relevant user. ALWAYS owner-approved (even in
+    // full autonomy): a message to a real third party only ever sends when the owner says so.
+    // Marketing owns outreach (one seat) → at most one outreach per cycle, no duplicates.
+    if (a.dept === "marketing" && REACH_INTENT.test(a.task)) {
+      const cand = outreachCandidates(v)[0];
+      if (cand) {
+        const facts = `OUTREACH TARGET — write a short, warm, SPECIFIC direct message to this exact person (address them by name, 3–5 sentences, propose ONE concrete way to help each other, no fluff, invent nothing):\nName: ${cand.name}\nWhy relevant: ${cand.why}`;
+        const draft = await Brain.specialistWork({
+          company: v.name, mission: v.mission || undefined, product, objective: objective.text,
+          dept: a.dept, role: agent?.persona?.role ?? a.seat.title,
+          task: `Write a personal outreach DM to ${cand.name} to help grow the product.`, facts, expertise: expertiseOf(agent, a.dept),
+        }).catch(() => null);
+        const msg = draft?.deliverable?.trim() ? draft.deliverable.trim() : outreachFallback(v, product, cand);
+        return { ...base, out: { title: `Outreach to ${cand.name}`, deliverable: msg }, propose: { action: "outreach_dm", summary: `Reach out to ${cand.name} — ${cand.why}`, detail: msg, to_id: cand.id, to_name: cand.name } };
+      }
+      // no candidate available → fall through to normal delivery
+    }
+
+    // FUND — draft a real funding raise for the product. ALWAYS owner-approved: opening a
+    // public raise is a big commitment, so it only goes live when the owner says so. Finance
+    // owns it (one seat) → at most one raise draft per cycle, and never while one is already open.
+    if (a.dept === "finance" && FUND_INTENT.test(a.task) && v.build_id) {
+      const build = db.builds.find((b) => b.build_id === v.build_id);
+      const alreadyRaising = !!build?.proposal_id || (v.approvals ?? []).some((ap) => ap.action === "open_raise" && ap.status === "pending");
+      if (!alreadyRaising) {
+        const dr = await Echo.draftProposal(v.build_id, v.owner_id).catch(() => null);
+        if (dr?.draft) {
+          const d = dr.draft;
+          const roadmap = d.milestones.map((m) => ({ title: m.title, description: m.description, amount: m.amount_usdc }));
+          const money = (n: number) => `$${Math.round(n).toLocaleString()}`;
+          const detail = `${d.pitch}\n\nAsk: ${money(d.ask_usdc)} · ${d.milestones.length} milestone${d.milestones.length === 1 ? "" : "s"}:\n${d.milestones.map((m) => `• ${m.title} — ${money(m.amount_usdc)}`).join("\n")}`;
+          return { ...base, out: { title: `Raise for ${d.title}`, deliverable: detail }, propose: { action: "open_raise", summary: `Open a raise — ${clip(d.title, 40)} · ${money(d.ask_usdc)}`, detail, raise: { title: d.title, summary: d.pitch, category: d.category, ask_amount: d.ask_usdc, roadmap } } };
+        }
+      }
+      // couldn't draft (no files / brain inactive / already raising) → fall through to normal delivery
     }
 
     // gather the specialist's grounding facts: finance gets the real numbers; marketing
@@ -601,24 +720,48 @@ async function runCycleInner(venture_id: string): Promise<CycleResult> {
         if (r.post) pub = { post_id: r.post.post_id };
       }
     }
-    return { a, out, ship: null, published: pub, propose };
+
+    // RECRUIT: bring in real help by posting a REAL open job to the community board.
+    // A public action (like a wire post): fire now if autonomous, else file it for approval.
+    let recruited: Recruit | null = null;
+    if (out && !pub && !propose && a.dept !== "build" && RECRUIT_INTENT.test(a.task)) {
+      const bountyGrid = Params.get("venture_bounty_grid");
+      const canPay = bountyGrid > 0 && Wallets.balances(v.treasury_id).grid >= bountyGrid;
+      if (gate || canPay) {
+        // a paid bounty spends the treasury → always the owner's call, even in full autonomy
+        propose = { action: "recruit_job", summary: canPay ? `Recruit help · fund a ${bountyGrid} GRID bounty — ${clip(out.title, 34)}` : `Recruit help — ${clip(out.title, 40)}`, detail: `${out.title}\n\n${out.deliverable}`, amount_grid: canPay ? bountyGrid : undefined };
+      } else {
+        const { job } = createRecruitJob(v, `Help ${v.name}: ${out.title}`, recruitBody(v, product, out.deliverable), agent?.capabilities ?? product?.stack ?? [], false);
+        recruited = { job_id: job.job_id, title: job.title };
+      }
+    }
+    return { a, out, ship: null, published: pub, recruited, propose };
   });
 
-  // 3) record each specialist's deliverable + sharpen its domain mastery
+  // 3) record each specialist's deliverable + sharpen its domain mastery, and assemble
+  //    the durable cycle report — the complete archive (unlike the bounded activity log).
+  const reportId = newId("vrep");
+  const reportItems: VentureReportItem[] = [];
   let done = 0;
-  for (const { a, out, ship, published, propose } of outputs) {
+  for (const { a, out, ship, published, recruited, propose } of outputs) {
     const title = out?.title || clip(a.task, 60);
     const res = delegate(v, a.seat, title, a.task, out?.deliverable);
     if (!res) continue;
     done += 1;
     growSkill(a.seat.agent_id, a.dept);
     pushEvent(v, {
-      kind: "delivered",
-      text: `${a.seat.title} · ${clip(title, 60)}`,
+      kind: recruited ? "recruited" : "delivered",
+      text: recruited ? `${a.seat.title} · posted an open job — ${clip(title, 50)}` : `${a.seat.title} · ${clip(title, 60)}`,
       detail: res.deliverable,
-      tool: published ? "posted · wire" : ship ? `shipped v${ship.version} · Echo` : propose ? "drafted · awaiting ok" : (TOOL[a.dept] || undefined),
+      tool: published ? "posted · wire" : ship ? `shipped v${ship.version} · Echo` : recruited ? "recruiting · board" : propose?.action === "outreach_dm" ? "outreach · awaiting ok" : propose?.action === "open_raise" ? "raise · awaiting ok" : propose ? "drafted · awaiting ok" : (TOOL[a.dept] || undefined),
       post_id: published?.post_id,
-      dept: a.dept, agent_id: a.seat.agent_id, job_id: res.job_id,
+      dept: a.dept, agent_id: a.seat.agent_id, job_id: recruited?.job_id ?? res.job_id,
+    });
+    reportItems.push({
+      dept: a.dept, agent_id: a.seat.agent_id, title, detail: res.deliverable,
+      action: published ? "posted" : ship ? "shipped" : recruited ? "recruited" : propose?.action === "outreach_dm" ? "reached" : propose?.action === "open_raise" ? "raised" : propose ? "drafted" : (a.dept === "marketing" ? "researched" : a.dept === "finance" ? "budgeted" : "planned"),
+      link: published ? `/post/${published.post_id}` : recruited ? "/jobs" : (ship && product?.url) ? product.url : undefined,
+      status: propose ? "pending_approval" : "done",
     });
     if (ship) {
       v.spent_grid = (v.spent_grid ?? 0) + ship.cost;
@@ -632,11 +775,26 @@ async function runCycleInner(venture_id: string): Promise<CycleResult> {
         action: propose.action, summary: propose.summary, detail: propose.detail,
         dept: a.dept, agent_id: a.seat.agent_id, objective_id: objective.objective_id,
         build_id: propose.action === "echo_ship" ? v.build_id : undefined,
+        to_id: propose.to_id, to_name: propose.to_name, raise: propose.raise,
+        report_id: reportId,
         amount_grid: propose.amount_grid, status: "pending", created_at: nowISO(),
       };
       (v.approvals ??= []).unshift(ap);
       pushEvent(v, { kind: "approval", text: `Needs your OK: ${clip(propose.summary, 66)}`, dept: a.dept, agent_id: a.seat.agent_id });
     }
+  }
+
+  // the durable per-cycle report — the complete archive the owner audits (the log keeps only the last 40 lines)
+  if (reportItems.length) {
+    const report: VentureReport = {
+      report_id: reportId, venture_id: v.venture_id, cycle: v.cycles + 1,
+      objective: objective.text, headline: clip(ceoLine.replace(/^CEO:\s*/, ""), 150),
+      items: reportItems,
+      actions: reportItems.filter((it) => it.status === "done" && (it.action === "shipped" || it.action === "posted" || it.action === "recruited" || it.action === "reached" || it.action === "raised")).length,
+      created_at: nowISO(),
+    };
+    (v.reports ??= []).unshift(report);
+    if (v.reports.length > REPORTS_MAX) v.reports = v.reports.slice(0, REPORTS_MAX);
   }
 
   objective.tasks_total = assignments.length;
@@ -652,7 +810,7 @@ async function runCycleInner(venture_id: string): Promise<CycleResult> {
 // post); the owner approves or declines it right on Mission Control. Approve →
 // the deferred action actually executes; decline → it's dropped.
 
-export interface ApprovalResult { ok?: boolean; executed?: string; post_id?: string; version?: number; error?: string }
+export interface ApprovalResult { ok?: boolean; executed?: string; post_id?: string; version?: number; job_id?: string; to_id?: string; proposal_id?: string; error?: string }
 
 /** Turn the approval gate on/off for a company (owner sets its autonomy level). */
 export function setApprovalPolicy(venture_id: string, owner_id: string, require: boolean): { venture?: Venture; error?: string } {
@@ -684,6 +842,8 @@ async function resolveApprovalInner(venture_id: string, owner_id: string, approv
 
   if (decision === "decline") {
     ap.status = "declined"; ap.resolved_at = nowISO();
+    // the crew drafted it, the owner declined to act — reflect that in the report (no perpetual "awaiting ok")
+    completeReportItem(v, ap.report_id, ap.agent_id, { status: "done", action: "drafted" });
     pushEvent(v, { kind: "approval", text: `Declined: ${clip(ap.summary, 66)}`, dept: ap.dept, agent_id: ap.agent_id });
     v.updated_at = nowISO();
     return { ok: true };
@@ -707,6 +867,7 @@ async function resolveApprovalInner(venture_id: string, owner_id: string, approv
       tool: `shipped v${version} · Echo`, dept: ap.dept, agent_id: ap.agent_id,
     });
     pushEvent(v, { kind: "spend", text: `Build shipped v${version} through Echo — paid ${shipCost} GRID for the build.`, amount_grid: shipCost });
+    completeReportItem(v, ap.report_id, ap.agent_id, { status: "done", action: "shipped", link: productShape(v)?.url });
     v.updated_at = nowISO();
     return { ok: true, executed: "echo_ship", version };
   }
@@ -721,8 +882,49 @@ async function resolveApprovalInner(venture_id: string, owner_id: string, approv
     if (!r.post) return { error: "post_failed" };
     ap.status = "approved"; ap.resolved_at = nowISO(); ap.post_id = r.post.post_id;
     pushEvent(v, { kind: "delivered", text: `Head of content · Published to the wire (approved)`, detail: body, tool: "posted · wire", post_id: r.post.post_id, dept: ap.dept, agent_id: ap.agent_id });
+    completeReportItem(v, ap.report_id, ap.agent_id, { status: "done", action: "posted", link: `/post/${r.post.post_id}` });
     v.updated_at = nowISO();
     return { ok: true, executed: "wire_post", post_id: r.post.post_id };
+  }
+
+  // recruit_job → post the REAL open job to the community board so real people/agents can help
+  if (ap.action === "recruit_job") {
+    const parts = (ap.detail ?? ap.summary).split("\n\n");
+    const title = parts[0] || ap.summary;
+    const body = parts.slice(1).join("\n\n") || title;
+    const { job, bountyGrid, bountyUsdc } = createRecruitJob(v, `Help ${v.name}: ${title}`, recruitBody(v, productShape(v), body), recruitSkills(v, ap.agent_id), true);
+    ap.status = "approved"; ap.resolved_at = nowISO(); ap.job_id = job.job_id;
+    completeReportItem(v, ap.report_id, ap.agent_id, { status: "done", action: "recruited", link: "/jobs" });
+    pushEvent(v, { kind: "recruited", text: bountyGrid ? `${ap.dept ?? "Crew"} · posted a PAID recruit job (~$${Math.round(bountyUsdc ?? 0)} bounty, approved)` : `${ap.dept ?? "Crew"} · posted an open job to recruit help (approved)`, detail: body, tool: bountyGrid ? "recruiting · paid" : "recruiting · board", job_id: job.job_id, dept: ap.dept, agent_id: ap.agent_id });
+    if (bountyGrid) pushEvent(v, { kind: "spend", text: `Escrowed a ${bountyGrid} GRID bounty (~$${Math.round(bountyUsdc ?? 0)}) on the recruit job — pays the worker when you approve their delivery.`, amount_grid: bountyGrid });
+    v.updated_at = nowISO();
+    return { ok: true, executed: "recruit_job", job_id: job.job_id };
+  }
+
+  // outreach_dm → send the REAL direct message to the recipient (only ever runs on the owner's approval)
+  if (ap.action === "outreach_dm") {
+    if (!ap.to_id) return { error: "no_recipient" };
+    const from = ap.agent_id ?? v.ceo_agent_id ?? v.seats[0]?.agent_id;
+    if (!from) return { error: "no_sender" };
+    const r = Messaging.sendTo(from, ap.to_id, { body: (ap.detail ?? ap.summary).slice(0, 2000) });
+    if (r.error || !r.conversation) return { error: r.error ?? "send_failed" };
+    ap.status = "approved"; ap.resolved_at = nowISO(); ap.conversation_id = r.conversation.conversation_id;
+    completeReportItem(v, ap.report_id, ap.agent_id, { status: "done", action: "reached", link: "/messages" });
+    pushEvent(v, { kind: "reached", text: `${ap.dept ?? "Crew"} · reached out to ${ap.to_name ?? "a user"} (approved)`, detail: ap.detail, tool: "outreach · sent", dept: ap.dept, agent_id: ap.agent_id });
+    v.updated_at = nowISO();
+    return { ok: true, executed: "outreach_dm", to_id: ap.to_id };
+  }
+
+  // open_raise → create the REAL GenesisX funding raise on the product (only on the owner's approval)
+  if (ap.action === "open_raise") {
+    if (!ap.raise) return { error: "no_draft" };
+    const r = Genesis.createProposal({ author_id: v.owner_id, title: ap.raise.title, summary: ap.raise.summary, category: ap.raise.category, ask_amount: ap.raise.ask_amount, roadmap: ap.raise.roadmap, build_id: v.build_id });
+    if (r.error || !r.proposal) return { error: r.error ?? "raise_failed" };
+    ap.status = "approved"; ap.resolved_at = nowISO(); ap.proposal_id = r.proposal.proposal_id;
+    completeReportItem(v, ap.report_id, ap.agent_id, { status: "done", action: "raised", link: `/genesis/${r.proposal.proposal_id}` });
+    pushEvent(v, { kind: "raised", text: `${ap.dept ?? "Finance"} · opened a funding raise — ${clip(ap.raise.title, 40)} (approved)`, detail: ap.detail, tool: "raise · genesis", dept: ap.dept, agent_id: ap.agent_id });
+    v.updated_at = nowISO();
+    return { ok: true, executed: "open_raise", proposal_id: r.proposal.proposal_id };
   }
 
   // no executable action attached — just mark it approved
@@ -791,7 +993,7 @@ export function view(venture_id: string, viewer?: string) {
   // (ship instructions / unpublished post drafts) OR the full work-product in log[].detail.
   const publicLog = isOwner ? v.log : v.log.map((e) => ({ ...e, detail: undefined }));
   return {
-    venture: isOwner ? v : { ...v, approvals: [], log: publicLog },
+    venture: isOwner ? v : { ...v, approvals: [], log: publicLog, reports: [] },
     is_owner: isOwner,
     seats,
     treasury_grid: treasury,
@@ -814,5 +1016,6 @@ export function view(venture_id: string, viewer?: string) {
     approvals: isOwner ? (v.approvals ?? []).filter((a) => a.status === "pending") : [],
     require_approval: gatesApproval(v),
     log: publicLog,
+    reports: isOwner ? (v.reports ?? []) : [],  // the complete per-cycle archive — owner-only (holds full work-product)
   };
 }

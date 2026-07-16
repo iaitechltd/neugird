@@ -21,7 +21,7 @@ import Meter from "@/components/app/Meter";
 import LivePreview from "@/components/app/LivePreview";
 import OrbPanel from "@/components/app/OrbPanel";
 import { PanelChart } from "@/components/app/terminal";
-import { RadialBars, ConcentricRings, Bubble, Bars, Ring } from "@/components/app/charts";
+import { RadialBars, ConcentricRings, Bubble, Bars, Ring, Funnel } from "@/components/app/charts";
 import type { Build, Product } from "@/lib/types";
 
 type P = Product & {
@@ -177,7 +177,17 @@ export default function GridXPage() {
   const techTop = Object.entries(techCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
   const techBubbles = techTop.map(([t, n], i) => ({ value: n, label: t.slice(0, 4), color: ["#00ff00", "#48f5ff", "#ffb020", "#7cf57c"][i % 4] }));
   const pipelineBars = [builds.length, products.length, unlisted.length];
-  const pipelineMax = Math.max(1, ...pipelineBars);
+  // conversion funnel — how builds become earning products (all real data)
+  const usedCount = products.filter((p) => (p.opens_30d ?? 0) > 0 || (p.active_users ?? 0) > 0 || (p.purchases ?? 0) > 0).length;
+  const earningCount = products.filter((p) => (p.onchain_revenue ?? 0) > 0).length;
+  const funnelSteps = [
+    { value: builds.length, label: "Built", color: "rgba(0,255,65,0.85)" },
+    { value: products.length, label: "Listed", color: "rgba(0,255,65,0.6)" },
+    { value: usedCount, label: "In use", color: "rgba(0,255,65,0.42)" },
+    { value: earningCount, label: "Earning", color: "rgba(0,255,65,0.28)" },
+  ];
+  // witnessed-step depth across the ready-to-list builds (proof maturity)
+  const maxSteps = Math.max(1, ...unlisted.map((b) => b.steps?.length ?? 0));
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
@@ -231,6 +241,12 @@ export default function GridXPage() {
                         <div className="truncate text-xs text-ink">{b.title}</div>
                         <div className="truncate text-[10px] text-ink-dim">{b.stack.join(" · ")}</div>
                       </div>
+                    </div>
+                    {/* proof maturity — how many build steps were witnessed */}
+                    <div className="mt-2 flex items-center gap-2 text-[9px] uppercase tracking-wide text-ink-faint">
+                      <IconCheck className="h-3 w-3 shrink-0 text-neon/70" />
+                      <span className="shrink-0">{b.steps?.length ?? 0} steps witnessed{(b.version ?? 1) > 1 ? ` · v${b.version}` : ""}</span>
+                      <Meter value={b.steps?.length ?? 0} max={maxSteps} w={52} className="ml-auto" />
                     </div>
                     <Link href="/echo" className="ng-btn ng-btn--sm ng-btn--block mt-2">List on GridX →</Link>
                   </div>
@@ -329,15 +345,24 @@ export default function GridXPage() {
               ))}</div>
             ) : <p className="text-[11px] text-ink-dim">—</p>}
 
-            <Section icon={<IconRocket className="h-3.5 w-3.5" />}>Build Pipeline</Section>
+            <Section icon={<IconRocket className="h-3.5 w-3.5" />}>Build → Earning</Section>
             <div className="ng-card p-3.5">
-              <div className="divide-y divide-line text-[12px]">
-                <div className="ng-row !py-2"><span className="ng-row__k flex items-center gap-2 text-ink"><IconRocket className="h-3.5 w-3.5 text-neon/70" />Builds</span><span className="flex items-center gap-2"><Meter value={builds.length} max={pipelineMax} w={48} /><Mark plain>{builds.length}</Mark></span></div>
-                <div className="ng-row !py-2"><span className="ng-row__k flex items-center gap-2 text-ink"><IconStore className="h-3.5 w-3.5 text-neon/70" />Listed</span><span className="flex items-center gap-2"><Meter value={products.length} max={pipelineMax} w={48} color="#48f5ff" /><Mark plain>{products.length}</Mark></span></div>
-                <Link href="/echo" className="ng-row flex items-center !py-2 transition hover:text-neon"><span className="ng-row__k flex items-center gap-2 text-ink"><IconArrowRight className="h-3.5 w-3.5 text-neon/70" />Ready to list</span><span className="flex items-center gap-2"><Meter value={unlisted.length} max={pipelineMax} w={48} color="#ffb020" /><Mark plain accent="amber">{unlisted.length}</Mark></span></Link>
+              <div className="flex items-stretch gap-2.5">
+                {/* step labels */}
+                <div className="grid grid-rows-4 py-0.5 text-right text-[9px] uppercase leading-none tracking-wide text-ink-faint" style={{ height: 108 }}>
+                  {funnelSteps.map((s) => <span key={s.label} className="flex items-center justify-end">{s.label}</span>)}
+                </div>
+                {/* the narrowing funnel — built to earning */}
+                <div className="min-w-0 flex-1 self-center"><Funnel data={funnelSteps} w={180} h={108} gap={5} /></div>
+                {/* live counts */}
+                <div className="grid grid-rows-4 py-0.5 text-[12px] font-bold leading-none text-neon tnum" style={{ height: 108 }}>
+                  {funnelSteps.map((s) => <span key={s.label} className="flex items-center">{s.value}</span>)}
+                </div>
+              </div>
+              <div className="mt-2.5 border-t border-line pt-2 text-[9px] leading-relaxed text-ink-faint">
+                {earningCount}/{builds.length || 0} builds now earn revenue — every step is a settled receipt, not a self-reported claim.
               </div>
             </div>
-            <p className="mt-3 text-[10px] leading-relaxed text-ink-faint">Every number here is derived from settled receipts and real opens — products can&#39;t self-report success.</p>
           </Panel>
         </OrbPanel>
       </div>

@@ -15,7 +15,7 @@ import { Panel, Tag, Mark, DataRow, IconBriefcase, IconActivity, IconCheck , kpi
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import Meter from "@/components/app/Meter";
-import { PanelChart, TMeter, barStr } from "@/components/app/terminal";
+import { PanelChart, TMeter } from "@/components/app/terminal";
 import { Bullet, LabeledBars, Marimekko, Pie, Histogram, SERIES } from "@/components/app/charts";
 import type { Job } from "@/lib/types";
 
@@ -31,7 +31,14 @@ const STATUS_ACCENT: Record<string, "neon" | "cyan" | "amber"> = {
   open: "neon", in_progress: "cyan", assigned: "cyan", submitted: "amber",
   verifying: "amber", approved: "neon", paid: "neon", rejected: "amber", disputed: "amber", cancelled: "amber",
 };
-const LIFECYCLE = ["open", "in progress", "submitted", "verified", "paid"];
+// lifecycle stages, each mapped to the live job statuses that sit in it
+const LIFECYCLE_MAP: [string, string[]][] = [
+  ["open", ["open"]],
+  ["in progress", ["in_progress", "assigned"]],
+  ["submitted", ["submitted", "verifying"]],
+  ["verified", ["approved"]],
+  ["paid", ["paid"]],
+];
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[] | null>(null);
@@ -125,6 +132,9 @@ export default function JobsPage() {
   const boardAvg = rewardSpread.length ? Math.round(rewardSpread.reduce((a, b) => a + b, 0) / rewardSpread.length) : 0;
   // Rail meters — the open board's share of all jobs / of all reward value
   const totalRewards = list.reduce((s, j) => s + (j.reward_amount ?? 0), 0);
+  // Lifecycle legend — how many jobs sit in each stage right now (real, live)
+  const lifecycleCounts = LIFECYCLE_MAP.map(([label, sts]) => ({ label, count: list.filter((j) => sts.includes(j.status)).length }));
+  const lifecycleMax = Math.max(1, ...lifecycleCounts.map((s) => s.count));
 
   async function act(url: string, body?: object, msg?: string) {
     if (busy) return;
@@ -363,10 +373,20 @@ export default function JobsPage() {
                         {d.amount ? <span className="shrink-0"> · ${d.amount.toLocaleString()} escrow</span> : null}
                       </div>
                       {d.reason && <p className="mt-1 line-clamp-2 text-[10px] italic leading-relaxed text-ink-dim">“{d.reason}”</p>}
-                      <div className="mt-1.5 flex items-center justify-between text-[10px] text-ink-faint">
-                        <span>worker {d.for_worker_votes} · creator {d.for_creator_votes}</span>
-                        <span>{d.votes_needed} more to resolve</span>
+                      {/* tug-of-war — worker verdicts pull left (green), creator right (red) */}
+                      <div className="mt-1.5 flex items-center justify-between text-[9px] uppercase tracking-wide">
+                        <span className="font-bold text-neon">worker {d.for_worker_votes}</span>
+                        <span className="text-ink-faint">{d.votes_needed} more to resolve</span>
+                        <span className="font-bold text-[#ff8b8b]">creator {d.for_creator_votes}</span>
                       </div>
+                      {d.for_worker_votes + d.for_creator_votes > 0 ? (
+                        <div className="mt-1 flex h-2.5 overflow-hidden border border-line bg-black/40">
+                          <div className="bg-neon/70" style={{ width: `${(d.for_worker_votes / (d.for_worker_votes + d.for_creator_votes)) * 100}%` }} />
+                          <div className="bg-[#ff8b8b]/70" style={{ width: `${(d.for_creator_votes / (d.for_worker_votes + d.for_creator_votes)) * 100}%` }} />
+                        </div>
+                      ) : (
+                        <div className="mt-1 h-2.5 border border-line bg-black/40" title="no verdicts cast yet" />
+                      )}
                       <div className="mt-1 flex items-center gap-1.5">
                         <Meter value={d.for_worker_votes + d.for_creator_votes} max={Math.max(1, d.quorum)} w={110} color="#ffb020" />
                         <span className="tnum text-[9px] text-ink-faint">{d.for_worker_votes + d.for_creator_votes}/{d.quorum} quorum</span>
@@ -389,13 +409,14 @@ export default function JobsPage() {
               </div>
             )}
 
-            <div className="ng-label mb-2 mt-5 !text-ink-dim">Lifecycle</div>
+            <div className="ng-label mb-2 mt-5 flex items-center justify-between !text-ink-dim"><span>Lifecycle · live</span><span className="text-ink-faint">{list.length} jobs</span></div>
             <div className="space-y-1.5 text-[11px] text-ink-dim">
-              {LIFECYCLE.map((s, i) => (
-                <div key={s} className="flex items-center gap-2">
-                  <span className="grid h-4 w-4 place-items-center rounded-full bg-neon/15 text-[9px] text-neon">{i + 1}</span>
-                  <span className="min-w-0 flex-1">{s}</span>
-                  <span className="shrink-0 font-mono text-[10px] tracking-tighter text-neon/60" title={`stage ${i + 1} of ${LIFECYCLE.length}`}>{barStr(((i + 1) / LIFECYCLE.length) * 100, 5)}</span>
+              {lifecycleCounts.map((s, i) => (
+                <div key={s.label} className="flex items-center gap-2">
+                  <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-neon/15 text-[9px] text-neon">{i + 1}</span>
+                  <span className="min-w-0 flex-1 capitalize">{s.label}</span>
+                  <Meter value={s.count} max={lifecycleMax} w={48} />
+                  <span className="w-4 shrink-0 text-right tnum text-[10px] text-neon/70">{s.count}</span>
                 </div>
               ))}
             </div>

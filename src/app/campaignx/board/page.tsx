@@ -15,7 +15,7 @@ import OrbPanel from "@/components/app/OrbPanel";
 import { Panel, Tag, Mark, DataRow, IconSparkle, IconActivity, IconUser , kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import { PanelChart } from "@/components/app/terminal";
-import { Bars, Ring, Pie, Heatmap, Bullet } from "@/components/app/charts";
+import { Bars, Ring, Pie, Heatmap, Bullet, SegBar } from "@/components/app/charts";
 import Meter from "@/components/app/Meter";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import type { Job } from "@/lib/types";
@@ -365,7 +365,9 @@ export default function CampaignXBoard() {
                             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                               <span className="text-[10px] text-cyan">rep {a.reputation}</span>
                               <span className="text-[10px] text-ink-faint">· matches {a.match_count}/{(j.required_skills ?? []).length}</span>
-                              <Meter value={a.match_count} max={Math.max(1, (j.required_skills ?? []).length)} w={32} color="#48f5ff" className="!h-[6px]" />
+                              <span className="inline-block shrink-0 align-middle" style={{ width: 120 }}>
+                                <SegBar percent={Math.round((a.match_count / Math.max(1, (j.required_skills ?? []).length)) * 100)} w={120} h={14} />
+                              </span>
                               {a.matched.map((s) => <span key={s} className="ng-tag !text-neon">{s}</span>)}
                             </div>
                           </div>

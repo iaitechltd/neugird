@@ -10,12 +10,12 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import NeuHeader from "@/components/app/NeuHeader";
 import OrbPanel from "@/components/app/OrbPanel";
-import { Panel, Tag, Mark, DataRow, IconRocket, IconActivity, IconBolt, IconCheck, IconArrowRight , kpiColor } from "@/components/app/ui";
+import { Panel, Tag, Mark, DataRow, IconRocket, IconActivity, IconBolt, IconArrowRight , kpiColor } from "@/components/app/ui";
 import { CountUp, Decrypt } from "@/components/app/typefx";
 import GenesisProposeWizard from "@/components/app/GenesisProposeWizard";
 import { PanelChart, barStr } from "@/components/app/terminal";
 import Meter from "@/components/app/Meter";
-import { Waterfall, Bullet, Funnel, Marimekko } from "@/components/app/charts";
+import { Waterfall, Bullet, Funnel, Marimekko, StackBars } from "@/components/app/charts";
 import type { Milestone, Proposal } from "@/lib/types";
 
 type View = { proposal: Proposal; raised: number; backers: number; spawned_grid_slug: string | null; milestones: Milestone[]; i_backed: boolean; founder?: { username: string; reputation: number }; closes_at?: string; refunded?: number };
@@ -161,6 +161,13 @@ export default function GenesisBoard() {
                     { weight: v.raised, fill: 1, color: "#00ff00" },
                     { weight: Math.max(0, p.ask_amount - v.raised), fill: 0, color: "#00ff00" },
                   ];
+              // Escrow ladder (REAL $): each milestone is a column, stacked
+              // released (bright) at the base vs still-escrowed (dim) on top.
+              const relOf = (m: Milestone) => (m.status === "released" || m.status === "approved" ? (m.amount ?? 0) : 0);
+              const ladder = v.milestones.map((m) => ({ values: [(m.amount ?? 0) - relOf(m), relOf(m)] }));
+              const releasedTotal = v.milestones.reduce((s, m) => s + relOf(m), 0);
+              const escrowTotal = v.milestones.reduce((s, m) => s + ((m.amount ?? 0) - relOf(m)), 0);
+              const actionable = v.milestones.filter((m) => (isAuthor && (m.status === "pending" || m.status === "rejected")) || (v.i_backed && m.status === "submitted"));
               return (
                 <div key={p.proposal_id} className="ng-card mb-3 break-inside-avoid p-4">
                   {/* identity — title + ONE status chip (rep lives in the tooltip) */}
@@ -202,24 +209,38 @@ export default function GenesisBoard() {
                   {p.status === "funded" && (
                     <div className="mt-3 border-t border-line pt-3">
                       <div className="mb-2 flex items-center justify-between">
-                        <span className="ng-label !text-ink-dim">Milestones</span>
+                        <span className="ng-label !text-ink-dim">Milestones · escrow ladder</span>
                         {v.spawned_grid_slug && <Link href={`/grid/${v.spawned_grid_slug}`} className="flex items-center gap-1 text-[11px] text-neon transition hover:text-glow">project Grid <IconArrowRight className="h-3 w-3" /></Link>}
                       </div>
-                      <div className="space-y-1.5">
-                        {v.milestones.map((m) => (
-                          <div key={m.milestone_id} className="flex items-center justify-between gap-2 text-[11px]">
-                            <span className="min-w-0 truncate text-ink" title={`${m.title} · $${m.amount}`}>{m.title}</span>
-                            <span className="flex shrink-0 items-center gap-2">
-                              <Meter value={m.amount ?? 0} max={Math.max(1, ...v.milestones.map((x) => x.amount ?? 0))} w={28} color={m.status === "released" || m.status === "approved" ? "#00ff00" : m.status === "rejected" ? "#ffb020" : "#48f5ff"} />
-                              <span className="tnum text-[10px] text-ink-faint">${m.amount}</span>
-                              <Mark plain accent={M_ACCENT[m.status] ?? "amber"} className="!text-[9px]">{m.status}</Mark>
-                              {isAuthor && (m.status === "pending" || m.status === "rejected") && <button disabled={busy} onClick={() => act(`/api/milestones/${m.milestone_id}/submit`, {}, "Submitted for approval")} className="ng-btn ng-btn--sm disabled:opacity-50">Submit</button>}
-                              {v.i_backed && m.status === "submitted" && <button disabled={busy} onClick={() => act(`/api/milestones/${m.milestone_id}/approve`, {}, "Approved")} className="ng-btn ng-btn-primary ng-btn--sm disabled:opacity-50">Approve</button>}
-                              {m.status === "released" && <IconCheck className="h-3.5 w-3.5 text-neon" />}
-                            </span>
+                      {v.milestones.length > 0 && (
+                        <>
+                          {/* released (bright) at the base vs still-escrowed (dim) on top; bar height = REAL milestone $ */}
+                          <StackBars data={ladder} h={56} colors={["rgba(0,255,65,0.28)", "#00ff00"]} />
+                          <div className="mt-1 flex justify-between gap-1.5">
+                            {v.milestones.map((m) => (
+                              <span key={m.milestone_id} className="min-w-0 flex-1 truncate text-center text-[8px] uppercase tracking-wide text-ink-faint" title={`${m.title} · $${m.amount}`}>{m.title}</span>
+                            ))}
                           </div>
-                        ))}
-                      </div>
+                          <div className="mt-1.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[9.5px] text-ink-dim">
+                            <span className="flex items-center gap-1"><span className="inline-block h-2 w-2" style={{ background: "#00ff00" }} />released ${Math.round(releasedTotal).toLocaleString()}</span>
+                            <span className="flex items-center gap-1"><span className="inline-block h-2 w-2" style={{ background: "rgba(0,255,65,0.28)" }} />pending ${Math.round(escrowTotal).toLocaleString()}</span>
+                          </div>
+                        </>
+                      )}
+                      {actionable.length > 0 && (
+                        <div className="mt-2.5 space-y-1.5 border-t border-line pt-2.5">
+                          {actionable.map((m) => (
+                            <div key={m.milestone_id} className="flex items-center justify-between gap-2 text-[11px]">
+                              <span className="min-w-0 truncate text-ink" title={`${m.title} · $${m.amount}`}>{m.title}</span>
+                              <span className="flex shrink-0 items-center gap-2">
+                                <Mark plain accent={M_ACCENT[m.status] ?? "amber"} className="!text-[9px]">{m.status}</Mark>
+                                {isAuthor && (m.status === "pending" || m.status === "rejected") && <button disabled={busy} onClick={() => act(`/api/milestones/${m.milestone_id}/submit`, {}, "Submitted for approval")} className="ng-btn ng-btn--sm disabled:opacity-50">Submit</button>}
+                                {v.i_backed && m.status === "submitted" && <button disabled={busy} onClick={() => act(`/api/milestones/${m.milestone_id}/approve`, {}, "Approved")} className="ng-btn ng-btn-primary ng-btn--sm disabled:opacity-50">Approve</button>}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

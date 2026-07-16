@@ -13,7 +13,7 @@ import {
   IconArrowRight, IconArrowUp, IconArrowDown, IconPlus, IconAlert,
   IconRefresh, IconExternal, IconSparkle, IconMessage,
 } from "@/components/app/ui";
-import { Ring, Histogram, SegBar, Donut, Spark } from "@/components/app/charts";
+import { Ring, Histogram, SegBar, Donut, Spark, Scatter } from "@/components/app/charts";
 import { PanelChart, TMeter } from "@/components/app/terminal";
 import Meter from "@/components/app/Meter";
 import { Decrypt, CountUp, Typewriter, TypeCycle } from "@/components/app/typefx";
@@ -427,7 +427,9 @@ export default function EchoPage() {
   const maxFiles = Math.max(...pastBuilds.map((b) => b.artifact?.files?.length ?? 0), 1);
   const covMax = Math.max(askSnap?.markets?.length ?? 0, askSnap?.grids ?? 0, askSnap?.open_raises ?? 0, askSnap?.open_jobs ?? 0, askSnap?.agents ?? 0, 1);
   const watchMax = Math.max(...(["reputation", "trades", "jobs", "builds", "payments"] as const).map((k) => askSnap?.counts?.[k] ?? 0), 1);
-  const snapMaxLiq = Math.max(...(askSnap?.markets?.map((mm) => mm.liq) ?? [0]), 1);
+  // analyst market landscape — liquidity (x) × holders (y), dot size = 24h volume; green-shaded per market
+  const mktShade = (i: number) => `rgba(0,255,65,${Math.max(0.35, 0.9 - i * 0.13)})`;
+  const scatterData = (askSnap?.markets ?? []).map((m, i) => ({ x: m.liq, y: m.holders, size: m.vol, color: mktShade(i) }));
   const maxPulse = Math.max(...(askSnap?.top_grids?.map((g) => g.pulse) ?? [0]), 1);
   const gridNow = askSnap?.grid ?? 0, gridVest = askSnap?.allocation ?? 0;
   const gridLiquidPct = gridNow + gridVest > 0 ? Math.round((gridNow / (gridNow + gridVest)) * 100) : 0;
@@ -859,14 +861,25 @@ export default function EchoPage() {
             <Card>
               <SecLabel icon={<IconNetwork className="h-3.5 w-3.5" />} action={<Mark plain className="!text-[10px]">Trade · live</Mark>}>MARKET SNAPSHOT</SecLabel>
               {askSnap?.markets?.length ? (
-                <div className="divide-y divide-line">
-                  {askSnap.markets.map((m) => (
-                    <div key={m.symbol} className="flex items-center justify-between gap-3 py-2">
-                      <div className="min-w-0"><span className="text-[13px] font-semibold text-neon">{m.symbol}</span> <Tag accent="cyan" className="!text-[9px]">{m.stage}</Tag>{m.status !== "active" && <Mark accent="danger" plain className="ml-1 !text-[9px]">{m.status}</Mark>}</div>
-                      <div className="flex shrink-0 items-center gap-1.5 text-right text-[11px] text-ink-dim tnum"><span title="liquidity vs the deepest market"><Meter value={m.liq} max={snapMaxLiq} w={32} color="#48f5ff" /></span>{m.price.toFixed(4)} · liq ${Math.round(m.liq / 1000)}K · {m.holders} holders</div>
-                    </div>
-                  ))}
-                </div>
+                <>
+                  {/* the market landscape — depth × adoption, dot size = 24h volume */}
+                  <div className="py-1"><Scatter data={scatterData} h={150} /></div>
+                  <div className="flex justify-between px-1 text-[8.5px] uppercase tracking-[0.1em] text-ink-faint"><span>← liquidity (depth)</span><span>holders ↑ · ● = volume</span></div>
+                  {/* exact figures — strong visual up top, detail below */}
+                  <div className="mt-2.5 divide-y divide-line">
+                    {askSnap.markets.map((m, i) => (
+                      <div key={m.symbol} className="flex items-center justify-between gap-3 py-1.5">
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <span className="inline-block h-2 w-2 shrink-0" style={{ background: mktShade(i) }} />
+                          <span className="text-[12px] font-semibold text-neon">{m.symbol}</span>
+                          <Tag accent="cyan" className="!text-[9px]">{m.stage}</Tag>
+                          {m.status !== "active" && <Mark accent="danger" plain className="!text-[9px]">{m.status}</Mark>}
+                        </span>
+                        <span className="shrink-0 text-right text-[11px] text-ink-dim tnum">{m.price.toFixed(4)} · liq ${Math.round(m.liq / 1000)}K · {m.holders} holders</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
               ) : <p className="text-[11px] text-ink-dim">Loading markets…</p>}
               {askSnap && (
                 <div className="mt-2 border-t border-line pt-2 text-[11px] text-ink-dim">

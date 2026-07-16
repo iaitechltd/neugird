@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Fragment } from "react";
 import Link from "next/link";
 import NeuHeader from "@/components/app/NeuHeader";
 import StartNewButton from "@/components/app/StartNewButton";
@@ -14,7 +14,7 @@ import { CountUp, Decrypt } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import Meter from "@/components/app/Meter";
 import OrbPanel from "@/components/app/OrbPanel";
-import { PanelChart, TMeter, barStr } from "@/components/app/terminal";
+import { PanelChart, TMeter } from "@/components/app/terminal";
 import { Beeswarm, PolarArea, Honeycomb, StackBars } from "@/components/app/charts";
 import type { Agent, Job } from "@/lib/types";
 
@@ -28,6 +28,9 @@ function Section({ icon, children, action }: { icon: React.ReactNode; children: 
 }
 
 const tierAccent = (t?: string): "neon" | "amber" | "danger" => (t === "trusted" ? "neon" : t === "suspended" ? "danger" : "amber");
+
+/** Compact number for the tight step-chain nodes (e.g. 12.3k, 1.2M). */
+const compactNum = (n: number) => new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 
 /** Card vitals as char-drawn meters (real values only): reputation + earnings
  *  are proportions of the live market max; rating is vs the 5-star scale. */
@@ -54,7 +57,6 @@ export default function AgentsPage() {
   const [myAgents, setMyAgents] = useState<(Agent & { jobs_to_trusted?: number })[]>([]);
   const [allAgents, setAllAgents] = useState<Agent[]>([]);
   const [openJobs, setOpenJobs] = useState<Job[]>([]);
-  const [meId, setMeId] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [extName, setExtName] = useState("");
   const [extFw, setExtFw] = useState("");
@@ -70,7 +72,6 @@ export default function AgentsPage() {
       fetch("/api/agents").then((r) => r.json()).catch(() => ({})),
     ]).then(([a, me, j, all]) => {
       const id = me?.id ?? "";
-      setMeId(id);
       setMyAgents(a?.agents ?? []);
       setOpenJobs((j?.jobs ?? []).filter((x: Job) => x.created_by !== id && x.executor_kind !== "human"));
       setAllAgents(all?.agents ?? []);
@@ -109,6 +110,16 @@ export default function AgentsPage() {
   const externalCount = allAgents.filter((a) => a.origin === "external").length;
   const trustedCount = allAgents.filter((a) => a.trust_tier === "trusted").length;
   const totalEarned = allAgents.reduce((s, a) => s + (a.earnings ?? 0), 0);
+
+  // "How agents earn" — the LIVE earning pipeline (real counts, replaces the synthetic bars)
+  const activeAgents = allAgents.filter((a) => a.status === "active").length;
+  const jobsDelivered = allAgents.reduce((s, a) => s + (a.task_history?.length ?? 0), 0);
+  const earnPipeline: { v: string; label: string; unit?: string }[] = [
+    { v: allAgents.length.toLocaleString(), label: "Agents" },
+    { v: activeAgents.toLocaleString(), label: "Working" },
+    { v: jobsDelivered.toLocaleString(), label: "Delivered" },
+    { v: compactNum(totalEarned), label: "Earned", unit: "Pulse" },
+  ];
 
   // futuristic rail-chart data (grounded, SSR-safe): swarm · rose · honeycomb · stack
   const tierColor = (t?: string) => (t === "trusted" ? "#00ff00" : t === "suspended" ? "#ff4d5e" : "#ffb020");
@@ -167,15 +178,21 @@ export default function AgentsPage() {
             </div>
 
             <Section icon={<IconBolt className="h-3.5 w-3.5" />}>How agents earn</Section>
-            <ol className="space-y-1.5 text-[12px] text-ink-dim">
-              {["Create or connect an agent", "It claims a Job from the marketplace", "Executes + submits proof of work", "Client verifies → agent earns reputation + a rating", "Reward splits: agent wallet + your revenue cut"].map((s, i) => (
-                <li key={s} className="flex items-baseline gap-2">
-                  <span className="text-neon">{i + 1}.</span>
-                  <span className="min-w-0 flex-1">{s}</span>
-                  <span className="shrink-0 font-mono text-[10px] tracking-tighter text-neon/60" title={`step ${i + 1} of 5`}>{barStr(((i + 1) / 5) * 100, 5)}</span>
-                </li>
-              ))}
-            </ol>
+            <div className="ng-card p-3">
+              <div className="flex items-start gap-1">
+                {earnPipeline.map((s, i) => (
+                  <Fragment key={s.label}>
+                    <div className="flex-1 text-center">
+                      <div className="mx-auto grid h-7 w-7 place-items-center rounded-full border border-neon/40 text-[11px] text-neon">{i + 1}</div>
+                      <div className="mt-1.5 ng-stat__v !text-lg leading-tight text-neon tnum">{s.v}{s.unit && <span className="ml-0.5 text-[9px] font-normal text-ink-dim">{s.unit}</span>}</div>
+                      <div className="text-[8.5px] uppercase tracking-wide text-ink-faint">{s.label}</div>
+                    </div>
+                    {i < earnPipeline.length - 1 && <div className="mt-3.5 h-px w-3 shrink-0 bg-neon/25" />}
+                  </Fragment>
+                ))}
+              </div>
+              <p className="mt-2.5 text-[9px] leading-relaxed text-ink-faint">Live pipeline — agents go to work, deliver jobs, and earn. Real counts across the marketplace.</p>
+            </div>
           </Panel>
         </OrbPanel>
 

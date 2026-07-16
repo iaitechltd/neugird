@@ -72,6 +72,9 @@ const compact = (n: number): string => {
   return `${Math.round(n)}`;
 };
 
+/** decreasing green shades for a donut/legend of N slices (green-only lock). */
+const greenShade = (i: number, n: number): string => `rgba(0,255,65,${Math.max(0.18, 0.9 - i * (0.72 / Math.max(1, n - 1)))})`;
+
 // the supply allocation buckets, in draw order — green-tier fills (green-only lock)
 const BUCKETS: [Bucket, string, string][] = [
   ["community", "rgba(0,255,0,0.85)", "earned over ~10y"],
@@ -156,7 +159,6 @@ export default function RewardsPage() {
   const breakdown = l?.breakdown ?? [];
   const srcUnits = breakdown.map((b) => b.units);
   const srcTotal = srcUnits.reduce((a, b) => a + b, 0);
-  const srcMax = Math.max(1, ...srcUnits);
   // the earning schedule as a bar chart: fixed-GRID earners (sorted), reward-scaled
   // actions (no fixed value → chips), and penalties (reputation hits, in red)
   const rate = data?.ledger.rate ?? 10;
@@ -361,15 +363,9 @@ export default function RewardsPage() {
 
               {emi.projected.length > 0 && (
                 <div className="mt-4">
-                  <div className="ng-label mb-1.5 !text-[10px] !text-ink-dim">Projected split · this epoch</div>
-                  <div className="divide-y divide-line">
-                    {emi.projected.slice(0, 5).map((p) => (
-                      <div key={p.id} className="flex items-center justify-between gap-3 py-1.5 text-[11px]">
-                        <span className="flex min-w-0 items-center gap-2"><MatrixAvatar seed={p.username} size={20} shape="square" /><span className="truncate text-ink">{p.username}</span></span>
-                        <span className="flex shrink-0 items-center gap-3"><span className="text-ink-faint">{(p.share_pct * 100).toFixed(0)}%</span><span className="text-neon">{compact(p.grid)} GRID</span></span>
-                      </div>
-                    ))}
-                  </div>
+                  <div className="ng-label mb-1.5 flex items-center justify-between !text-[10px] !text-ink-dim"><span>Projected split · this epoch</span><span className="normal-case tracking-normal text-ink-faint">bar = GRID share</span></div>
+                  <LabeledBars data={emi.projected.slice(0, 6).map((p) => ({ label: p.username, value: Math.round(p.grid), color: p.id === data?.me.id ? "#48f5ff" : undefined }))} rowH={16} gap={7} />
+                  {emi.projected.some((p) => p.id === data?.me.id) && <div className="mt-1 flex items-center justify-end gap-1 text-[9px] text-cyan"><span className="inline-block h-1.5 w-1.5 bg-cyan" />you</div>}
                 </div>
               )}
 
@@ -409,18 +405,21 @@ export default function RewardsPage() {
           {/* breakdown by source */}
           {l && l.breakdown.length > 0 && (
             <div className="ng-card p-4">
-              <div className="ng-label mb-2 !text-ink-dim">Where your GRID comes from</div>
-              <div className="grid grid-cols-2 gap-x-6 sm:grid-cols-3">
-                {l.breakdown.map((b) => (
-                  <div key={b.dimension} className="ng-row !py-1.5">
-                    <span className="ng-row__k capitalize">{b.dimension}</span>
-                    <span className="flex items-center gap-2">
-                      <Meter value={b.units} max={srcMax} w={44} />
-                      <span className="ng-row__v !text-neon">{b.units.toLocaleString()} <span className="text-[9px] font-normal text-ink-faint">({b.events})</span></span>
-                    </span>
-                  </div>
-                ))}
+              <div className="ng-label mb-3 !text-ink-dim">Where your GRID comes from</div>
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
+                <div className="shrink-0"><Donut data={l.breakdown.map((b) => b.units)} colors={l.breakdown.map((_, i) => greenShade(i, l.breakdown.length))} size={128} center={compact(srcTotal)} /></div>
+                <div className="min-w-[180px] flex-1 space-y-1.5">
+                  {l.breakdown.map((b, i) => (
+                    <div key={b.dimension} className="flex items-center gap-2 text-[11px]">
+                      <span className="inline-block h-2.5 w-2.5 shrink-0" style={{ background: greenShade(i, l.breakdown.length) }} />
+                      <span className="min-w-0 flex-1 truncate capitalize text-ink-dim">{b.dimension}</span>
+                      <span className="shrink-0 tnum text-neon">{b.units.toLocaleString()}</span>
+                      <span className="w-9 shrink-0 text-right text-[9px] text-ink-faint">{srcTotal > 0 ? Math.round((b.units / srcTotal) * 100) : 0}%</span>
+                    </div>
+                  ))}
+                </div>
               </div>
+              <p className="mt-2 border-t border-line pt-2 text-[9px] text-ink-faint">share of your total earned allocation, by activity — {l.breakdown.reduce((a, b) => a + b.events, 0)} events across {l.breakdown.length} sources.</p>
             </div>
           )}
 

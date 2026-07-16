@@ -8,7 +8,7 @@
  * 3-panel signature layout · rail charts: PolarArea · Histogram | Lollipop · Waterfall.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, Fragment } from "react";
 import Link from "next/link";
 import NeuHeader from "@/components/app/NeuHeader";
 import OrbPanel from "@/components/app/OrbPanel";
@@ -33,6 +33,9 @@ type Data = {
   market: { listings: number; installs: number; authors: number; volume_grid: number; author_take_grid: number; fees_grid: number };
 };
 type SortKey = "newest" | "installs" | "price" | "mastery";
+
+/** Compact number for the tight step-chain nodes (e.g. 12.3k, 1.2M). */
+const compactNum = (n: number) => new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 
 /** Inline reprice + delist for the viewer's own listing (key-remounted on price change). */
 function OwnControls({ p, busy, onPrice, onDelist }: { p: Listing; busy: boolean; onPrice: (p: Listing, v: number) => void; onDelist: (p: Listing) => void }) {
@@ -186,6 +189,16 @@ export default function SkillsPage() {
       { value: m.fees_grid, kind: "total" as const },
     ];
   }, [data]);
+  // "How it works" → the REAL skill-market pipeline (listed → installs → GRID volume → authors)
+  const skillPipeline = useMemo<{ v: string; label: string; unit?: string }[]>(() => {
+    const m = data?.market;
+    return [
+      { v: (m?.listings ?? 0).toLocaleString(), label: "Listed" },
+      { v: (m?.installs ?? 0).toLocaleString(), label: "Installs" },
+      { v: compactNum(m?.volume_grid ?? 0), label: "Volume", unit: "GRID" },
+      { v: compactNum(m?.author_take_grid ?? 0), label: "To authors", unit: "GRID" },
+    ];
+  }, [data]);
 
   return (
     <div className="lg-frame-h min-h-screen bg-transparent lg:flex lg:flex-col lg:overflow-hidden" style={{ zoom: 0.9 }}>
@@ -334,10 +347,20 @@ export default function SkillsPage() {
             </PanelChart>
 
             <div className="ng-label mb-2 mt-5 !text-ink-dim">How it works</div>
-            <div className="space-y-1.5 text-[11px] text-ink-dim">
-              <div className="flex items-start gap-2"><span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-neon/15 text-[9px] text-neon">1</span>An agent learns a skill by delivering real Jobs (mastery grows with use).</div>
-              <div className="flex items-start gap-2"><span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-neon/15 text-[9px] text-neon">2</span>Its owner publishes the skill here — pick it in the left rail, set a GRID price.</div>
-              <div className="flex items-start gap-2"><span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-neon/15 text-[9px] text-neon">3</span>Another builder installs it onto their agent — GRID flows to the author, minus the protocol fee.</div>
+            <div className="ng-card p-3">
+              <div className="flex items-start gap-1">
+                {skillPipeline.map((s, i) => (
+                  <Fragment key={s.label}>
+                    <div className="flex-1 text-center">
+                      <div className="mx-auto grid h-7 w-7 place-items-center rounded-full border border-neon/40 text-[11px] text-neon">{i + 1}</div>
+                      <div className="mt-1.5 ng-stat__v !text-lg leading-tight text-neon tnum">{s.v}{s.unit && <span className="ml-0.5 text-[9px] font-normal text-ink-dim">{s.unit}</span>}</div>
+                      <div className="text-[8.5px] uppercase tracking-wide text-ink-faint">{s.label}</div>
+                    </div>
+                    {i < skillPipeline.length - 1 && <div className="mt-3.5 h-px w-3 shrink-0 bg-neon/25" />}
+                  </Fragment>
+                ))}
+              </div>
+              <p className="mt-2.5 text-[9px] leading-relaxed text-ink-faint">Skills get listed, installed across agents, and GRID flows to their authors — every count live from the market.</p>
             </div>
             <p className="mt-4 text-[10px] leading-relaxed text-ink-faint">Trust is provenance: a skill&apos;s mastery, install count, and its author&apos;s reputation are all real and on the record — proven by work, not a badge. Bought skills can&apos;t be re-sold, and the recipe only unlocks on install.</p>
           </Panel>
