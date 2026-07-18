@@ -1221,6 +1221,62 @@ export interface Build {
   created_at: ISODate;
 }
 
+/* ---------------------------- Echo Studio ---------------------------- */
+// The workshop (docs/ECHO_STUDIO.md Phase 2): a persistent workspace where the
+// self-hosted engine builds a REAL project over many sessions — write→run→fix,
+// checkpoints, and a sealed ACTION TRAIL. A workspace wraps a real Build, so
+// proof / preview / deploy / GridX / Fund all ride the existing rails.
+
+export type StudioStatus = "idle" | "building" | "failed";
+
+/** One line of the workspace conversation — the builder's directive or the engine's report. */
+export interface StudioTurn {
+  turn_id: ID;
+  role: "you" | "engine";
+  text: string;
+  version?: number; // the build version this turn produced (engine turns)
+  cost_grid?: number;
+  duration_s?: number;
+  files_changed?: number;
+  error?: string;
+  at: ISODate;
+}
+
+/** One sealed step of the build trail — the receipt, not a claim. */
+export interface StudioTrailEvent {
+  at: ISODate;
+  type: "run" | "narrate" | "files" | "done" | "error";
+  summary: string;
+}
+
+/** A restorable version snapshot (files + the proofs sealed at that moment). */
+export interface StudioCheckpoint {
+  checkpoint_id: ID;
+  version: number;
+  note: string;
+  files: BuildFile[];
+  proof: string; // the sha256 proof-of-build sealed for this version
+  trail_sha: string; // sha256 over the cumulative action trail at this point
+  at: ISODate;
+}
+
+export interface StudioWorkspace {
+  workspace_id: ID;
+  owner_id: ID;
+  name: string;
+  status: StudioStatus;
+  build_id?: ID; // the linked real Build (created on the first successful run)
+  engine_session_id?: string; // engine resume handle (best-effort, warm containers only)
+  turns: StudioTurn[]; // capped recent conversation
+  checkpoints: StudioCheckpoint[]; // newest first, capped
+  trail: StudioTrailEvent[]; // capped cumulative action trail (every step witnessed)
+  trail_sha?: string; // seal over the full trail — re-sealed after every run
+  progress?: string; // the live narration line while a run is in flight
+  spent_grid: number;
+  created_at: ISODate;
+  updated_at: ISODate;
+}
+
 /* -------------------- On-chain attestations (SAS) -------------------- */
 // The verifiable, soulbound layer: each durable, independently-verified
 // achievement (proof-of-build, delivered job, shipped milestone, launched

@@ -22,7 +22,7 @@ const MAX_CANDIDATES = 40; // bound the prompt; runWorkTick already pre-filters 
 // Minimal structural type for the one SDK call we make (documented Messages API shape).
 interface AnthropicLike {
   messages: {
-    create(body: unknown): Promise<{ content?: Array<{ type: string; text?: string }> }>;
+    create(body: unknown, options?: { timeout?: number; maxRetries?: number }): Promise<{ content?: Array<{ type: string; text?: string }> }>;
   };
 }
 
@@ -624,7 +624,11 @@ export interface CeoPlanInput {
   departments: { dept: string; title: string; role: string }[];
   objective: string;
 }
-export interface CeoAssignment { dept: string; task: string }
+/** The ONE real-world action a brief should trigger — an explicit, structured intent the CEO
+ *  chooses (replaces the old fragile keyword-matching on the free-text task). See CEO_SYSTEM. */
+export type CeoActionKind = "none" | "ship" | "post" | "reach_out" | "post_recruit_job" | "open_raise";
+export const CEO_ACTIONS: readonly CeoActionKind[] = ["none", "ship", "post", "reach_out", "post_recruit_job", "open_raise"];
+export interface CeoAssignment { dept: string; task: string; action: CeoActionKind }
 export interface CeoPlan { summary: string; assignments: CeoAssignment[] }
 
 // NOTE: structured-outputs json_schema rejects minItems/minLength etc — keep it bare.
@@ -640,8 +644,13 @@ const CEO_PLAN_SCHEMA = {
         properties: {
           dept: { type: "string", enum: ["marketing", "content", "finance", "build"], description: "The specialist you're briefing." },
           task: { type: "string", description: "A concrete brief for that specialist — specific enough to execute without asking you questions. Name what to produce and the angle." },
+          action: {
+            type: "string",
+            enum: ["none", "ship", "post", "reach_out", "post_recruit_job", "open_raise"],
+            description: "The ONE real-world action this brief triggers — pick deliberately, it's how the work actually happens: 'ship' = the BUILD team ships a real code change to the product (build only). 'post' = the CONTENT team publishes a post to the public wire (content only). 'reach_out' = the MARKETING team sends a real outreach DM to a real person to partner/collaborate (marketing only). 'post_recruit_job' = open a REAL paid bounty / open job on the community board to bring in outside help or hire a contributor (any team EXCEPT build). 'open_raise' = open a real funding raise for the product (finance only). 'none' = internal analysis/planning with no outside action. If the objective needs OUTSIDE HELP or HIRING, a brief MUST use 'post_recruit_job'; if it needs FUNDING, use 'open_raise'; if it needs PARTNERSHIPS/influencers, use 'reach_out'. Do not describe the action in the task text and then leave action 'none' — set the matching action.",
+          },
         },
-        required: ["dept", "task"],
+        required: ["dept", "task", "action"],
         additionalProperties: false,
       },
     },
@@ -654,6 +663,13 @@ const CEO_SYSTEM = [
   "You are the CEO of an autonomous startup on NeuGrid — a real company owned by a founder and staffed by specialist agents. You do NOT do the work yourself; you decompose, prioritise, and delegate to the right specialists.",
   "Given the objective, the product, and your available department heads, write a specific, actionable brief for each department you involve — and involve ONLY the departments that genuinely move THIS objective (a content goal may not need finance; a pure product goal may not need marketing).",
   "Each brief must be concrete enough that an expert could execute it without asking you questions: name what to produce and the angle. Sequence and prioritise like a sharp operator. Ground everything in the real product.",
+  "EVERY brief also carries an `action` — the ONE real, in-platform action it triggers. This is how the company actually DOES things, so choose it deliberately, matching the department:",
+  "  • build → 'ship' (ship a real code change to the product) or 'none'.",
+  "  • content → 'post' (publish to the public wire) or 'none'.",
+  "  • marketing → 'reach_out' (send a real outreach DM to a real person to partner/collaborate) or 'none'.",
+  "  • finance → 'open_raise' (open a real funding raise for the product) or 'none'.",
+  "  • any department except build → 'post_recruit_job' (open a REAL paid bounty / open job to bring in outside help or hire a contributor).",
+  "Decisive rule: if the objective calls for BRINGING IN HELP or HIRING, exactly one brief MUST use action 'post_recruit_job' (do not merely describe hiring in the task text — set the action). If it calls for FUNDING, one finance brief MUST use 'open_raise'. If it calls for PARTNERSHIPS or reaching influencers, one marketing brief MUST use 'reach_out'. Otherwise use the natural action for the department, or 'none' for pure internal planning.",
   "Reply ONLY via the required JSON schema.",
 ].join("\n");
 
@@ -685,11 +701,16 @@ export async function claudeCeoPlan(ctx: CeoPlanInput): Promise<CeoPlan | null> 
         try {
           const parsed = JSON.parse(text) as { summary?: unknown; assignments?: unknown };
           const raw: unknown[] = Array.isArray(parsed.assignments) ? parsed.assignments : [];
-          const assignments = raw
+          const assignments: CeoAssignment[] = raw
             .slice(0, 6)
             .map((r) => {
-              const a = (r ?? {}) as { dept?: unknown; task?: unknown };
-              return { dept: String(a.dept ?? "").trim(), task: String(a.task ?? "").trim().slice(0, 400) };
+              const a = (r ?? {}) as { dept?: unknown; task?: unknown; action?: unknown };
+              const action = String(a.action ?? "none").trim() as CeoActionKind;
+              return {
+                dept: String(a.dept ?? "").trim(),
+                task: String(a.task ?? "").trim().slice(0, 400),
+                action: CEO_ACTIONS.includes(action) ? action : "none",
+              };
             })
             .filter((a) => allowed.has(a.dept) && a.task.length > 0);
           if (assignments.length) {
@@ -832,7 +853,7 @@ export async function claudeWebResearch(query: string): Promise<string | null> {
       tools: [{ type: "web_search_20260318", name: "web_search", max_uses: 3 }],
       system: RESEARCH_SYSTEM,
       messages: [{ role: "user", content: query.slice(0, 600) }],
-    });
+    }, { timeout: 45_000, maxRetries: 1 }); // bound it — a hung/slow search must not freeze a venture cycle (and its mutex); on timeout we fall back to the specialist's own expertise
     const content = res.content ?? [];
     // PROOF it actually searched — a web_search_tool_result block. No block (search
     // unavailable / quota exhausted) ⇒ the model's text is NOT real findings, so we

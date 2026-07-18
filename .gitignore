@@ -48,3 +48,6 @@ Group 3/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Echo Studio engine workdirs (re-materialized from the store)
+.studio-workspaces/

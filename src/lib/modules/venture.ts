@@ -30,6 +30,7 @@ import * as GridMarket from "./gridMarket";
 import * as Messaging from "./messaging";
 import * as Genesis from "./genesis";
 import * as Brain from "../brain";
+import type { CeoActionKind } from "../brain";
 import type {
   Agent, AgentPersona, ContributorSplit, Job, Venture, VentureApproval, VentureDept, VentureEvent, VentureObjective, VentureReport, VentureReportItem, VentureSeat,
 } from "../types";
@@ -577,7 +578,9 @@ async function runCycleInner(venture_id: string): Promise<CycleResult> {
     objective: objective.text,
   });
 
-  type Assignment = { seat: VentureSeat; dept: VentureDept; task: string };
+  // `action` is the CEO's explicit, structured intent for the brief (reliable). It's absent only
+  // on the rule-based fallback path below, where resolveAction() derives it from the task text.
+  type Assignment = { seat: VentureSeat; dept: VentureDept; task: string; action?: CeoActionKind };
   let assignments: Assignment[] = [];
   let ceoLine = "";
   const usedBrain = !!(plan && plan.assignments.length);
@@ -585,7 +588,7 @@ async function runCycleInner(venture_id: string): Promise<CycleResult> {
     assignments = plan!.assignments
       .map((a): Assignment | null => {
         const seat = deptSeats.find((s) => s.dept === a.dept);
-        return seat ? { seat, dept: seat.dept, task: a.task } : null;
+        return seat ? { seat, dept: seat.dept, task: a.task, action: a.action } : null;
       })
       .filter((x): x is Assignment => x !== null);
     ceoLine = `CEO: ${plan!.summary}`;
@@ -620,17 +623,39 @@ async function runCycleInner(venture_id: string): Promise<CycleResult> {
   type Raise = { title: string; summary: string; category: string; ask_amount: number; roadmap: { title: string; description: string; amount: number }[] };
   type Propose = { action: "echo_ship" | "wire_post" | "recruit_job" | "outreach_dm" | "open_raise"; summary: string; detail: string; amount_grid?: number; to_id?: string; to_name?: string; raise?: Raise };
   type Out = { a: Assignment; out: { title: string; deliverable: string } | null; ship: Ship | null; published: Pub | null; recruited: Recruit | null; propose: Propose | null };
+  // LEGACY keyword heuristic — only consulted for assignments with NO structured action (the
+  // rule-based fallback path, when the brain is off). The brain path now carries an explicit action.
   const PUBLISH_INTENT = /\b(post|posts|publish|published|announce|announcement|wire|share|social|tweet|thread|blog|launch)\b/i;
   const RECRUIT_INTENT = /\b(recruit|recruiting|hire|hiring|find help|bring on|team up|contributor|contributors|freelancer|designer|developer|engineer|writer|marketer|specialist|onboard|staff up)\b/i;
   const REACH_INTENT = /\b(reach out|reaching out|outreach|message|contact|get in touch|connect with|partner|partnership|influencer|creator|collab|collaborate|introduce)\b/i;
   const FUND_INTENT = /\b(fundrais|funding|raise (capital|money|funding|a round|from)|raise for|seek(ing)? (funding|investment|capital|backers)|investment|investors?|backers|capital|genesis|get funded|open a raise)\b/i;
+
+  // Resolve the ONE real-world action a brief should fire. STRUCTURED INTENT FIRST: the CEO brain
+  // now returns an explicit action per assignment, so recruit/reach/fund fire on purpose instead of
+  // depending on the CEO happening to use a trigger word (the old fragile path that never once fired
+  // a paid recruit bounty). When the action is absent (rule-based fallback), we derive it from the
+  // task text via the legacy heuristic. "none" = internal work only. Build ships by CAPABILITY
+  // (a linked, affordable product — see wantsShip), so a build brief still ships unless the CEO
+  // explicitly redirected it to a different action.
+  const resolveAction = (a: Assignment): CeoActionKind => {
+    if (a.action && a.action !== "none") return a.action;              // explicit structured intent wins
+    if (a.action === "none") return a.dept === "build" ? "ship" : "none"; // CEO chose no outside action (build still ships by capability)
+    if (a.dept === "build") return "ship";                             // no structured intent (fallback) → legacy heuristic:
+    if (a.dept === "content" && PUBLISH_INTENT.test(a.task)) return "post";
+    if (a.dept === "marketing" && REACH_INTENT.test(a.task)) return "reach_out";
+    if (a.dept === "finance" && FUND_INTENT.test(a.task)) return "open_raise";
+    if (RECRUIT_INTENT.test(a.task)) return "post_recruit_job"; // dept is already non-build here
+    return "none";
+  };
+
   const gate = gatesApproval(v); // when ON, big actions become approvals instead of firing now
   const outputs = await mapLimit(assignments, 2, async (a): Promise<Out> => {
     const base: Out = { a, out: null, ship: null, published: null, recruited: null, propose: null };
     if (!usedBrain) return base;
     const agent = Agents.getAgent(a.seat.agent_id);
+    const act = resolveAction(a); // the CEO's explicit action for this brief (structured intent)
 
-    const wantsShip = a.dept === "build" && !!v.build_id && Brain.activeBrain() && Wallets.balances(v.treasury_id).grid >= Echo.revisionCost();
+    const wantsShip = act === "ship" && a.dept === "build" && !!v.build_id && Brain.activeBrain() && Wallets.balances(v.treasury_id).grid >= Echo.revisionCost();
 
     // autonomous ship (only when the owner has NOT gated it) — ships real code right now
     if (wantsShip && !gate) {
@@ -647,7 +672,7 @@ async function runCycleInner(venture_id: string): Promise<CycleResult> {
     // REACH — draft a real outreach DM to a relevant user. ALWAYS owner-approved (even in
     // full autonomy): a message to a real third party only ever sends when the owner says so.
     // Marketing owns outreach (one seat) → at most one outreach per cycle, no duplicates.
-    if (a.dept === "marketing" && REACH_INTENT.test(a.task)) {
+    if (a.dept === "marketing" && act === "reach_out") {
       const cand = outreachCandidates(v)[0];
       if (cand) {
         const facts = `OUTREACH TARGET — write a short, warm, SPECIFIC direct message to this exact person (address them by name, 3–5 sentences, propose ONE concrete way to help each other, no fluff, invent nothing):\nName: ${cand.name}\nWhy relevant: ${cand.why}`;
@@ -665,7 +690,7 @@ async function runCycleInner(venture_id: string): Promise<CycleResult> {
     // FUND — draft a real funding raise for the product. ALWAYS owner-approved: opening a
     // public raise is a big commitment, so it only goes live when the owner says so. Finance
     // owns it (one seat) → at most one raise draft per cycle, and never while one is already open.
-    if (a.dept === "finance" && FUND_INTENT.test(a.task) && v.build_id) {
+    if (a.dept === "finance" && act === "open_raise" && v.build_id) {
       const build = db.builds.find((b) => b.build_id === v.build_id);
       const alreadyRaising = !!build?.proposal_id || (v.approvals ?? []).some((ap) => ap.action === "open_raise" && ap.status === "pending");
       if (!alreadyRaising) {
@@ -712,7 +737,7 @@ async function runCycleInner(venture_id: string): Promise<CycleResult> {
 
     // CONTENT publishing: fire now if autonomous, else file the drafted post for approval
     let pub: Pub | null = null;
-    if (a.dept === "content" && out && PUBLISH_INTENT.test(a.task)) {
+    if (a.dept === "content" && out && act === "post") {
       if (gate) {
         propose = { action: "wire_post", summary: `Publish to the wire — ${clip(out.title, 40)}`, detail: `${out.title}\n\n${out.deliverable}` };
       } else {
@@ -724,7 +749,7 @@ async function runCycleInner(venture_id: string): Promise<CycleResult> {
     // RECRUIT: bring in real help by posting a REAL open job to the community board.
     // A public action (like a wire post): fire now if autonomous, else file it for approval.
     let recruited: Recruit | null = null;
-    if (out && !pub && !propose && a.dept !== "build" && RECRUIT_INTENT.test(a.task)) {
+    if (out && !pub && !propose && a.dept !== "build" && act === "post_recruit_job") {
       const bountyGrid = Params.get("venture_bounty_grid");
       const canPay = bountyGrid > 0 && Wallets.balances(v.treasury_id).grid >= bountyGrid;
       if (gate || canPay) {

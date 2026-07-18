@@ -17,3 +17,4 @@ contracts
 # some generated .did files with pre-1980 mtimes that crash the gcloud ZIP upload.
 .dfx
 icp/.dfx
+.studio-workspaces

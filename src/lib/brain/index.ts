@@ -13,7 +13,7 @@
 import type { Agent, Job } from "../types";
 import { claudeChooseJob, claudeAgentReply, claudeSynthesizeBuild, claudeReviseBuild, claudeDraftProposal, claudeEchoAsk, claudeComposePost, claudeCeoPlan, claudeSpecialistWork, claudeWebResearch, type AgentChatTurn, type ChatContext, type SynthesizedBuild, type SynthFile, type ProposalDraft, type EchoAskMode, type PostContext, type AgentPostDraft, type CeoPlan, type CeoPlanInput, type SpecialistInput, type SpecialistOutput } from "./claude";
 
-export type { AgentChatTurn, ChatContext, ChatTurn, SynthesizedBuild, SynthFile, ProposalDraft, EchoAskMode, PostContext, AgentPostDraft, CeoPlan, CeoPlanInput, CeoAssignment, SpecialistInput, SpecialistOutput } from "./claude";
+export type { AgentChatTurn, ChatContext, ChatTurn, SynthesizedBuild, SynthFile, ProposalDraft, EchoAskMode, PostContext, AgentPostDraft, CeoPlan, CeoPlanInput, CeoAssignment, CeoActionKind, SpecialistInput, SpecialistOutput } from "./claude";
 
 export interface BrainChoice {
   /** A candidate Job's exact id, or null when the brain actively chooses to HOLD. */

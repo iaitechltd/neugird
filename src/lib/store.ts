@@ -45,6 +45,7 @@ import type {
   PulseEvent,
   Settlement,
   SubGrid,
+  StudioWorkspace,
   Submission,
   Task,
   Token,
@@ -105,6 +106,7 @@ export interface DB {
   disputes: Dispute[]; // reputation-staked evaluator adjudication of contested job rejections
   publishedSkills: PublishedSkill[]; // the skills marketplace — learned skills published for other owners to install
   ventures: Venture[]; // agent companies — a builder owns a CEO-orchestrated team of specialist agents
+  studioWorkspaces: StudioWorkspace[]; // Echo Studio — persistent engine workspaces (chat-edit loop + sealed action trail)
   /** The GRID/USDC AMM pool — protocol-owned (treasury-seeded) liquidity for buying
    *  GRID. A singleton (not a collection), lazy-seeded by the gridMarket module — kept
    *  out of seed() so normalize() doesn't array-default it. */
@@ -411,6 +413,7 @@ function seed(): DB {
     disputes: [],
     publishedSkills: [],
     ventures: [],
+    studioWorkspaces: [],
     applications: [],
   };
 }

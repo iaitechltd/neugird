@@ -856,3 +856,22 @@ create table if not exists ventures (
   created_at         timestamptz not null default now(),
   updated_at         timestamptz
 );
+
+-- Echo Studio workspaces — persistent engine workspaces (docs/ECHO_STUDIO.md Phase 2).
+-- owner_id / build_id deliberately not FK'd (a stray ref must never break the whole persist).
+create table if not exists studio_workspaces (
+  workspace_id       text primary key,
+  owner_id           text        not null,
+  name               text        not null,
+  status             text        not null default 'idle', -- idle | building | failed
+  build_id           text, -- the linked real Build (created on the first successful run)
+  engine_session_id  text, -- engine resume handle (best-effort)
+  turns              jsonb       default '[]', -- StudioTurn[] (capped conversation)
+  checkpoints        jsonb       default '[]', -- StudioCheckpoint[] (restorable versions)
+  trail              jsonb       default '[]', -- StudioTrailEvent[] (the witnessed action trail)
+  trail_sha          text, -- seal over the cumulative trail
+  progress           text, -- live narration line while building
+  spent_grid         numeric     default 0,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz
+);

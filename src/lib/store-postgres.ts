@@ -204,6 +204,9 @@ const SPECS: Spec[] = [
   { key: "ventures", table: "ventures",
     cols: ["venture_id", "owner_id", "name", "mission", "template", "build_id", "status", "treasury_id", "ceo_agent_id", "seats", "objectives", "contributor_splits", "approvals", "require_approval", "cycles", "revenue_grid", "revenue_synced_usdc", "spent_grid", "log", "reports", "created_at", "updated_at"],
     num: ["cycles", "revenue_grid", "revenue_synced_usdc", "spent_grid"], ts: ["created_at", "updated_at"], json: ["seats", "objectives", "contributor_splits", "approvals", "log", "reports"] },
+  { key: "studioWorkspaces", table: "studio_workspaces",
+    cols: ["workspace_id", "owner_id", "name", "status", "build_id", "engine_session_id", "turns", "checkpoints", "trail", "trail_sha", "progress", "spent_grid", "created_at", "updated_at"],
+    num: ["spent_grid"], ts: ["created_at", "updated_at"], json: ["turns", "checkpoints", "trail"] },
 ];
 
 /* Non-array singleton state on DB (gridPool / tge / params) — stored one jsonb

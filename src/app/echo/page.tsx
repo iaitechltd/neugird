@@ -207,6 +207,24 @@ export default function EchoPage() {
      · "/analyze …" → Analyst (asked) · anything else → your Personal cofounder (asked). */
   const [hubQ, setHubQ] = useState("");
   const hubInputRef = useRef<HTMLInputElement>(null);
+  // Studio workspaces — so MY BUILDS can tag engine-built projects + open their rooms
+  const [studioMap, setStudioMap] = useState<Record<string, string>>({});
+  useEffect(() => {
+    fetch("/api/studio").then((r) => r.json()).then((j) => {
+      const m: Record<string, string> = {};
+      for (const w of j.workspaces ?? []) if (w.build_id) m[w.build_id] = w.workspace_id;
+      setStudioMap(m);
+    }).catch(() => {});
+  }, []);
+  /** "Studio build" from the hub box — open a room, fire the engine on the prompt, go there. */
+  async function studioGo() {
+    const p = hubQ.trim();
+    if (!p) return;
+    const w = await fetch("/api/studio", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: p.slice(0, 48) }) }).then((r) => r.json()).catch(() => null);
+    if (!w?.workspace) return;
+    await fetch(`/api/studio/${w.workspace.workspace_id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "run", instruction: p }) }).catch(() => {});
+    window.location.assign(`/echo/studio/${w.workspace.workspace_id}`);
+  }
   function hubGo(raw?: string) {
     const text = (raw ?? hubQ).trim();
     if (!text) return;
@@ -617,9 +635,10 @@ export default function EchoPage() {
                   <input ref={hubInputRef} value={hubQ} onChange={(e) => setHubQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") hubGo(); }} placeholder="" className="w-full min-w-0 bg-transparent py-0.5 text-[13.5px] text-ink outline-none" />
                   {!hubQ && <div className="pointer-events-none absolute inset-0 flex items-center"><TypeCycle phrases={HUB_PHRASES} className="text-[12px] text-ink-faint/70" /></div>}
                 </div>
-                <button onClick={(e) => { e.stopPropagation(); hubGo(); }} disabled={!hubQ.trim()} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-40"><IconArrowRight className="h-3.5 w-3.5" /> Go</button>
+                <button onClick={(e) => { e.stopPropagation(); hubGo(); }} disabled={!hubQ.trim()} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-40"><IconArrowRight className="h-3.5 w-3.5" /> Quick</button>
+                <button onClick={(e) => { e.stopPropagation(); void studioGo(); }} disabled={!hubQ.trim()} title="Pro lane — the engine writes, RUNS, and fixes it in a Studio room; every step sealed" className="ng-btn ng-btn--sm shrink-0 disabled:opacity-40"><IconBolt className="h-3.5 w-3.5" /> Studio</button>
               </div>
-              <p className="mt-1.5 pl-[26px] text-[9.5px] leading-snug text-ink-faint/80">Questions → your cofounder · &ldquo;build …&rdquo; → the Builder · /analyze → Analyst · /deploy · /fund</p>
+              <p className="mt-1.5 pl-[26px] text-[9.5px] leading-snug text-ink-faint/80">Quick = one-shot Builder · Studio = the engine builds it for real (write · run · fix, sealed) · /analyze → Analyst · /deploy · /fund</p>
             </div>
             <div className="flex flex-wrap items-center gap-2"><span className="text-[10px] uppercase tracking-[0.14em] text-ink-faint">Try</span>{["build a tip jar for creators", "/analyze which market is strongest", "what should I do next?", "/deploy"].map((c) => <button key={c} onClick={() => hubGo(c)} className="ng-btn ng-btn-ghost ng-btn--sm">{c}</button>)}</div>
 
@@ -637,9 +656,12 @@ export default function EchoPage() {
                         <div className="truncate text-[10px] text-ink-faint">v{b.version ?? 1} · {b.artifact.files?.length ?? 0} files{b.revisions?.length ? ` · ${b.revisions.length} rev` : ""} · {new Date(b.created_at).toLocaleDateString()}</div>
                       </div>
                       <span className="shrink-0" title={`${b.artifact.files?.length ?? 0} files vs your largest build`}><Meter value={b.artifact.files?.length ?? 0} max={maxFiles} w={36} /></span>
+                      {studioMap[b.build_id] && <Mark plain className="!text-[9px] shrink-0">STUDIO</Mark>}
                       {b.deployment && <Mark plain accent="cyan" className="!text-[9px] shrink-0">live</Mark>}
                       {b.proposal_id && <Mark className="!text-[9px] shrink-0">raising</Mark>}
-                      <button onClick={() => { resumeBuild(b); setMode("builder"); }} className="ng-btn ng-btn--sm shrink-0">Open</button>
+                      {studioMap[b.build_id]
+                        ? <button onClick={() => window.location.assign(`/echo/studio/${studioMap[b.build_id]}`)} className="ng-btn ng-btn--sm shrink-0">Open room</button>
+                        : <button onClick={() => { resumeBuild(b); setMode("builder"); }} className="ng-btn ng-btn--sm shrink-0">Open</button>}
                     </div>
                   ))}
                 </div>
@@ -1151,6 +1173,7 @@ export default function EchoPage() {
               <SecLabel icon={<IconBolt className="h-3.5 w-3.5" />}>ACT ON IT</SecLabel>
               <div className="space-y-2">
                 <button onClick={() => setMode("builder")} className="ng-btn ng-btn--sm ng-btn--block"><IconCode className="h-3.5 w-3.5" /> Build with Echo</button>
+                <Link href="/echo/studio" className="ng-btn ng-btn--sm ng-btn--block"><IconBolt className="h-3.5 w-3.5" /> Studio — pro build</Link>
                 <Link href="/jobs" className="ng-btn ng-btn--sm ng-btn--block"><IconBriefcase className="h-3.5 w-3.5" /> Open Jobs</Link>
                 <Link href="/agents" className="ng-btn ng-btn--sm ng-btn--block"><IconBot className="h-3.5 w-3.5" /> Your Agents</Link>
                 <Link href="/genesis/board" className="ng-btn ng-btn--sm ng-btn--block"><IconCoins className="h-3.5 w-3.5" /> Fund Board</Link>

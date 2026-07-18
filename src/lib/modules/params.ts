@@ -11,7 +11,7 @@
 
 import { db } from "../store";
 
-export type ParamKey = "tradex_fee_bps" | "echo_build_cost_grid" | "grid_market_fee_bps" | "gov_quorum_grid" | "grid_fee_discount_bps" | "campaign_ghost_days" | "hire_autorelease_days" | "echo_revision_cost_grid" | "echo_ask_cost_grid" | "echo_deploy_cost_grid" | "fraud_flag_quorum" | "agent_perf_fee_bps" | "genesis_raise_days" | "genesis_stall_days" | "gridx_fee_bps" | "affiliate_fee_share_bps" | "backer_allocation_bps" | "starter_credit_grid" | "dispute_quorum" | "dispute_window_days" | "skill_market_fee_bps" | "starter_gate_tier" | "rewards_gate_tier" | "max_trade_impact_bps" | "perp_oi_cap_bps" | "buyback_bps" | "season_days" | "venture_cycle_cost_grid" | "venture_revenue_share_bps" | "venture_bounty_grid" | "trade_reward_bps" | "post_reward_pulse" | "emission_epoch_days" | "emission_epoch_bps" | "gov_quorum_bps";
+export type ParamKey = "tradex_fee_bps" | "echo_build_cost_grid" | "grid_market_fee_bps" | "gov_quorum_grid" | "grid_fee_discount_bps" | "campaign_ghost_days" | "hire_autorelease_days" | "echo_revision_cost_grid" | "echo_ask_cost_grid" | "echo_deploy_cost_grid" | "fraud_flag_quorum" | "agent_perf_fee_bps" | "genesis_raise_days" | "genesis_stall_days" | "gridx_fee_bps" | "affiliate_fee_share_bps" | "backer_allocation_bps" | "starter_credit_grid" | "dispute_quorum" | "dispute_window_days" | "skill_market_fee_bps" | "starter_gate_tier" | "rewards_gate_tier" | "max_trade_impact_bps" | "perp_oi_cap_bps" | "buyback_bps" | "season_days" | "venture_cycle_cost_grid" | "venture_revenue_share_bps" | "venture_bounty_grid" | "trade_reward_bps" | "post_reward_pulse" | "emission_epoch_days" | "emission_epoch_bps" | "gov_quorum_bps" | "studio_run_cost_grid";
 
 export type ParamUnit = "bps" | "grid" | "days" | "count";
 
@@ -46,6 +46,7 @@ export const DEFAULTS: Record<ParamKey, number> = {
   venture_cycle_cost_grid: 20, // GRID a Venture's treasury pays per orchestration cycle (the agent-company compute sink)
   venture_revenue_share_bps: 5000, // share of a Venture product's NEW USDC revenue reinvested into its treasury (50%; the self-funding loop)
   venture_bounty_grid: 200, // GRID a Venture escrows (sold to USDC) as a real bounty on a recruit job; 0 = reputation-only recruit posts
+  studio_run_cost_grid: 200, // GRID one Echo Studio engine run costs (the workshop's write→run→fix loop; refunded on engine failure)
   trade_reward_bps: 3000, // trade reward = this share of the FEE paid, as GRID allocation (30%; fee-based ⇒ wash-trading costs more than it earns; 0 = off)
   post_reward_pulse: 2, // GRID allocation (×GRID_PER_PULSE) earned per rewarded wire post — first 3/day (0 = reputation-only, no GRID)
   emission_epoch_days: 30, // length of a post-TGE emission epoch (the release-and-split period)
@@ -85,6 +86,7 @@ export const META: Record<ParamKey, { label: string; unit: ParamUnit; min: numbe
   venture_cycle_cost_grid: { label: "Venture cycle cost", unit: "grid", min: 0, max: 5_000 },
   venture_revenue_share_bps: { label: "Venture revenue reinvest", unit: "bps", min: 0, max: 10_000 }, // 0 = keep it all · 10000 = reinvest all product revenue
   venture_bounty_grid: { label: "Venture recruit bounty", unit: "grid", min: 0, max: 10_000 }, // 0 = reputation-only recruit jobs
+  studio_run_cost_grid: { label: "Studio engine run cost", unit: "grid", min: 0, max: 5_000 },
   trade_reward_bps: { label: "Trade reward (of fee)", unit: "bps", min: 0, max: 10_000 }, // ≤100% of the fee paid — never a profit to wash-trade
   post_reward_pulse: { label: "Post reward", unit: "count", min: 0, max: 10 }, // Pulse per rewarded post (×GRID_PER_PULSE = GRID); first 3/day
   emission_epoch_days: { label: "Emission epoch", unit: "days", min: 1, max: 365 },
