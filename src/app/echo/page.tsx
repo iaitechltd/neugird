@@ -19,6 +19,7 @@ import Meter from "@/components/app/Meter";
 import { Decrypt, CountUp, Typewriter, TypeCycle } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 import OrbPanel from "@/components/app/OrbPanel";
+import BuilderToolbox from "@/components/app/BuilderToolbox";
 import type { Build } from "@/lib/types";
 import type { ProposalDraft } from "@/lib/brain";
 
@@ -1138,6 +1139,8 @@ export default function EchoPage() {
           )}
           {/* HUB right */}
           {mode === "select" && <>
+            {/* YOUR TOOLBOX — set up once here, flows into every workshop (Phase 6b+) */}
+            <BuilderToolbox />
             <Card>
               <SecLabel icon={<IconShield className="h-3.5 w-3.5" />}>CAPABILITY MATRIX</SecLabel>
               <div className="divide-y divide-line">{cap.caps.map(([k, ok]) => <div key={k} className="ng-row !text-[12px]"><span className="ng-row__k">{k}</span><span className="ng-row__v">{ok ? <IconCheck className="h-3.5 w-3.5 text-neon" /> : <IconPlus className="h-3.5 w-3.5 rotate-45 text-danger" />}</span></div>)}</div>

@@ -15,19 +15,20 @@ import Meter from "./Meter";
 const NEON = "#00ff00";
 const CYAN = "#48f5ff";
 
-/** A live status dot with an expanding ping ring. */
-export function PulseDot({ tone = "neon", size = 6, className = "" }: { tone?: "neon" | "cyan" | "dim"; size?: number; className?: string }) {
+/** A live status dot with an expanding ping ring. Amber/red = a caution/dead state
+ *  (static, no ping — "a dead port doesn't breathe"). */
+export function PulseDot({ tone = "neon", size = 6, className = "" }: { tone?: "neon" | "cyan" | "dim" | "amber" | "red"; size?: number; className?: string }) {
   const reduce = useReducedMotion();
-  const on = tone !== "dim";
-  const c = tone === "cyan" ? CYAN : NEON;
+  const ping = tone === "neon" || tone === "cyan"; // only healthy states breathe
+  const c = tone === "cyan" ? CYAN : tone === "amber" ? "#ffb347" : tone === "red" ? "#ff6b6b" : NEON;
   return (
     <span className={`relative inline-flex shrink-0 ${className}`} style={{ width: size, height: size }} aria-hidden>
-      {on && !reduce && (
+      {ping && !reduce && (
         <motion.span className="absolute inset-0 rounded-full" style={{ background: c }}
           initial={{ opacity: 0.5, scale: 1 }} animate={{ opacity: 0, scale: 2.8 }}
           transition={{ duration: 1.6, repeat: Infinity, ease: "easeOut" }} />
       )}
-      <span className="relative block rounded-full" style={{ width: size, height: size, background: on ? c : "rgba(0,255,0,0.3)" }} />
+      <span className="relative block rounded-full" style={{ width: size, height: size, background: tone === "dim" ? "rgba(0,255,0,0.3)" : c }} />
     </span>
   );
 }

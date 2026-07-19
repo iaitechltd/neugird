@@ -1232,20 +1232,25 @@ export type StudioStatus = "idle" | "building" | "failed";
 /** One line of the workspace conversation — the builder's directive or the engine's report. */
 export interface StudioTurn {
   turn_id: ID;
-  role: "you" | "engine";
+  role: "you" | "engine" | "chief" | "chatter" | "content" | "marketing"; // the crew seats (Phase 3)
   text: string;
   version?: number; // the build version this turn produced (engine turns)
   cost_grid?: number;
   duration_s?: number;
   files_changed?: number;
   error?: string;
+  grade?: "pass" | "revise"; // chief review verdict (chief turns only)
+  cost_usd?: number; // the engine's own reported dollar cost for this run (honest, from the end event)
+  tokens?: number; // total tokens the run consumed
+  quality?: "standard" | "verified" | "best3"; // the tier the run was bought at
   at: ISODate;
 }
 
-/** One sealed step of the build trail — the receipt, not a claim. */
+/** One sealed step of the build trail — the receipt, not a claim. "tool" = an
+ *  individual engine tool call (Phase 7 ACP mode streams every one). */
 export interface StudioTrailEvent {
   at: ISODate;
-  type: "run" | "narrate" | "files" | "done" | "error";
+  type: "run" | "narrate" | "files" | "done" | "error" | "crew" | "tool";
   summary: string;
 }
 
@@ -1273,8 +1278,57 @@ export interface StudioWorkspace {
   trail_sha?: string; // seal over the full trail — re-sealed after every run
   progress?: string; // the live narration line while a run is in flight
   spent_grid: number;
+  /** The chief's corrective brief after a "revise" grade — a fix run costs GRID,
+   *  so it waits for the owner's approval (the venture defer-then-do grammar). */
+  pending_fix?: { re_brief: string; notes: string; at: ISODate };
+  /** The content seat's drafted launch post — publishing is public, so it waits
+   *  for the owner's approval too (Phase 3 launch assets). */
+  pending_post?: { title: string; body: string; tagline?: string; at: ISODate };
+  /** Build-skills installed into THIS workspace (version-pinned bodies; mounted
+   *  into the engine workdir's .grok/skills/ on every run — Phase 5). */
+  skills?: { published_id: ID; name: string; title: string; body: string; at: ISODate }[];
+  /** Plugins installed into THIS workspace (project-only; the toolbox carries the
+   *  user-level ones) — mounted into .grok/plugins/<name>/ + enabled in config. */
+  plugins?: { published_id: ID; name: string; title: string; files: PluginFile[]; at: ISODate }[];
+  /** Escrowed Jobs opened from the room (Phase 4 HIRE HELP). */
+  hired?: { job_id: ID; title: string; at: ISODate }[];
+  /** The product's standing law — written to the workdir as AGENTS.md; the engine
+   *  obeys it on every run automatically (Phase 6a). */
+  rules?: string;
+  /** Toolbox items the owner switched OFF for THIS project (by name/published_id) —
+   *  inherited connections/skills are on by default; this opts specific ones out. */
+  toolbox_off?: string[];
+  /** Connected MCP servers — real services the engine can act on (Phase 6b).
+   *  `env`/`headers` hold the user's secrets: NEVER returned raw by view() (masked).
+   *  A server is EITHER a local command (command+args) OR a remote URL (url). */
+  mcp?: { name: string; kind: "github" | "postgres" | "mcp-test" | "custom" | "remote"; command?: string; args?: string[]; url?: string; env?: Record<string, string>; headers?: Record<string, string>; added_at: ISODate }[];
+  /** Cross-session engine memory for this workshop (--experimental-memory). */
+  memory_enabled?: boolean;
+  /** Fingerprint of the effective toolset (skills+plugins+mcp) last materialized —
+   *  a change forces a fresh engine session so newly-mounted items are rescanned
+   *  (they load at session START; a resumed warm session would miss them). */
+  toolset_sig?: string;
+  /** Cumulative REAL dollar cost of engine runs (the engine's own reports). */
+  spent_usd?: number;
   created_at: ISODate;
   updated_at: ISODate;
+}
+
+/** One file inside a marketplace PLUGIN bundle (Phase 6c). v1 allows only INERT
+ *  paths (skills/…, commands/…, agents/…, plugin.json) — anything that executes
+ *  (hooks, bundled MCP/LSP) is rejected at publish AND at mount. */
+export interface PluginFile { path: string; content: string }
+
+/** A builder's person-level TOOLBOX (Phase 6b+): the powers they set up ONCE on the
+ *  Echo hub — MCP connections, build-skills, and plugins — that flow into EVERY
+ *  workshop they open (a workshop can still add project-only items, or switch an
+ *  inherited one off). One row per user. Secrets masked in views. */
+export interface BuilderToolbox {
+  owner_id: ID;
+  mcp?: StudioWorkspace["mcp"];                 // reuses the connection shape
+  skills?: { published_id: ID; name: string; title: string; body: string; at: ISODate }[];
+  plugins?: { published_id: ID; name: string; title: string; files: PluginFile[]; at: ISODate }[];
+  updated_at?: ISODate;
 }
 
 /* -------------------- On-chain attestations (SAS) -------------------- */

@@ -872,6 +872,27 @@ create table if not exists studio_workspaces (
   trail_sha          text, -- seal over the cumulative trail
   progress           text, -- live narration line while building
   spent_grid         numeric     default 0,
+  pending_fix        jsonb, -- the chief's corrective brief awaiting the owner (Phase 3)
+  pending_post       jsonb, -- the content seat's drafted launch post awaiting the owner
+  skills             jsonb, -- build-skills installed into this workspace (Phase 5)
+  hired              jsonb, -- escrowed Jobs opened from the room (Phase 4)
+  rules              text, -- the workshop's AGENTS.md — the engine's standing law (Phase 6a)
+  memory_enabled     boolean, -- cross-session engine memory toggle
+  toolset_sig        text, -- fingerprint of the mounted toolset (fresh-session trigger)
+  spent_usd          numeric, -- cumulative REAL dollar cost of engine runs
+  mcp                jsonb, -- connected MCP servers (secrets inside — owner-only, masked in views)
+  toolbox_off        jsonb, -- toolbox items switched off for this project
+  plugins            jsonb, -- project-only plugin bundles (inert components, Phase 6c)
   created_at         timestamptz not null default now(),
   updated_at         timestamptz
+);
+
+-- Per-user builder TOOLBOX (Phase 6b+): MCP connections + build-skills set up once
+-- on the Echo hub, inherited by every workshop the user opens.
+create table if not exists builder_toolboxes (
+  owner_id   text primary key references users(id) on delete cascade,
+  mcp        jsonb,  -- connected MCP servers (secrets inside — owner-only, masked in views)
+  skills     jsonb,  -- installed build-skills (version-pinned bodies)
+  plugins    jsonb,  -- installed plugin bundles (inert components, Phase 6c)
+  updated_at timestamptz
 );

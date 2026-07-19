@@ -871,3 +871,146 @@ export async function claudeWebResearch(query: string): Promise<string | null> {
     return null; // web search unavailable / not enabled / rate-limited → graceful fallback
   }
 }
+
+/* ================= ECHO STUDIO — the three-brain crew (Phase 3) ================= */
+// The Studio room's crew (docs/ECHO_STUDIO.md): the CHIEF (strongest reasoner)
+// turns the founder's directive into a crisp engineering brief for the hands and
+// GRADES the shipped work before the founder relies on it; the CHATTER (mini
+// model) writes the plain-English status line. The HANDS brain lives INSIDE the
+// self-hosted engine (a config.toml model name passed per run) — never called
+// from here. Roles fixed, models swappable — ids come from the studio config
+// (env NEUGRID_STUDIO_BRAIN_*), and every call below degrades to null so a run
+// always completes engine-only when a seat's model is missing or misnamed.
+
+export interface StudioBriefInput {
+  model: string;
+  workspace: string;
+  directive: string;
+  files: string[]; // current project file paths ([] on the first run)
+  build_summary?: string;
+  recent: string[]; // the last few mission-feed lines, oldest first
+}
+
+const STUDIO_CHIEF_BRIEF_SYSTEM = [
+  "You are the CHIEF ENGINEER of a small product crew on NeuGrid's Echo Studio. A founder just gave a directive; your job is to turn it into ONE crisp engineering brief for the hands — an autonomous coding agent working in the project's directory.",
+  "Rules: keep the founder's intent exactly (never invent features they didn't ask for); scope tight enough to ship in one focused session; name the concrete outcome and, when the project already has files, which parts of it the change touches. If the directive is vague, make the smallest reasonable interpretation and say so in the brief.",
+  "Write 2-6 sentences of plain instruction addressed to the hands. No headers, no lists, no preamble — just the brief.",
+].join("\n");
+
+/** The chief turns a founder directive into the hands' engineering brief. Null on any failure. */
+export async function claudeStudioBrief(ctx: StudioBriefInput): Promise<string | null> {
+  const client = await loadClient();
+  if (!client) return null;
+  const user = [
+    `PROJECT: ${ctx.workspace}`,
+    ctx.build_summary ? `WHAT EXISTS: ${ctx.build_summary.slice(0, 300)}` : "WHAT EXISTS: nothing yet — this is the first build.",
+    ctx.files.length ? `CURRENT FILES: ${ctx.files.slice(0, 20).join(", ")}` : "",
+    ctx.recent.length ? `RECENT ROOM CONTEXT:\n${ctx.recent.slice(-4).map((l) => `- ${l.slice(0, 140)}`).join("\n")}` : "",
+    `THE FOUNDER'S DIRECTIVE:\n${ctx.directive.slice(0, 600)}`,
+  ].filter(Boolean).join("\n\n");
+  for (const model of [ctx.model, VENTURE_DEFAULT_MODEL]) {
+    try {
+      const res = await client.messages.create({
+        model,
+        max_tokens: 1500, // adaptive thinking shares this budget — the chief seat SHOULD think
+        system: STUDIO_CHIEF_BRIEF_SYSTEM,
+        messages: [{ role: "user", content: user }],
+      }, { timeout: 30_000, maxRetries: 1 });
+      const text = firstText(res)?.trim();
+      if (text && text.length >= 40) return text.slice(0, 1200);
+    } catch (e) {
+      console.warn(`[studio] chief brief failed on ${model}:`, e instanceof Error ? e.message : e);
+    }
+  }
+  return null;
+}
+
+export interface StudioGradeInput {
+  model: string;
+  directive: string;
+  brief?: string;
+  result: string; // the engine's own closing narrative
+  files: { path: string; bytes: number }[];
+  excerpt?: string; // a capped slice of the entry file — evidence, not vibes
+}
+export interface StudioGrade { verdict: "pass" | "revise"; notes: string; re_brief?: string }
+
+const STUDIO_GRADE_SCHEMA = {
+  type: "object",
+  properties: {
+    verdict: { type: "string", enum: ["pass", "revise"], description: "pass = the directive is genuinely satisfied by working software. revise = a CONCRETE gap or breakage vs the directive remains." },
+    notes: { type: "string", description: "Your review in 1-2 plain-English sentences addressed to the founder. Specific, not generic." },
+    re_brief: { type: "string", description: "ONLY when verdict is revise: the corrective brief you would hand back to the hands — 1-3 sentences naming exactly what to fix." },
+  },
+  required: ["verdict", "notes"],
+  additionalProperties: false,
+} as const;
+
+const STUDIO_CHIEF_GRADE_SYSTEM = [
+  "You are the CHIEF ENGINEER reviewing what the hands (an autonomous coding agent) just shipped, BEFORE the founder relies on it. You see the directive, your brief, the agent's closing report, the file list, and an excerpt of the entry file.",
+  "The bar is the founder's directive and working software — nothing more. The hands already ran and tested the app; do not demand gold-plating, refactors, or features nobody asked for. Grade 'revise' ONLY when you can name a concrete gap or breakage versus the directive; otherwise grade 'pass'.",
+  "Reply ONLY via the required JSON schema.",
+].join("\n");
+
+/** The chief reviews a finished run against the directive. Null on any failure. */
+export async function claudeStudioGrade(ctx: StudioGradeInput): Promise<StudioGrade | null> {
+  const client = await loadClient();
+  if (!client) return null;
+  const user = [
+    `THE FOUNDER'S DIRECTIVE:\n${ctx.directive.slice(0, 500)}`,
+    ctx.brief ? `YOUR BRIEF TO THE HANDS:\n${ctx.brief.slice(0, 600)}` : "",
+    `THE HANDS' CLOSING REPORT:\n${ctx.result.slice(0, 900) || "(none)"}`,
+    `SHIPPED FILES: ${ctx.files.map((f) => `${f.path} (${f.bytes}b)`).join(", ") || "(none)"}`,
+    ctx.excerpt ? `ENTRY FILE EXCERPT:\n${ctx.excerpt.slice(0, 2000)}` : "",
+  ].filter(Boolean).join("\n\n");
+  for (const model of [ctx.model, VENTURE_DEFAULT_MODEL]) {
+    try {
+      const res = await client.messages.create({
+        model,
+        max_tokens: 1200, // adaptive thinking shares this budget
+        output_config: { format: { type: "json_schema", schema: STUDIO_GRADE_SCHEMA } },
+        system: STUDIO_CHIEF_GRADE_SYSTEM,
+        messages: [{ role: "user", content: user }],
+      }, { timeout: 45_000, maxRetries: 1 });
+      const text = firstText(res);
+      if (!text) continue;
+      const g = JSON.parse(text) as StudioGrade;
+      if (g.verdict === "pass" || g.verdict === "revise") {
+        return { verdict: g.verdict, notes: (g.notes || "").slice(0, 300), re_brief: g.verdict === "revise" ? g.re_brief?.slice(0, 500) : undefined };
+      }
+    } catch (e) {
+      console.warn(`[studio] chief grade failed on ${model}:`, e instanceof Error ? e.message : e);
+    }
+  }
+  return null;
+}
+
+export interface StudioStatusInput {
+  model: string;
+  directive: string;
+  result: string;
+  version: number;
+  files_changed: number;
+  duration_s: number;
+}
+
+const STUDIO_CHATTER_SYSTEM =
+  "You write ONE short, warm, plain-English status line (max ~140 characters) telling a non-technical founder what their build crew just shipped. Concrete, no jargon, no emoji, no quotes around it — just the sentence.";
+
+/** The chatter turns a finished run into one founder-friendly status line. Null on any failure. */
+export async function claudeStudioStatus(ctx: StudioStatusInput): Promise<string | null> {
+  const client = await loadClient();
+  if (!client) return null;
+  try {
+    const res = await client.messages.create({
+      model: ctx.model,
+      max_tokens: 300,
+      system: STUDIO_CHATTER_SYSTEM,
+      messages: [{ role: "user", content: `Directive: ${ctx.directive.slice(0, 300)}\nWhat the crew reports: ${ctx.result.slice(0, 600)}\nNow at version v${ctx.version}, ${ctx.files_changed} file(s) touched, ${Math.round(ctx.duration_s)}s.` }],
+    }, { timeout: 15_000, maxRetries: 1 });
+    const text = firstText(res)?.trim().replace(/^["'`]|["'`]$/g, "");
+    return text && text.length >= 10 ? text.slice(0, 200) : null;
+  } catch {
+    return null; // the chatter is garnish — never block a run on it
+  }
+}

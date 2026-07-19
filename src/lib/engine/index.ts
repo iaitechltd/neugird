@@ -54,6 +54,12 @@ export interface EngineRunOpts {
   max_turns?: number;              // agentic-turn cap (default 40)
   timeout_ms?: number;             // hard wall-clock cap (default 10 min)
   allow_web?: boolean;             // default false — builds are hermetic
+  /** The quality tier (headless-only engine flags): "verified" appends the engine's
+   *  self-verification loop (--check); "best3" races the task 3 ways in parallel and
+   *  ships the best (--best-of-n 3 — incompatible with resume, callers start fresh). */
+  quality?: "standard" | "verified" | "best3";
+  effort?: "low" | "medium" | "high"; // --reasoning-effort for the hands' brain
+  memory?: boolean;                // --experimental-memory — the workshop remembers across sessions
   on_event?: (ev: EngineEvent) => void; // live step callback (progress UIs, trail capture); errors in it are swallowed
 }
 
@@ -68,6 +74,13 @@ export function engineBin(): string | null {
 /** The engine is armed when the compiled binary is reachable. Off by default. */
 export function engineAvailable(): boolean {
   return engineBin() !== null;
+}
+
+/** Which engine interface to drive (Phase 7). "acp" = the persistent agent-server
+ *  that streams every tool call (the sealed-trail moat); "headless" = the one-shot
+ *  `-p` subprocess (the proven default). Opt in with NEUGRID_ENGINE_MODE=acp. */
+export function engineMode(): "acp" | "headless" {
+  return (process.env.NEUGRID_ENGINE_MODE || "").trim().toLowerCase() === "acp" ? "acp" : "headless";
 }
 
 /* ------------------------- workspace snapshot diff ------------------------- */
@@ -92,13 +105,13 @@ function walk(dir: string, base: string, out: Map<string, string>): void {
   }
 }
 
-function snapshot(dir: string): Map<string, string> {
+export function snapshot(dir: string): Map<string, string> {
   const m = new Map<string, string>();
   walk(dir, dir, m);
   return m;
 }
 
-function diffSnapshots(before: Map<string, string>, after: Map<string, string>, dir: string): EngineFileChange[] {
+export function diffSnapshots(before: Map<string, string>, after: Map<string, string>, dir: string): EngineFileChange[] {
   const out: EngineFileChange[] = [];
   for (const [p, sig] of after) {
     const prev = before.get(p);
@@ -128,7 +141,7 @@ export async function runEngineBuild(opts: EngineRunOpts): Promise<EngineResult>
   const model = opts.model || process.env.NEUGRID_ENGINE_MODEL || "neugrid-claude";
   const args = [
     "-p", opts.instruction,
-    "--yolo",                                  // unattended — the jail + caps are the guardrails
+    "--always-approve",                        // unattended — the jail + caps are the guardrails (canonical name; upstream dropped the --yolo alias 2026-07-19)
     "--cwd", opts.workdir,
     "--output-format", "streaming-json",
     "--sandbox", "workspace",                  // kernel-enforced: writes confined to cwd + engine home + temp
@@ -136,8 +149,13 @@ export async function runEngineBuild(opts: EngineRunOpts): Promise<EngineResult>
     "--max-turns", String(opts.max_turns ?? 40),
     "-m", model,
   ];
+  if (opts.quality === "verified") args.push("--check");            // the engine's own self-verification loop
+  if (opts.quality === "best3") args.push("--best-of-n", "3");      // race 3 candidates, ship the best
+  if (opts.effort) args.push("--reasoning-effort", opts.effort);
+  if (opts.memory) args.push("--experimental-memory");
   if (!opts.allow_web) args.push("--disallowed-tools", "web_search,web_fetch");
-  if (opts.resume_session) args.push("--resume", opts.resume_session);
+  // best-of-n races FRESH candidates — a resumed session can't fork 3 ways
+  if (opts.resume_session && opts.quality !== "best3") args.push("--resume", opts.resume_session);
 
   const env: NodeJS.ProcessEnv = { ...process.env, GROK_DISABLE_AUTOUPDATER: "1" };
   if (process.env.NEUGRID_ENGINE_HOME) env.GROK_HOME = process.env.NEUGRID_ENGINE_HOME;

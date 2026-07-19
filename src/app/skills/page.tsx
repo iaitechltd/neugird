@@ -37,6 +37,26 @@ type SortKey = "newest" | "installs" | "price" | "mastery";
 /** Compact number for the tight step-chain nodes (e.g. 12.3k, 1.2M). */
 const compactNum = (n: number) => new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 
+/** The starting recipe card — the open SKILL.md format the Studio engine reads.
+ *  The skill's NAME comes from its title; authors only write when + how. */
+const BUILD_SKILL_TEMPLATE = `---
+description: >
+  When the engine should use this skill — name the trigger phrases
+  and the situations it applies to.
+---
+
+# What this skill does
+
+The procedure, as plain rules the engine follows:
+
+1. …
+2. …
+3. …
+
+## Never
+- …
+`;
+
 /** Inline reprice + delist for the viewer's own listing (key-remounted on price change). */
 function OwnControls({ p, busy, onPrice, onDelist }: { p: Listing; busy: boolean; onPrice: (p: Listing, v: number) => void; onDelist: (p: Listing) => void }) {
   const [v, setV] = useState(String(p.price_grid));
@@ -63,6 +83,14 @@ export default function SkillsPage() {
   const [pubSel, setPubSel] = useState("");
   const [pubPrice, setPubPrice] = useState("");
   const [pubSummary, setPubSummary] = useState("");
+  // build-skill / plugin composer (recipe cards + bundled toolkits the Studio engine follows)
+  const [bsOpen, setBsOpen] = useState(false);
+  const [bsMode, setBsMode] = useState<"skill" | "plugin">("skill");
+  const [bsTitle, setBsTitle] = useState("");
+  const [bsSummary, setBsSummary] = useState("");
+  const [bsPrice, setBsPrice] = useState("");
+  const [bsBody, setBsBody] = useState(BUILD_SKILL_TEMPLATE);
+  const [bsFiles, setBsFiles] = useState<{ path: string; content: string }[]>([{ path: "skills/my-skill/SKILL.md", content: BUILD_SKILL_TEMPLATE }]);
   const [lOpen, setLOpen] = useState(true);
   const [rOpen, setROpen] = useState(true);
   const closed = (lOpen ? 0 : 1) + (rOpen ? 0 : 1);
@@ -108,6 +136,28 @@ export default function SkillsPage() {
       }
       notify("Published — your skill is on the market");
       setPubSel(""); setPubPrice(""); setPubSummary("");
+      reload();
+    } finally { setBusy(false); }
+  }
+
+  /** Publish a build-skill (one recipe) or a plugin (a bundle of files). */
+  async function publishBuild() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const payload = bsMode === "plugin"
+        ? { kind: "plugin", title: bsTitle.trim(), summary: bsSummary.trim() || undefined, price_grid: Math.max(0, Number(bsPrice) || 0), files: bsFiles.filter((f) => f.path.trim() && f.content.trim()) }
+        : { kind: "build", title: bsTitle.trim(), summary: bsSummary.trim() || undefined, price_grid: Math.max(0, Number(bsPrice) || 0), body: bsBody };
+      const r = await fetch("/api/skills", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const e = String(d.error ?? "");
+        notify(e === "body_too_short" ? "The recipe needs more substance (40+ chars)" : e === "already_listed" ? "You already listed one with that name" : e === "title_required" ? "Give it a title" : e.startsWith("bad_path") ? "A file path isn't allowed — only skills/…/SKILL.md, commands/….md, agents/…, plugin.json" : e === "files_required" ? "Add at least one file" : "Publish failed");
+        return;
+      }
+      notify("Published — workshops can install it now");
+      setBsOpen(false); setBsTitle(""); setBsSummary(""); setBsPrice(""); setBsBody(BUILD_SKILL_TEMPLATE);
+      setBsFiles([{ path: "skills/my-skill/SKILL.md", content: BUILD_SKILL_TEMPLATE }]);
       reload();
     } finally { setBusy(false); }
   }
@@ -239,6 +289,58 @@ export default function SkillsPage() {
               <p className="text-[11px] leading-relaxed text-ink-dim">{data && data.my_agents.length === 0 ? <><Link href="/agents" className="text-neon">Create an agent</Link> — it learns publishable skills by delivering real work.</> : "Nothing to publish yet — your agents learn skills by delivering Jobs; every unlisted, work-earned skill shows up here."}</p>
             )}
 
+            {/* WRITE A BUILD-SKILL — a recipe card the Studio engine follows (Phase 5) */}
+            <div className="ng-label mb-2 mt-5 !text-ink-dim">Write a build-skill or plugin</div>
+            {!bsOpen ? (
+              <div>
+                <p className="mb-2 text-[11px] leading-relaxed text-ink-dim">A recipe card the Studio engine follows on every run — a house style, a checklist, a convention. Earn GRID each time a workshop installs it.</p>
+                <button onClick={() => setBsOpen(true)} className="ng-btn ng-btn--sm ng-btn--block justify-center"><IconLayers className="h-3 w-3" /> Write one</button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex gap-1">
+                  {([["skill", "Skill — one recipe"], ["plugin", "Plugin — a bundle"]] as const).map(([m, label]) => (
+                    <button key={m} onClick={() => setBsMode(m)}
+                      className={`flex-1 border px-1.5 py-1 text-[10px] transition-colors ${bsMode === m ? "border-neon/70 bg-neon/15 text-neon" : "border-neon/15 text-ink-faint hover:text-ink-dim"}`}>{label}</button>
+                  ))}
+                </div>
+                <input value={bsTitle} onChange={(e) => setBsTitle(e.target.value)} placeholder="title — e.g. Accessibility checklist" maxLength={60} className="ng-input w-full !py-1.5 text-[11px]" />
+                <input value={bsSummary} onChange={(e) => setBsSummary(e.target.value)} placeholder="one-line pitch for the store (optional)" maxLength={300} className="ng-input w-full !py-1.5 text-[11px]" />
+                {bsMode === "skill" ? (
+                <textarea value={bsBody} onChange={(e) => setBsBody(e.target.value)} rows={11} spellCheck={false}
+                  className="ng-input w-full whitespace-pre !py-1.5 font-mono text-[10px] leading-relaxed" aria-label="The SKILL.md recipe" />
+                ) : (
+                <div className="space-y-2">
+                  {bsFiles.map((f, i) => (
+                    <div key={i} className="space-y-1 border border-neon/10 p-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <input value={f.path} onChange={(e) => setBsFiles(bsFiles.map((x, j) => j === i ? { ...x, path: e.target.value } : x))}
+                          placeholder="skills/name/SKILL.md · commands/name.md" className="ng-input w-full !py-1 font-mono text-[10px]" aria-label={`file ${i + 1} path`} />
+                        {bsFiles.length > 1 && <button onClick={() => setBsFiles(bsFiles.filter((_, j) => j !== i))} className="shrink-0 text-[10px] text-ink-faint hover:text-danger">✕</button>}
+                      </div>
+                      <textarea value={f.content} onChange={(e) => setBsFiles(bsFiles.map((x, j) => j === i ? { ...x, content: e.target.value } : x))}
+                        rows={6} spellCheck={false} className="ng-input w-full whitespace-pre !py-1 font-mono text-[10px] leading-relaxed" aria-label={`file ${i + 1} content`} />
+                    </div>
+                  ))}
+                  {bsFiles.length < 12 && (
+                    <button onClick={() => setBsFiles([...bsFiles, { path: "commands/my-command.md", content: "# What this command does\n\nThe steps the engine follows when the builder invokes it.\n" }])}
+                      className="ng-btn ng-btn-ghost ng-btn--sm ng-btn--block justify-center !text-[10px]">+ add a file</button>
+                  )}
+                  <p className="text-[9px] leading-relaxed text-ink-faint">allowed paths: skills/&lt;name&gt;/SKILL.md · commands/&lt;name&gt;.md · agents/&lt;name&gt;.md · plugin.json — anything that executes (hooks, bundled servers) can&#39;t be sold</p>
+                </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <input value={bsPrice} onChange={(e) => setBsPrice(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" placeholder="0" aria-label="Price in GRID" className="ng-input w-20 !py-1.5 text-center text-[11px]" />
+                  <span className="text-[10px] text-ink-faint">GRID per install · 0 = free</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button disabled={busy || !bsTitle.trim() || (bsMode === "skill" ? bsBody.trim().length < 40 : !bsFiles.some((f) => f.path.trim() && f.content.trim()))} onClick={publishBuild} className="ng-btn ng-btn-primary ng-btn--sm flex-1 justify-center disabled:opacity-40"><IconBolt className="h-3 w-3" /> Publish to market</button>
+                  <button onClick={() => setBsOpen(false)} className="ng-btn ng-btn-ghost ng-btn--sm">cancel</button>
+                </div>
+                <p className="text-[9px] leading-relaxed text-ink-faint">the description block decides WHEN the engine reaches for it — name the trigger phrases; the rules below it are what it obeys</p>
+              </div>
+            )}
+
             <PanelChart title="Domain mix" read={`${domainMix.data.length} domains`}>
               {domainMix.data.length > 0 ? (
                 <div className="flex justify-center py-1"><PolarArea data={domainMix.data} labels={domainMix.labels} size={132} /></div>
@@ -307,7 +409,9 @@ export default function SkillsPage() {
                   </div>
                   {/* footer — pick the receiving agent RIGHT HERE, then act */}
                   <div className="mt-3 border-t border-line pt-2.5">
-                    {data && data.my_agents.length > 0 ? (
+                    {p.domain === "studio" || p.domain === "studio-plugin" ? (
+                      <p className="text-[11px] text-ink-dim">A Studio build-skill — install it from a <Link href="/echo/studio" className="text-neon hover:underline">workshop</Link>&#39;s skills rail; the engine follows it on every run.</p>
+                    ) : data && data.my_agents.length > 0 ? (
                       <div className="flex items-center gap-1.5">
                         <select value={target} onChange={(e) => setTarget(e.target.value)} title="Which of your agents receives this skill" className="ng-input w-[45%] shrink-0 !py-1.5 text-[10px]">
                           {data.my_agents.map((a) => <option key={a.agent_id} value={a.agent_id}>→ {a.name}</option>)}

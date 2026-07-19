@@ -205,8 +205,11 @@ const SPECS: Spec[] = [
     cols: ["venture_id", "owner_id", "name", "mission", "template", "build_id", "status", "treasury_id", "ceo_agent_id", "seats", "objectives", "contributor_splits", "approvals", "require_approval", "cycles", "revenue_grid", "revenue_synced_usdc", "spent_grid", "log", "reports", "created_at", "updated_at"],
     num: ["cycles", "revenue_grid", "revenue_synced_usdc", "spent_grid"], ts: ["created_at", "updated_at"], json: ["seats", "objectives", "contributor_splits", "approvals", "log", "reports"] },
   { key: "studioWorkspaces", table: "studio_workspaces",
-    cols: ["workspace_id", "owner_id", "name", "status", "build_id", "engine_session_id", "turns", "checkpoints", "trail", "trail_sha", "progress", "spent_grid", "created_at", "updated_at"],
-    num: ["spent_grid"], ts: ["created_at", "updated_at"], json: ["turns", "checkpoints", "trail"] },
+    cols: ["workspace_id", "owner_id", "name", "status", "build_id", "engine_session_id", "turns", "checkpoints", "trail", "trail_sha", "progress", "spent_grid", "pending_fix", "pending_post", "skills", "hired", "rules", "memory_enabled", "toolset_sig", "spent_usd", "mcp", "toolbox_off", "plugins", "created_at", "updated_at"],
+    num: ["spent_grid", "spent_usd"], ts: ["created_at", "updated_at"], json: ["turns", "checkpoints", "trail", "pending_fix", "pending_post", "skills", "hired", "mcp", "toolbox_off", "plugins"] },
+  { key: "builderToolboxes", table: "builder_toolboxes",
+    cols: ["owner_id", "mcp", "skills", "plugins", "updated_at"],
+    ts: ["updated_at"], json: ["mcp", "skills", "plugins"] },
 ];
 
 /* Non-array singleton state on DB (gridPool / tge / params) — stored one jsonb

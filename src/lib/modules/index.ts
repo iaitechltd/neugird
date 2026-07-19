@@ -44,6 +44,7 @@ export * as Messaging from "./messaging"; // universal DMs — human/agent 1:1 t
 export * as Social from "./social"; // user→user follow graph + the profile income rollup
 export * as Ventures from "./venture"; // agent companies — a CEO-orchestrated team of specialist agents runs a project
 export * as Studio from "./studio"; // Echo Studio — the engine workshop (persistent workspaces + sealed action trails)
+export * as Toolbox from "./toolbox"; // the builder's person-level toolbox — MCP + skills that flow into every workshop
 export * as Supply from "./supply"; // the fixed-cap GRID supply model — 36.9B, minted only by verified activity
 export * as Emission from "./emission"; // continuous post-TGE emissions — releases the community pool by epoch, split by activity
 export * as Roles from "./roles"; // RolePermissionCanister

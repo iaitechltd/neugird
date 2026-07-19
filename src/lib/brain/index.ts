@@ -11,9 +11,9 @@
  */
 
 import type { Agent, Job } from "../types";
-import { claudeChooseJob, claudeAgentReply, claudeSynthesizeBuild, claudeReviseBuild, claudeDraftProposal, claudeEchoAsk, claudeComposePost, claudeCeoPlan, claudeSpecialistWork, claudeWebResearch, type AgentChatTurn, type ChatContext, type SynthesizedBuild, type SynthFile, type ProposalDraft, type EchoAskMode, type PostContext, type AgentPostDraft, type CeoPlan, type CeoPlanInput, type SpecialistInput, type SpecialistOutput } from "./claude";
+import { claudeChooseJob, claudeAgentReply, claudeSynthesizeBuild, claudeReviseBuild, claudeDraftProposal, claudeEchoAsk, claudeComposePost, claudeCeoPlan, claudeSpecialistWork, claudeWebResearch, claudeStudioBrief, claudeStudioGrade, claudeStudioStatus, type AgentChatTurn, type ChatContext, type SynthesizedBuild, type SynthFile, type ProposalDraft, type EchoAskMode, type PostContext, type AgentPostDraft, type CeoPlan, type CeoPlanInput, type SpecialistInput, type SpecialistOutput, type StudioBriefInput, type StudioGradeInput, type StudioGrade, type StudioStatusInput } from "./claude";
 
-export type { AgentChatTurn, ChatContext, ChatTurn, SynthesizedBuild, SynthFile, ProposalDraft, EchoAskMode, PostContext, AgentPostDraft, CeoPlan, CeoPlanInput, CeoAssignment, CeoActionKind, SpecialistInput, SpecialistOutput } from "./claude";
+export type { AgentChatTurn, ChatContext, ChatTurn, SynthesizedBuild, SynthFile, ProposalDraft, EchoAskMode, PostContext, AgentPostDraft, CeoPlan, CeoPlanInput, CeoAssignment, CeoActionKind, SpecialistInput, SpecialistOutput, StudioBriefInput, StudioGradeInput, StudioGrade, StudioStatusInput } from "./claude";
 
 export interface BrainChoice {
   /** A candidate Job's exact id, or null when the brain actively chooses to HOLD. */
@@ -216,6 +216,40 @@ export async function webResearch(query: string): Promise<string | null> {
       } catch {
         return null;
       }
+    default:
+      return null;
+  }
+}
+
+/* ------------------- Echo Studio's crew seats (Phase 3) ------------------- */
+
+/** The Studio CHIEF turns a founder directive into the hands' engineering brief.
+ *  `null` → no brain / call failed → the run proceeds with the raw directive. */
+export async function studioBrief(ctx: StudioBriefInput): Promise<string | null> {
+  switch (activeBrain()) {
+    case "claude":
+      try { return await claudeStudioBrief(ctx); } catch { return null; }
+    default:
+      return null;
+  }
+}
+
+/** The Studio CHIEF grades a finished run against the directive before the
+ *  founder relies on it. `null` → no brain / call failed → no grade shown. */
+export async function studioGrade(ctx: StudioGradeInput): Promise<StudioGrade | null> {
+  switch (activeBrain()) {
+    case "claude":
+      try { return await claudeStudioGrade(ctx); } catch { return null; }
+    default:
+      return null;
+  }
+}
+
+/** The Studio CHATTER writes the founder-friendly one-line status. `null` → skipped. */
+export async function studioStatus(ctx: StudioStatusInput): Promise<string | null> {
+  switch (activeBrain()) {
+    case "claude":
+      try { return await claudeStudioStatus(ctx); } catch { return null; }
     default:
       return null;
   }
