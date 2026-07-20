@@ -36,6 +36,7 @@ export default function BuilderToolbox() {
   const [filter, setFilter] = useState<"all" | "skills" | "plugins" | "free">("all");
   const [connOpen, setConnOpen] = useState(false);
   const [conn, setConn] = useState({ kind: "remote", value: "", command: "", args: "", url: "", header: "" });
+  const [wired, setWired] = useState<string | null>(null); // transient "✓ wired" note — the form stays open for the next one
 
   const load = useCallback(() => { fetch("/api/toolbox").then((r) => (r.ok ? r.json() : null)).then((j) => j && setV(j)).catch(() => {}); }, []);
   useEffect(() => { load(); }, [load]);
@@ -50,8 +51,15 @@ export default function BuilderToolbox() {
   };
   const connectGo = async () => {
     const r = await act({ action: "mcp_add", kind: conn.kind, value: conn.value, command: conn.command, args: conn.args, url: conn.url, header: conn.header });
-    if (r?.ok) { setConn({ kind: "remote", value: "", command: "", args: "", url: "", header: "" }); setConnOpen(false); }
+    if (r?.ok) {
+      // stay open — wiring several services in a row is the normal case
+      setConn({ kind: "remote", value: "", command: "", args: "", url: "", header: "" });
+      setWired("wired ✓ — it now reaches every workshop. Add another?");
+      setTimeout(() => setWired(null), 5000);
+    }
   };
+  const openWire = () => { setTab("rack"); setConnOpen(true); };
+  const browse = (f: "skills" | "plugins") => { setTab("catalog"); setFilter(f); };
 
   const skills = v?.skills ?? [];
   const plugins = v?.plugins ?? [];
@@ -76,25 +84,25 @@ export default function BuilderToolbox() {
         </span>
       }>
 
-      {/* ═══ RACK — the gear you've equipped, flowing into every workshop ═══ */}
-      {tab === "rack" && (rackEmpty ? (
-        <div className="py-2 text-center">
-          <div className="mx-auto mb-3 flex w-max gap-1.5">
-            {["SKILL", "PLUGIN", "PORT"].map((k) => (
-              <span key={k} className="grid h-11 w-11 place-items-center border border-dashed border-neon/15 text-[8px] tracking-widest text-ink-faint">{k}</span>
-            ))}
-          </div>
-          <p className="text-[12px] text-ink">Empty rack — load your first cartridge.</p>
-          <button onClick={() => setTab("catalog")} className="ng-btn ng-btn-primary ng-btn--sm mt-2.5"><IconLayers className="h-3.5 w-3.5" /> Browse the catalog</button>
-        </div>
-      ) : (
+      {/* ═══ RACK — the gear you've equipped, flowing into every workshop.
+           Every band ALWAYS renders and ALWAYS carries its door — an empty band
+           is an invitation, not a blank (founder: "how do I connect?!"). ═══ */}
+      {tab === "rack" && (
         <div className="space-y-3">
+          {rackEmpty && <p className="text-[11px] text-ink-dim">Empty rack — everything you load here flows into every workshop you open.</p>}
           {/* SKILLS + PLUGINS share a left "bus rail" — current flows into every build */}
-          {(skills.length > 0 || plugins.length > 0) && (
+          {(
             <div className="relative pl-2.5">
               <span className="absolute bottom-1 left-0 top-1 w-0.5 bg-neon/50" aria-hidden />
 
-              {skills.length > 0 && <Band label="skills" n={skills.length} />}
+              <Band label="skills" n={skills.length} action={
+                <button onClick={() => browse("skills")} className="border border-neon/40 px-1.5 py-px text-[9px] tracking-wider text-neon transition-colors hover:bg-neon/10">+ load</button>
+              } />
+              {skills.length === 0 && (
+                <p className="mb-2 text-[10px] leading-relaxed text-ink-faint">
+                  none loaded — <button onClick={() => browse("skills")} className="text-neon hover:underline">pick from the catalog</button> or <Link href="/skills" className="text-neon hover:underline">write your own ›</Link>
+                </p>
+              )}
               {skills.length > 0 && (
                 <div className="mb-1 grid grid-cols-2 gap-2">
                   {skills.map((s) => (
@@ -112,7 +120,14 @@ export default function BuilderToolbox() {
                 </div>
               )}
 
-              {plugins.length > 0 && <Band label="plugins" n={plugins.length} accent="cyan" />}
+              <Band label="plugins" n={plugins.length} accent="cyan" action={
+                <button onClick={() => browse("plugins")} className="border border-cyan/40 px-1.5 py-px text-[9px] tracking-wider text-cyan transition-colors hover:bg-cyan/10">+ load</button>
+              } />
+              {plugins.length === 0 && (
+                <p className="mb-1 text-[10px] leading-relaxed text-ink-faint">
+                  none — <button onClick={() => browse("plugins")} className="text-cyan hover:underline">pick a bundle</button> or <Link href="/skills" className="text-cyan hover:underline">bundle your own ›</Link>
+                </p>
+              )}
               {plugins.map((p) => (
                 <div key={p.published_id} className="group mb-1 bg-cyan/[0.03] p-2" style={{ border: `1px solid ${HAIR}`, borderLeftWidth: 2, borderLeftColor: "#48f5ff" }}>
                   <div className="flex items-center gap-2">
@@ -141,10 +156,14 @@ export default function BuilderToolbox() {
 
           {/* PORTS — live services (patch-bay rows, not cards, no bus rail) */}
           <div>
-            <Band label="ports" n={ports.length} action={
-              <button onClick={() => setConnOpen((o) => !o)} className="ng-tag !text-[9px] !text-ink-faint hover:!text-neon">+ wire</button>
+            <Band label="ports · live services" n={ports.length} action={
+              <button onClick={() => setConnOpen((o) => !o)} className="border border-neon/40 px-1.5 py-px text-[9px] tracking-wider text-neon transition-colors hover:bg-neon/10">+ wire a port</button>
             } />
-            {ports.length === 0 && !connOpen && <p className="text-[10px] text-ink-faint">no ports wired — connect GitHub, a database, or any MCP by URL.</p>}
+            {ports.length === 0 && !connOpen && (
+              <p className="text-[10px] leading-relaxed text-ink-faint">
+                nothing wired — GitHub · databases · web search · Notion · Maps, or <button onClick={() => setConnOpen(true)} className="text-neon hover:underline">email &amp; 7,000+ apps by MCP URL ›</button>
+              </p>
+            )}
             {ports.map((c) => (
               <div key={c.name} className="group flex items-center gap-2 py-1 text-[11px]">
                 <PulseDot tone="neon" size={6} />
@@ -155,10 +174,11 @@ export default function BuilderToolbox() {
                   className="shrink-0 text-ink-faint opacity-0 transition-opacity hover:text-danger group-hover:opacity-100" title="unwire">✕</button>
               </div>
             ))}
+            {wired && <p className="mt-1 text-[10px] text-neon">{wired}</p>}
             {connOpen && <ConnectForm v={v} conn={conn} setConn={setConn} onGo={() => void connectGo()} onClose={() => setConnOpen(false)} busy={busy} />}
           </div>
         </div>
-      ))}
+      )}
 
       {/* ═══ CATALOG — the marketplace: browse + install ═══ */}
       {tab === "catalog" && (
@@ -169,7 +189,14 @@ export default function BuilderToolbox() {
                 className={`border px-1.5 py-0.5 text-[9px] tracking-wider transition-colors ${filter === f ? "border-neon/60 bg-neon/10 text-neon" : "border-neon/12 text-ink-faint hover:text-ink-dim"}`}>{f.toUpperCase()}</button>
             ))}
           </div>
-          {store.length === 0 && <p className="py-2 text-[11px] text-ink-dim">Nothing here yet — <Link href="/skills" className="text-neon">publish the first one</Link> and earn GRID per install.</p>}
+          {/* live services aren't store items — they're WIRED. Give the person who
+              came here looking for "connect my email/GitHub" the door. */}
+          <div className="flex items-center gap-2 p-2" style={{ border: `1px solid ${HAIR}` }}>
+            <IconActivity className="h-3.5 w-3.5 shrink-0 text-ink-dim" />
+            <span className="min-w-0 flex-1 text-[10px] leading-snug text-ink-dim">live services are wired, not bought — GitHub · databases · search · email &amp; 7,000+ apps by MCP URL</span>
+            <button onClick={openWire} className="shrink-0 border border-neon/40 px-1.5 py-0.5 text-[9px] tracking-wider text-neon transition-colors hover:bg-neon/10">wire ›</button>
+          </div>
+          {store.length === 0 && <p className="py-2 text-[11px] text-ink-dim">Nothing on the shelf yet — <Link href="/skills" className="text-neon">write a skill or bundle a plugin ›</Link> and earn GRID per install.</p>}
           {store.map((p) => (
             <div key={p.published_id} className="p-2" style={{ border: `1px solid ${HAIR}`, borderLeftWidth: 2, borderLeftColor: p.kind === "plugin" ? "#48f5ff" : "#00ff00" }}>
               <div className="flex items-center gap-2">
@@ -189,9 +216,11 @@ export default function BuilderToolbox() {
               </div>
             </div>
           ))}
-          <div className="border-t border-neon/10 pt-2">
-            <Link href="/skills" className="ng-btn ng-btn-ghost ng-btn--sm ng-btn--block justify-center !text-[10px]"><IconBolt className="h-3 w-3" /> Publish &amp; earn GRID</Link>
+          <div className="flex gap-2 border-t border-neon/10 pt-2">
+            <Link href="/skills" className="ng-btn ng-btn-ghost ng-btn--sm flex-1 justify-center !text-[10px]"><IconBolt className="h-3 w-3" /> Write a skill</Link>
+            <Link href="/skills" className="ng-btn ng-btn-ghost ng-btn--sm flex-1 justify-center !text-[10px]"><IconLayers className="h-3 w-3" /> Bundle a plugin</Link>
           </div>
+          <p className="!mt-1 text-center text-[9px] text-ink-faint">yours to sell — earn GRID on every install</p>
         </div>
       )}
     </Panel>
@@ -216,7 +245,7 @@ function ConnectForm({ v, conn, setConn, onGo, onClose, busy }: {
   onGo: () => void; onClose: () => void; busy: boolean;
 }) {
   const options = [
-    { kind: "remote", label: "Any MCP server (URL)", desc: "paste a server URL" },
+    { kind: "remote", label: "Any MCP server (URL)", desc: "email, calendars & 7,000+ apps — Zapier/Composio and most services expose an MCP URL; paste it" },
     ...(v?.mcp_catalog ?? []),
     { kind: "custom", label: "Custom command", desc: "run a local MCP server" },
   ];
@@ -230,7 +259,7 @@ function ConnectForm({ v, conn, setConn, onGo, onClose, busy }: {
         </button>
       ))}
       {conn.kind === "remote" && <>
-        <input value={conn.url} onChange={(e) => setConn({ ...conn, url: e.target.value })} placeholder="https://your-mcp-server.com/mcp" className="ng-input w-full !py-1.5 text-[11px]" />
+        <input value={conn.url} onChange={(e) => setConn({ ...conn, url: e.target.value })} placeholder="https://mcp.zapier.com/… or any MCP server URL" className="ng-input w-full !py-1.5 text-[11px]" />
         <input value={conn.header} onChange={(e) => setConn({ ...conn, header: e.target.value })} placeholder="auth header (optional)" className="ng-input w-full !py-1.5 text-[11px]" />
       </>}
       {conn.kind === "custom" && <>

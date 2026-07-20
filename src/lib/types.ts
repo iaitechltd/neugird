@@ -1242,7 +1242,7 @@ export interface StudioTurn {
   grade?: "pass" | "revise"; // chief review verdict (chief turns only)
   cost_usd?: number; // the engine's own reported dollar cost for this run (honest, from the end event)
   tokens?: number; // total tokens the run consumed
-  quality?: "standard" | "verified" | "best3"; // the tier the run was bought at
+  quality?: "standard" | "verified" | "best3" | "gated"; // the tier the run was bought at
   at: ISODate;
 }
 
@@ -1301,7 +1301,7 @@ export interface StudioWorkspace {
   /** Connected MCP servers — real services the engine can act on (Phase 6b).
    *  `env`/`headers` hold the user's secrets: NEVER returned raw by view() (masked).
    *  A server is EITHER a local command (command+args) OR a remote URL (url). */
-  mcp?: { name: string; kind: "github" | "postgres" | "mcp-test" | "custom" | "remote"; command?: string; args?: string[]; url?: string; env?: Record<string, string>; headers?: Record<string, string>; added_at: ISODate }[];
+  mcp?: { name: string; kind: string; command?: string; args?: string[]; url?: string; env?: Record<string, string>; headers?: Record<string, string>; added_at: ISODate }[]; // kind = an MCP_CATALOG key (mcpShared.ts) or "custom" | "remote"
   /** Cross-session engine memory for this workshop (--experimental-memory). */
   memory_enabled?: boolean;
   /** Fingerprint of the effective toolset (skills+plugins+mcp) last materialized —

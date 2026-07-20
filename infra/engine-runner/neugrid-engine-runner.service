@@ -1,0 +1,22 @@
+# NeuGrid engine runner — systemd unit (VM: neugrid-engine-1)
+# Install: sudo cp this to /etc/systemd/system/ && sudo systemctl enable --now neugrid-engine-runner
+[Unit]
+Description=NeuGrid engine runner (self-hosted grok-build as a service)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=engine
+Group=engine
+EnvironmentFile=/opt/neugrid-engine/env
+ExecStart=/usr/bin/node /opt/neugrid-engine/runner.mjs
+Restart=always
+RestartSec=3
+# the runner spawns engine process groups; give them room but keep the box safe
+MemoryMax=3G
+TasksMax=512
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

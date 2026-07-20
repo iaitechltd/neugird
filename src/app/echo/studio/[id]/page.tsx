@@ -25,7 +25,7 @@ const trailColor = (t: string) => TRAIL_COLORS[TRAIL_TYPES.indexOf(t as (typeof 
 
 type View = {
   workspace: { workspace_id: string; name: string; status: string; progress?: string; spent_grid: number; trail_sha?: string };
-  turns: { turn_id: string; role: "you" | "engine" | "chief" | "chatter" | "content" | "marketing"; text: string; version?: number; duration_s?: number; files_changed?: number; error?: string; grade?: "pass" | "revise"; cost_grid?: number; cost_usd?: number; tokens?: number; quality?: "standard" | "verified" | "best3"; at: string }[];
+  turns: { turn_id: string; role: "you" | "engine" | "chief" | "chatter" | "content" | "marketing"; text: string; version?: number; duration_s?: number; files_changed?: number; error?: string; grade?: "pass" | "revise"; cost_grid?: number; cost_usd?: number; tokens?: number; quality?: "standard" | "verified" | "best3" | "gated"; at: string }[];
   trail: { at: string; type: string; summary: string }[];
   trail_len: number;
   checkpoints: { checkpoint_id: string; version: number; note: string; proof: string; at: string; files: number }[];
@@ -37,7 +37,7 @@ type View = {
   rules: string;
   memory_enabled: boolean;
   spent_usd: number;
-  run_costs: { standard: number; verified: number; best3: number };
+  run_costs: { standard: number; verified: number; gated?: number; best3: number };
   connections: { name: string; kind: string; scope?: "toolbox" | "project"; enabled: boolean; command: string; secret: string | null; added_at: string; health: { ok: boolean; note: string } | null }[];
   connections_checked_at: string | null;
   mcp_catalog: { kind: string; label: string; desc: string; needs: { label: string; placeholder: string } | null }[];
@@ -76,7 +76,7 @@ export default function StudioRoom({ params }: { params: Promise<{ id: string }>
   const [drafting, setDrafting] = useState(false);
   const [tokSym, setTokSym] = useState("");
   const [storeOpen, setStoreOpen] = useState(false);
-  const [quality, setQuality] = useState<"standard" | "verified" | "best3">("standard");
+  const [quality, setQuality] = useState<"standard" | "verified" | "best3" | "gated">("standard");
   const [effort, setEffort] = useState<"low" | "medium" | "high">("medium");
   const [rulesOpen, setRulesOpen] = useState(false);
   const [rulesDraft, setRulesDraft] = useState<string | null>(null);
@@ -505,9 +505,9 @@ export default function StudioRoom({ params }: { params: Promise<{ id: string }>
             <div className="mt-2.5 flex flex-wrap items-center gap-x-5 gap-y-1.5 border-t border-neon/10 pt-2">
               <span className="flex items-center">
                 <span className="ng-tag mr-2 !text-[9px] !text-ink-faint">quality</span>
-                {([["standard", "STANDARD"], ["verified", "✓ VERIFIED"], ["best3", "⚡ BEST-OF-3"]] as const).map(([q, label]) => (
+                {([["standard", "STANDARD"], ["verified", "✓ VERIFIED"], ["gated", "⛩ GATED"], ["best3", "⚡ BEST-OF-3"]] as const).map(([q, label]) => (
                   <button key={q} onClick={() => setQuality(q)} disabled={building}
-                    title={q === "verified" ? "the engine runs its own verification loop on the finished work" : q === "best3" ? "three candidates race in parallel — the best one ships" : "one focused build pass"}
+                    title={q === "verified" ? "the engine runs its own verification loop on the finished work" : q === "gated" ? "the engine is not allowed to finish until the workspace's checks pass (syntax + non-empty app, up to 3 fix rounds)" : q === "best3" ? "three candidates race in parallel — the best one ships" : "one focused build pass"}
                     className={`border px-2 py-0.5 text-[9px] tracking-wider transition-colors disabled:opacity-40 ${quality === q ? "border-neon/70 bg-neon/15 text-neon" : "border-neon/15 text-ink-faint hover:text-ink-dim"} ${q !== "standard" ? "-ml-px" : ""}`}>
                     {label}
                   </button>
@@ -522,7 +522,7 @@ export default function StudioRoom({ params }: { params: Promise<{ id: string }>
                   </button>
                 ))}
               </span>
-              {quality !== "standard" && <span className="text-[9px] text-ink-faint">{quality === "best3" ? "3 candidates race — you ship the winner" : "the engine double-checks its own work before it stops"}</span>}
+              {quality !== "standard" && <span className="text-[9px] text-ink-faint">{quality === "best3" ? "3 candidates race — you ship the winner" : quality === "gated" ? "the engine can't stop until the checks pass" : "the engine double-checks its own work before it stops"}</span>}
             </div>
           </div>
           </Rise>
@@ -538,7 +538,7 @@ export default function StudioRoom({ params }: { params: Promise<{ id: string }>
                     <span className={`ml-1.5 text-[10px] ${t.grade === "pass" ? "text-neon" : "text-amber"}`}>{t.grade === "pass" ? "✓ pass" : "⚠ needs a fix"}</span>
                   )}
                   {t.version !== undefined && !t.error && (
-                    <span className="text-[10px] text-ink-faint"> — v{t.version}{t.files_changed ? ` · ${t.files_changed} file(s)` : ""}{t.duration_s ? ` · ${Math.round(t.duration_s)}s` : ""}{t.cost_usd ? ` · $${t.cost_usd.toFixed(2)}` : ""}{t.quality ? ` · ${t.quality === "best3" ? "best-of-3" : "verified"}` : ""}</span>
+                    <span className="text-[10px] text-ink-faint"> — v{t.version}{t.files_changed ? ` · ${t.files_changed} file(s)` : ""}{t.duration_s ? ` · ${Math.round(t.duration_s)}s` : ""}{t.cost_usd ? ` · $${t.cost_usd.toFixed(2)}` : ""}{t.quality ? ` · ${t.quality === "best3" ? "best-of-3" : t.quality === "gated" ? "stop-gated" : "verified"}` : ""}</span>
                   )}
                 </div>
               ))}

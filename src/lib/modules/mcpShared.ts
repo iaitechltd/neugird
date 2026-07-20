@@ -18,8 +18,13 @@ export type McpEntry = NonNullable<StudioWorkspace["mcp"]>[number];
 export const MCP_CATALOG: Record<string, { label: string; desc: string; command: string; args: string[]; input?: { key: string; label: string; kind: "env" | "arg"; placeholder: string } }> = {
   "github": { label: "GitHub", desc: "read repos, open issues & PRs, push code", command: "npx", args: ["-y", "@modelcontextprotocol/server-github"], input: { key: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "personal access token", kind: "env", placeholder: "ghp_…" } },
   "postgres": { label: "Postgres", desc: "let the engine query your real database", command: "npx", args: ["-y", "@modelcontextprotocol/server-postgres"], input: { key: "connection_url", label: "connection URL", kind: "arg", placeholder: "postgresql://user:pass@host/db" } },
+  "notion": { label: "Notion", desc: "read & write your Notion pages and databases", command: "npx", args: ["-y", "@notionhq/notion-mcp-server"], input: { key: "NOTION_TOKEN", label: "integration token", kind: "env", placeholder: "ntn_…" } },
+  "brave-search": { label: "Brave Search", desc: "give builds real web search", command: "npx", args: ["-y", "@modelcontextprotocol/server-brave-search"], input: { key: "BRAVE_API_KEY", label: "API key", kind: "env", placeholder: "BSA…" } },
+  "google-maps": { label: "Google Maps", desc: "places, directions & geocoding in builds", command: "npx", args: ["-y", "@modelcontextprotocol/server-google-maps"], input: { key: "GOOGLE_MAPS_API_KEY", label: "API key", kind: "env", placeholder: "AIza…" } },
   "mcp-test": { label: "Test server", desc: "a sandbox MCP with demo tools — try the flow", command: "npx", args: ["-y", "@modelcontextprotocol/server-everything"] },
 };
+// Email / calendars / 7,000-app hubs (Zapier, Composio) expose HOSTED MCP URLs —
+// they ride the "remote" kind (paste the URL), not this command catalog.
 
 export function catalogView() {
   return Object.entries(MCP_CATALOG).map(([kind, c]) => ({ kind, label: c.label, desc: c.desc, needs: c.input ? { label: c.input.label, placeholder: c.input.placeholder } : null }));

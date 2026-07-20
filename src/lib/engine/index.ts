@@ -51,13 +51,16 @@ export interface EngineRunOpts {
   instruction: string;
   model?: string;                  // config.toml model name (default env NEUGRID_ENGINE_MODEL || "neugrid-claude")
   resume_session?: string;         // continue a prior session in the same workspace
-  max_turns?: number;              // agentic-turn cap (default 40)
+  max_turns?: number;              // agentic-turn cap (default 40; headless-only — `grok agent` has no such flag)
   timeout_ms?: number;             // hard wall-clock cap (default 10 min)
+  tool_timeout_ms?: number;        // ACP-only: per-tool-call INACTIVITY watchdog (default 4 min) — no status update for this long cancels the run
   allow_web?: boolean;             // default false — builds are hermetic
-  /** The quality tier (headless-only engine flags): "verified" appends the engine's
-   *  self-verification loop (--check); "best3" races the task 3 ways in parallel and
-   *  ships the best (--best-of-n 3 — incompatible with resume, callers start fresh). */
-  quality?: "standard" | "verified" | "best3";
+  /** The quality tier. "verified" appends the engine's self-verification loop
+   *  (--check, headless-only flag); "best3" races the task 3 ways in parallel and
+   *  ships the best (--best-of-n 3 — incompatible with resume, callers start fresh);
+   *  "gated" adds NO flags — it works via the global Stop-hook gate (stopGate.ts):
+   *  the engine cannot finish until the workspace's checks pass. */
+  quality?: "standard" | "verified" | "best3" | "gated";
   effort?: "low" | "medium" | "high"; // --reasoning-effort for the hands' brain
   memory?: boolean;                // --experimental-memory — the workshop remembers across sessions
   on_event?: (ev: EngineEvent) => void; // live step callback (progress UIs, trail capture); errors in it are swallowed
@@ -71,9 +74,12 @@ export function engineBin(): string | null {
   try { return fs.existsSync(bin) ? bin : null; } catch { return null; }
 }
 
-/** The engine is armed when the compiled binary is reachable. Off by default. */
+/** The engine is armed when the compiled binary is reachable — or when the
+ *  REMOTE runner is configured (Phase 7: the engine-runner VM next to prod;
+ *  NEUGRID_ENGINE_REMOTE_URL + _KEY, transport in ./remote.ts). Off by default. */
 export function engineAvailable(): boolean {
-  return engineBin() !== null;
+  if (engineBin() !== null) return true;
+  return !!(process.env.NEUGRID_ENGINE_REMOTE_URL || "").trim() && !!(process.env.NEUGRID_ENGINE_REMOTE_KEY || "").trim();
 }
 
 /** Which engine interface to drive (Phase 7). "acp" = the persistent agent-server

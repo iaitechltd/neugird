@@ -26,8 +26,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { db } from "../store";
 import { newId, nowISO } from "../id";
-import { engineAvailable, engineMode, runEngineBuild, type EngineEvent } from "../engine";
+import { engineAvailable, engineBin, engineMode, runEngineBuild, type EngineEvent, type EngineRunOpts } from "../engine";
 import { runEngineBuildAcp } from "../engine/acp";
+import { engineRemote, runEngineBuildRemote } from "../engine/remote";
+import { ensureStopGateInstalled, armStopGate, disarmStopGate } from "../engine/stopGate";
 import * as Brain from "../brain";
 import * as Wallets from "./wallets";
 import * as Params from "./params";
@@ -250,12 +252,13 @@ export function runCost(): number {
   return Params.get("studio_run_cost_grid");
 }
 
-export type RunQuality = "standard" | "verified" | "best3";
+export type RunQuality = "standard" | "verified" | "best3" | "gated";
 /** The quality tiers' GRID prices — verified adds the engine's self-check loop
- *  (~1.5× compute); best-of-3 races three full candidates (~3×). */
+ *  (~1.5× compute); gated may loop the engine up to 3 extra fix rounds until the
+ *  workspace's checks pass (~2×); best-of-3 races three full candidates (~3×). */
 export function runCostFor(quality: RunQuality): number {
   const base = runCost();
-  return quality === "best3" ? base * 3 : quality === "verified" ? Math.round(base * 1.5) : base;
+  return quality === "best3" ? base * 3 : quality === "gated" ? base * 2 : quality === "verified" ? Math.round(base * 1.5) : base;
 }
 
 /** The three-brain crew config (docs/ECHO_STUDIO.md, locked): roles fixed, models
@@ -310,7 +313,7 @@ export function startRun(workspace_id: string, owner_id: string, instruction: st
   const ask = instruction.trim();
   if (!ask) return { error: "instruction_required" };
   if (runsInFlight.has(workspace_id) || ws.status === "building") return { error: "busy" };
-  const quality: RunQuality = opts?.quality === "verified" || opts?.quality === "best3" ? opts.quality : "standard";
+  const quality: RunQuality = opts?.quality === "verified" || opts?.quality === "best3" || opts?.quality === "gated" ? opts.quality : "standard";
 
   // the run's compute bill (priced by quality tier) — debit up front, treasury-credited;
   // refunded on engine failure
@@ -326,7 +329,7 @@ export function startRun(workspace_id: string, owner_id: string, instruction: st
   ws.spent_grid = round2(ws.spent_grid + cost);
   ws.pending_fix = undefined; // a new directive supersedes any waiting fix
   pushTurn(ws, { role: from, text: clip(ask, 600) });
-  pushTrail(ws, "run", `directive: ${ask}${quality !== "standard" ? ` · ${quality === "best3" ? "best-of-3" : "self-verified"} tier` : ""}`);
+  pushTrail(ws, "run", `directive: ${ask}${quality !== "standard" ? ` · ${quality === "best3" ? "best-of-3" : quality === "gated" ? "stop-gated" : "self-verified"} tier` : ""}`);
   ws.updated_at = nowISO();
 
   // fire-and-forget — the request returns now; the run reports back through the store
@@ -342,6 +345,16 @@ async function executeRun(workspace_id: string, owner_id: string, ask: string, c
     const build = ws.build_id ? db.builds.find((b) => b.build_id === ws.build_id) : undefined;
     const firstRun = !build;
     materialize(ws, build?.artifact.files ?? []);
+    // the stop-gate tier: a GLOBAL always-trusted hook + a per-run workspace marker.
+    // Armed, the engine cannot declare itself done until the checks pass (≤3 fix
+    // rounds); every other tier disarms so no marker leaks into a later run.
+    if (quality === "gated") {
+      ensureStopGateInstalled();
+      armStopGate(workdirOf(ws));
+      ws.engine_session_id = undefined; // hooks load at engine-session start
+    } else {
+      disarmStopGate(workdirOf(ws));
+    }
 
     // THE CREW (Phase 3) — the chief turns the directive into the hands' brief.
     // Every seat degrades to null: a run always completes engine-only.
@@ -365,8 +378,9 @@ async function executeRun(workspace_id: string, owner_id: string, ask: string, c
     // ACP mode (Phase 7) streams every tool call — seal each into the trail (the
     // "receipt, not a claim" moat, Phase 6d). Its many small text chunks are BUFFERED
     // and flushed as one narration line at each tool boundary (else the trail floods).
-    // Quality tiers (best-of-n / verified) are headless-only, so those stay headless.
-    const useAcp = engineMode() === "acp" && quality === "standard";
+    // Flag-based tiers (best-of-n / verified) are headless-only; the gated tier is
+    // hook-based, so it rides ACP and keeps the streamed tool trail.
+    const useAcp = engineMode() === "acp" && (quality === "standard" || quality === "gated");
     let narrateBuf = "";
     const flushNarrate = () => { const t = narrateBuf.trim(); narrateBuf = ""; if (t) pushTrail(ws, "narrate", t); };
 
@@ -396,14 +410,20 @@ async function executeRun(workspace_id: string, owner_id: string, ask: string, c
         }
       },
     };
-    const runner = useAcp ? runEngineBuildAcp : runEngineBuild;
-    // resume the warm engine session when we have one; a dead handle gets one fresh retry
-    let res = await runner(ws.engine_session_id && !useAcp ? { ...opts, resume_session: ws.engine_session_id } : opts);
-    if (!res.ok && ws.engine_session_id && !useAcp && res.files_changed.length === 0) {
+    // seam pick: local binary when present; else the remote runner VM (Phase 7 —
+    // same contract, same event stream, the runner carries the same hardening)
+    const local = engineBin() !== null;
+    const runner = local
+      ? (useAcp ? runEngineBuildAcp : runEngineBuild)
+      : (o: EngineRunOpts) => runEngineBuildRemote(o, useAcp ? "acp" : "headless");
+    // resume the warm engine session when we have one (local headless only); a dead handle gets one fresh retry
+    let res = await runner(ws.engine_session_id && !useAcp && local ? { ...opts, resume_session: ws.engine_session_id } : opts);
+    if (!res.ok && ws.engine_session_id && !useAcp && local && res.files_changed.length === 0) {
       pushTrail(ws, "run", "stale engine session — retrying fresh");
       res = await runEngineBuild(opts);
     }
     flushNarrate(); // seal any trailing narration
+    if (quality === "gated") disarmStopGate(workdirOf(ws)); // the gate is per-run — leave the workspace clean
 
     const duration_s = round2((Date.now() - t0) / 1000);
     const capped = res.events.some((e) => e.type === "max_turns_reached");
@@ -936,7 +956,7 @@ export function view(workspace_id: string, viewer_id: string) {
     rules: ws.rules ?? "",
     memory_enabled: !!ws.memory_enabled,
     spent_usd: ws.spent_usd ?? 0,
-    run_costs: { standard: runCostFor("standard"), verified: runCostFor("verified"), best3: runCostFor("best3") },
+    run_costs: { standard: runCostFor("standard"), verified: runCostFor("verified"), gated: runCostFor("gated"), best3: runCostFor("best3") },
     // connections — secrets NEVER leave the server (masked). Inherited (from the
     // owner's hub toolbox, tagged scope:"toolbox") + this project's own adds.
     connections: (() => {

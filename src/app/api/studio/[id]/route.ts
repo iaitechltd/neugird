@@ -27,7 +27,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const action = String(body?.action ?? "");
 
   if (action === "run") {
-    const quality = body?.quality === "verified" || body?.quality === "best3" ? body.quality : "standard";
+    const quality = body?.quality === "verified" || body?.quality === "best3" || body?.quality === "gated" ? body.quality : "standard";
     const effort = body?.effort === "low" || body?.effort === "high" ? body.effort : undefined;
     const r = Studio.startRun(id, uid, String(body?.instruction ?? ""), "you", { quality, effort });
     if (r.error) return NextResponse.json(r, { status: r.error === "not_found" ? 404 : 400 });
