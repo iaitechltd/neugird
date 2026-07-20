@@ -83,10 +83,19 @@ export default function MessagesPage() {
     if (!to) return;
     const ctxLabel = q.get("ctx");
     const context = ctxLabel ? { label: ctxLabel, href: q.get("ctxHref") || undefined } : undefined;
+    // ?hire=<scope> opens the thread with the HIRE offer composer already loaded —
+    // "Hire" buttons across the app land people one step from a real escrowed offer
+    const hire = q.get("hire");
     let alive = true;
     fetch("/api/messages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to_id: to, context }) })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (alive && d?.conversation_id) { setActiveId(d.conversation_id); loadConvos(); window.history.replaceState({}, "", "/messages"); } })
+      .then((d) => {
+        if (!alive || !d?.conversation_id) return;
+        setActiveId(d.conversation_id);
+        if (hire !== null) { setMode("hire"); if (hire) setOffer((o) => ({ ...o, terms: hire.slice(0, 140) })); }
+        loadConvos();
+        window.history.replaceState({}, "", "/messages");
+      })
       .catch(() => {});
     return () => { alive = false; };
   }, []);

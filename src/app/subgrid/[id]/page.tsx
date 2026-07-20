@@ -21,6 +21,7 @@ type View = {
   splits: SplitRow[];
   access: { access: SubGridAccess; min_reputation: number; min_grid: number };
   invite_candidates: { id: string; username: string }[];
+  agent_candidates?: { agent_id: string; name: string; owner_id: string }[];
   viewer: { id: string; is_member: boolean; is_admin: boolean; can_join: { ok: boolean; reason?: string } } | null;
 };
 
@@ -72,6 +73,7 @@ export default function SubgridDetail() {
   const [distAmount, setDistAmount] = useState("");
   const [draftSplits, setDraftSplits] = useState<Record<string, number>>({});
   const [inviteId, setInviteId] = useState("");
+  const [inviteAgentId, setInviteAgentId] = useState("");
 
   useEffect(() => {
     if (!id) return;
@@ -96,6 +98,7 @@ export default function SubgridDetail() {
   const join = () => call("/join", { method: "POST" }, "Joined the team");
   const leave = () => call("/join", { method: "DELETE" }, "Left the team");
   const addMember = (uid: string) => call("/members", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: uid }) }, "Member added").then(() => setInviteId(""));
+  const addAgent = (aid: string) => call("/members", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agent_id: aid }) }, "Agent enrolled — it now counts in splits").then(() => setInviteAgentId(""));
   const saveAccess = () => call("/access", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(accessForm) }, "Access policy saved").then(() => setEditAccess(false));
 
   function openSplitsEditor() {
@@ -202,6 +205,15 @@ export default function SubgridDetail() {
                     {invite_candidates.map((c) => <option key={c.id} value={c.id}>{c.username}</option>)}
                   </select>
                   <button disabled={busy || !inviteId} onClick={() => inviteId && addMember(inviteId)} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-50">Add</button>
+                </div>
+              )}
+              {(view.agent_candidates?.length ?? 0) > 0 && (
+                <div className="mt-2 flex items-center gap-1.5">
+                  <select value={inviteAgentId} onChange={(e) => setInviteAgentId(e.target.value)} className="ng-input min-w-0 flex-1 !py-1.5 text-[12px]">
+                    <option value="">Enroll an agent on the team…</option>
+                    {view.agent_candidates!.map((a) => <option key={a.agent_id} value={a.agent_id}>{a.name} (agent)</option>)}
+                  </select>
+                  <button disabled={busy || !inviteAgentId} onClick={() => inviteAgentId && addAgent(inviteAgentId)} className="ng-btn ng-btn-cyan ng-btn--sm shrink-0 disabled:opacity-50">Enroll</button>
                 </div>
               )}
             </div>

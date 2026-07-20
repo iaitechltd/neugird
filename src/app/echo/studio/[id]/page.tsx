@@ -52,7 +52,7 @@ type View = {
     audit: { audit_id: string; status: string } | null;
     market: { market_id: string; symbol: string; stage: string } | null;
     eligibility: { ok: boolean; reason?: string } | null;
-    hired: { job_id: string; title: string; at: string; status: string; reward: number }[];
+    hired: { job_id: string; title: string; at: string; status: string; reward: number; proof?: string | null }[];
   };
   engine_ready: boolean;
   engine_mode?: "acp" | "headless";
@@ -119,6 +119,21 @@ export default function StudioRoom({ params }: { params: Promise<{ id: string }>
     if (r?.url) setToast(`Live at ${r.url}`);
     if (r?.view) setV(r.view); else load();
     return r;
+  };
+  /** The team door (Wave 2): ensure the build's home Grid, spin up a SubGrid under
+   *  it, land on the team page — where humans AND agents join and splits are set. */
+  const formTeam = async () => {
+    if (busy || !v?.build) return;
+    setBusy(true);
+    try {
+      const g = await fetch(`/api/echo/builds/${v.build.build_id}/grid`, { method: "POST" }).then((x) => x.json()).catch(() => null);
+      const slug = g?.grid?.slug;
+      if (!slug) { setToast(`⚠ ${g?.error ?? "couldn't open the project's grid"}`); return; }
+      const s = await fetch(`/api/grids/${slug}/subgrids`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: `${v.build.title.slice(0, 40)} team`, purpose: "The team behind this build — ownership splits on-chain." }) }).then((x) => x.json()).catch(() => null);
+      const sid = s?.subgrid?.subgrid_id ?? s?.subgrid_id;
+      if (sid) window.location.href = `/subgrid/${sid}`;
+      else setToast(`⚠ ${s?.error ?? "couldn't create the team"}`);
+    } finally { setBusy(false); }
   };
   /** Fire one of the platform's existing money rails, then refresh the room. */
   const hit = async (url: string, body?: Record<string, unknown>) => {
@@ -328,6 +343,9 @@ export default function StudioRoom({ params }: { params: Promise<{ id: string }>
                 className="ng-btn ng-btn-ghost ng-btn--sm disabled:opacity-35">Launch post</button>
               <button onClick={() => setMoneyOpen(moneyOpen === "token" ? null : "token")} disabled={!v?.build}
                 className={`ng-btn ng-btn--sm disabled:opacity-35 ${moneyOpen === "token" ? "ng-btn-primary" : "ng-btn-ghost"}`}>Tokenize</button>
+              <button onClick={() => void formTeam()} disabled={busy || !v?.build}
+                title="a real team under this project — humans AND agents, with on-chain ownership splits"
+                className="ng-btn ng-btn-ghost ng-btn--sm disabled:opacity-35">Form a team</button>
               <button onClick={() => void act({ action: "deploy" })} disabled={busy || building || !v?.build} className="ng-btn ng-btn-primary ng-btn--sm disabled:opacity-35"><IconBolt className="h-3.5 w-3.5" /> Deploy</button>
             </div>
           </div>
@@ -353,6 +371,7 @@ export default function StudioRoom({ params }: { params: Promise<{ id: string }>
                       <PulseDot tone={h.status === "open" ? "cyan" : h.status === "completed" ? "neon" : "dim"} />
                       <span className="min-w-0 flex-1 truncate text-ink-dim">{h.title}</span>
                       <span className="shrink-0 text-ink-faint">{h.reward} USDC · {h.status}</span>
+                      {h.proof && <a href={h.proof} target="_blank" rel="noreferrer" className="shrink-0 text-[10px] text-neon hover:underline">the work ↗</a>}
                       <a href="/jobs" className="shrink-0 text-[10px] text-cyan hover:underline">board ↗</a>
                     </div>
                   ))}

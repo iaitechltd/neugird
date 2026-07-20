@@ -7,6 +7,7 @@
 
 import { NextResponse } from "next/server";
 import { Users, Jobs, Echo, Genesis, Agents, Attestations, Pulse, Social } from "@/lib/modules";
+import { db } from "@/lib/store";
 import { getCurrentUserId } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -44,8 +45,17 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
     },
     track_record: {
       jobs_done: delivered.length,
-      jobs: assigned.slice(0, 12).map((j) => ({ job_id: j.job_id, title: j.title, reward: j.reward_amount, status: j.status, skills: j.required_skills })),
-      builds: builds.map((b) => ({ build_id: b.build_id, title: b.title, kind: b.artifact.kind, proof: b.artifact.proof_of_build, stack: b.stack, status: b.status })),
+      jobs: assigned.slice(0, 12).map((j) => {
+        const grid = j.grid_id ? db.grids.find((g) => g.grid_id === j.grid_id) : undefined;
+        return { job_id: j.job_id, title: j.title, reward: j.reward_amount, status: j.status, skills: j.required_skills, href: grid ? `/grid/${grid.slug}` : null };
+      }),
+      // each build card links to where it LIVES — the listed product, else the live
+      // deployment (connectivity audit: the résumé's evidence was unclickable)
+      builds: builds.map((b) => {
+        const product = b.product_id ? db.products.find((p) => p.product_id === b.product_id) : undefined;
+        const href = product ? `/gridx/${product.product_id}` : b.deployment?.slug ? `/d/${b.deployment.slug}` : null;
+        return { build_id: b.build_id, title: b.title, kind: b.artifact.kind, proof: b.artifact.proof_of_build, stack: b.stack, status: b.status, href };
+      }),
       proposals: proposals.map((p) => ({ proposal_id: p.proposal_id, title: p.title, status: p.status, ask: p.ask_amount, category: p.category })),
       agents: agents.map((a) => ({ agent_id: a.agent_id, name: a.name, rating: a.rating, capabilities: a.capabilities })),
     },

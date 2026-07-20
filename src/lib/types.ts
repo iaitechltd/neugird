@@ -425,6 +425,7 @@ export interface Job {
   executor_kind: "human" | "agent" | "any";
   assignee_id?: ID; // user_id or agent_id once assigned
   assignee_type?: ExecutorType;
+  build_id?: ID; // the build this work is FOR — hired work stays attached to its project (audit Wave 2)
   reward_amount: number;
   reward_token?: string; // defaults to Pulse pre-treasury
   escrow_id?: ID; // funds locked until verified delivery
@@ -842,6 +843,9 @@ export interface Market {
   /** T1 AMM mirror — the market's REAL on-chain pool (chain/ammSolana.ts):
    *  real SPL mint + seeded vaults; every curve movement mirrors as a swap. */
   onchain?: { pool: string; base_mint: string; program: string; cluster: string; txs?: string[] };
+  /** The FOUNDER's vested token carve (governable founder_allocation_bps) — market
+   *  success returns to the maker. Mirrors the backer vesting shape; claim lands in holdings. */
+  founder_allocation?: { user_id: string; vesting: Vesting };
   created_at: ISODate;
 }
 
@@ -1337,7 +1341,7 @@ export interface BuilderToolbox {
 // project, promoted agent) becomes a non-transferable credential. Stage 1 is an
 // in-platform mirror; Stage 2 mints these as Solana Attestation Service
 // tokenized (Token-2022 NonTransferable) attestations — same shape, swap-ready.
-export type AttestationSchemaKey = "proof_of_build" | "work_delivered" | "milestone_shipped" | "project_launched" | "agent_trusted";
+export type AttestationSchemaKey = "proof_of_build" | "work_delivered" | "milestone_shipped" | "project_launched" | "agent_trusted" | "trusted_backer" | "verified_trader" | "top_creator" | "trusted_reviewer";
 export type AttestationStatus = "active" | "revoked" | "expired";
 export interface Attestation {
   attestation_id: ID;

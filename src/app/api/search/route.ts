@@ -32,6 +32,15 @@ export async function GET(request: Request) {
   for (const b of db.builds) push("build", b.title, `v${b.version ?? 1} · ${b.stack.slice(0, 3).join(" · ")}`, b.deployment ? `/d/${b.deployment.slug}` : "/echo", b.title, ...(b.stack ?? []));
   for (const p of db.proposals) if (p.status === "open") push("raise", p.title, `asking ${p.ask_amount.toLocaleString()} · ${p.category}`, `/genesis/${p.proposal_id}`, p.title, p.category);
   for (const pr of db.products) push("product", pr.name, pr.category ?? "GridX product", `/gridx/${pr.product_id}`, pr.name, pr.category);
+  // audit Wave 3 — half the platform was invisible to ⌘K (ventures & skills are DOCK keys)
+  for (const v of db.ventures ?? []) push("venture", v.name, `agent company · ${v.seats.length} crew`, `/venture/${v.venture_id}`, v.name);
+  for (const s of db.publishedSkills ?? []) push("skill", s.title, `${s.price_grid > 0 ? `${s.price_grid} GRID` : "free"} · ⇧ ${s.installs}`, "/skills", s.title);
+  for (const sg of db.subgrids ?? []) push("team", sg.name, `team · ${sg.members.length + (sg.agent_members?.length ?? 0)} on it`, `/subgrid/${sg.subgrid_id}`, sg.name, sg.purpose);
+  for (const p of db.feedPosts ?? []) push("post", p.title || p.body.slice(0, 48), "the wire", `/post/${p.post_id}`, p.title ?? "", p.body.slice(0, 120));
+  for (const dsp of (db.disputes ?? []).filter((x) => x.status === "open")) push("dispute", db.jobs.find((j) => j.job_id === dsp.subject_id)?.title ?? "escrow dispute", "awaiting the evaluator panel", "/disputes", "dispute", dsp.reason.slice(0, 60));
+  if (db.season) push("season", `Season ${db.season.number}`, `ends ${new Date(db.season.ends_at).toLocaleDateString()}`, "/season", "season", "leaderboard race");
+  // passports match on the WORD "passport" (+name), so name searches don't double-hit
+  for (const u of db.users) push("passport", `${u.username} — passport`, "machine-readable identity", `/passport/${u.id}`, "passport", u.username);
 
   hits.sort((a, b) => b.rank - a.rank);
   return NextResponse.json({ hits: hits.slice(0, 12).map((h) => ({ kind: h.kind, title: h.title, sub: h.sub, href: h.href })) });

@@ -190,6 +190,7 @@ create table if not exists jobs (
   context        text        not null, -- talent_contract | agent_job | subgrid_task | campaign_task
   grid_id        text        references grids(grid_id) on delete set null,
   subgrid_id     text        references subgrids(subgrid_id) on delete set null,
+  build_id       text,
   campaign_id    text,
   title          text        not null,
   description    text,
@@ -369,6 +370,7 @@ create table if not exists markets (
   stage_changed_at timestamptz, -- last graduation moment (holder notifications)
   fraud_flags   jsonb,      -- Verifier fraud reports; halt+slash at quorum
   onchain       jsonb,      -- T1 AMM mirror: {pool, base_mint, program, cluster, txs[]}
+  founder_allocation jsonb,  -- the founder's vested token carve {user_id, vesting}
   created_at    timestamptz not null default now()
 );
 

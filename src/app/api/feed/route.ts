@@ -15,7 +15,9 @@ export async function GET(request: Request) {
   const filter = (url.searchParams.get("filter") ?? "all") as "all" | "following" | "mine";
   const topic = (url.searchParams.get("topic") ?? undefined) as FeedTopic | undefined;
   const grid_id = url.searchParams.get("grid_id") ?? undefined; // scope to a Grid's wire
-  return NextResponse.json({ posts: Feed.feed({ me, filter, topic, grid_id }), stats: Feed.stats(), me });
+  const posts = Feed.feed({ me, filter, topic, grid_id }).map((p) =>
+    p.ref ? { ...p, ref: { ...p.ref, href: Feed.refHrefFor(p.ref, p.author_type, p.author_id) } } : p);
+  return NextResponse.json({ posts, stats: Feed.stats(), me });
 }
 
 export async function POST(request: Request) {

@@ -29,7 +29,7 @@ type View = { connections: Conn[]; skills: Skill[]; plugins: Plug[]; skill_store
 
 const HAIR = "rgba(0,255,0,0.16)";
 
-export default function BuilderToolbox() {
+export default function BuilderToolbox({ wide = false }: { wide?: boolean } = {}) {
   const [v, setV] = useState<View | null>(null);
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<"rack" | "catalog">("rack");
@@ -72,7 +72,8 @@ export default function BuilderToolbox() {
     .sort((a, b) => b.installs - a.installs);
 
   return (
-    <Panel title="TOOLBOX" icon={<IconBolt className="h-4 w-4" />} bodyClass="p-3.5"
+    <Panel title={wide ? `TOOLBOX — THE RACK · ${skills.length + plugins.length + ports.length} loaded` : `TOOLBOX ·${skills.length + plugins.length + ports.length}`} icon={<IconBolt className="h-4 w-4" />}
+      className={wide ? "" : "!border-neon/30"} bodyClass={wide ? "p-4" : "p-3.5"}
       action={
         <span className="pointer-events-auto flex border border-neon/25 text-[9px] tracking-wider">
           {(["rack", "catalog"] as const).map((t) => (
@@ -87,6 +88,9 @@ export default function BuilderToolbox() {
       {/* ═══ RACK — the gear you've equipped, flowing into every workshop.
            Every band ALWAYS renders and ALWAYS carries its door — an empty band
            is an invitation, not a blank (founder: "how do I connect?!"). ═══ */}
+      {wide
+        ? <p className="-mt-0.5 mb-3 text-[12px] leading-relaxed text-ink-dim">One rack for everything you build with — <span className="text-neon">skills</span>, <span className="text-cyan">plugin bundles</span>, and <span className="text-neon">live service ports</span> (GitHub · databases · search · email &amp; 7,000+ apps). Load it once here; it flows into every workshop and Studio room automatically.</p>
+        : <p className="-mt-0.5 mb-2.5 text-[10px] leading-relaxed text-ink-dim"><span className="text-neon">Skills</span> · <span className="text-cyan">plugins</span> · <span className="text-neon">service ports</span> — loaded once, they flow into every workshop.</p>}
       {tab === "rack" && (
         <div className="space-y-3">
           {rackEmpty && <p className="text-[11px] text-ink-dim">Empty rack — everything you load here flows into every workshop you open.</p>}
@@ -104,7 +108,7 @@ export default function BuilderToolbox() {
                 </p>
               )}
               {skills.length > 0 && (
-                <div className="mb-1 grid grid-cols-2 gap-2">
+                <div className={`mb-1 grid gap-2 ${wide ? "grid-cols-2 sm:grid-cols-3 xl:grid-cols-5" : "grid-cols-2"}`}>
                   {skills.map((s) => (
                     <div key={s.published_id} className="group relative border-l-2 border-neon/60 bg-neon/[0.03] p-2" style={{ border: `1px solid ${HAIR}`, borderLeftWidth: 2, borderLeftColor: "#00ff00" }}>
                       <MatrixAvatar seed={s.name} size={34} shape="square" ring={false} />
@@ -128,6 +132,7 @@ export default function BuilderToolbox() {
                   none — <button onClick={() => browse("plugins")} className="text-cyan hover:underline">pick a bundle</button> or <Link href="/skills" className="text-cyan hover:underline">bundle your own ›</Link>
                 </p>
               )}
+              <div className={wide ? "grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3" : "contents"}>
               {plugins.map((p) => (
                 <div key={p.published_id} className="group mb-1 bg-cyan/[0.03] p-2" style={{ border: `1px solid ${HAIR}`, borderLeftWidth: 2, borderLeftColor: "#48f5ff" }}>
                   <div className="flex items-center gap-2">
@@ -151,6 +156,7 @@ export default function BuilderToolbox() {
                   </div>
                 </div>
               ))}
+              </div>
             </div>
           )}
 
@@ -164,6 +170,7 @@ export default function BuilderToolbox() {
                 nothing wired — GitHub · databases · web search · Notion · Maps, or <button onClick={() => setConnOpen(true)} className="text-neon hover:underline">email &amp; 7,000+ apps by MCP URL ›</button>
               </p>
             )}
+            <div className={wide ? "grid grid-cols-1 gap-x-6 sm:grid-cols-2" : "contents"}>
             {ports.map((c) => (
               <div key={c.name} className="group flex items-center gap-2 py-1 text-[11px]">
                 <PulseDot tone="neon" size={6} />
@@ -174,53 +181,75 @@ export default function BuilderToolbox() {
                   className="shrink-0 text-ink-faint opacity-0 transition-opacity hover:text-danger group-hover:opacity-100" title="unwire">✕</button>
               </div>
             ))}
+            </div>
             {wired && <p className="mt-1 text-[10px] text-neon">{wired}</p>}
             {connOpen && <ConnectForm v={v} conn={conn} setConn={setConn} onGo={() => void connectGo()} onClose={() => setConnOpen(false)} busy={busy} />}
           </div>
         </div>
       )}
 
-      {/* ═══ CATALOG — the marketplace: browse + install ═══ */}
+      {/* ═══ CATALOG — the community SHELF. Same physical-object grammar as the
+           RACK (founder: "improve that tab too"): items are cartridges on a shelf
+           with a visible PRICE row and a real install button, filters are a
+           segmented control, live services get their own band. ═══ */}
       {tab === "catalog" && (
-        <div className="space-y-2">
-          <div className="flex gap-1">
-            {(["all", "skills", "plugins", "free"] as const).map((f) => (
+        <div className="space-y-3">
+          <p className="-mt-0.5 text-[10px] leading-relaxed text-ink-dim">The community shelf — <span className="text-neon">install</span> what others built, <span className="text-neon">publish</span> yours and earn GRID on every install.</p>
+
+          {/* segmented filter — a proper control, not loose chips */}
+          <div className="flex border border-neon/25 text-[9px] tracking-wider">
+            {(["all", "skills", "plugins", "free"] as const).map((f, i) => (
               <button key={f} onClick={() => setFilter(f)}
-                className={`border px-1.5 py-0.5 text-[9px] tracking-wider transition-colors ${filter === f ? "border-neon/60 bg-neon/10 text-neon" : "border-neon/12 text-ink-faint hover:text-ink-dim"}`}>{f.toUpperCase()}</button>
+                className={`flex-1 px-1 py-1 uppercase transition-colors ${i > 0 ? "border-l border-neon/15" : ""} ${filter === f ? "bg-neon/15 text-neon" : "text-ink-faint hover:text-ink-dim"}`}>{f}</button>
             ))}
           </div>
-          {/* live services aren't store items — they're WIRED. Give the person who
-              came here looking for "connect my email/GitHub" the door. */}
-          <div className="flex items-center gap-2 p-2" style={{ border: `1px solid ${HAIR}` }}>
-            <IconActivity className="h-3.5 w-3.5 shrink-0 text-ink-dim" />
-            <span className="min-w-0 flex-1 text-[10px] leading-snug text-ink-dim">live services are wired, not bought — GitHub · databases · search · email &amp; 7,000+ apps by MCP URL</span>
-            <button onClick={openWire} className="shrink-0 border border-neon/40 px-1.5 py-0.5 text-[9px] tracking-wider text-neon transition-colors hover:bg-neon/10">wire ›</button>
-          </div>
-          {store.length === 0 && <p className="py-2 text-[11px] text-ink-dim">Nothing on the shelf yet — <Link href="/skills" className="text-neon">write a skill or bundle a plugin ›</Link> and earn GRID per install.</p>}
-          {store.map((p) => (
-            <div key={p.published_id} className="p-2" style={{ border: `1px solid ${HAIR}`, borderLeftWidth: 2, borderLeftColor: p.kind === "plugin" ? "#48f5ff" : "#00ff00" }}>
-              <div className="flex items-center gap-2">
-                <MatrixAvatar seed={p.title} size={26} shape="square" ring={false} />
-                <span className={`min-w-0 flex-1 truncate text-[11px] ${p.kind === "plugin" ? "text-cyan" : "text-neon"}`} title={p.summary}>{p.title}</span>
-                {p.kind === "plugin" && <Mark plain accent="cyan" className="!text-[8px]">BUNDLE·{p.files ?? 0}</Mark>}
-              </div>
-              {p.summary && <p className="mt-1 truncate text-[10px] text-ink-dim">{p.summary}</p>}
-              <div className="mt-1.5 flex items-center gap-1.5 text-[9px] text-ink-faint">
-                <MatrixAvatar seed={p.author} size={12} shape="circle" ring={false} />
-                <span>by {p.author}</span>
-                <span className="tnum">· ⇧ {p.installs}</span>
-                <button onClick={() => void act({ action: p.kind === "plugin" ? "plugin_install" : "skill_install", published_id: p.published_id })} disabled={busy}
-                  className={`ml-auto border px-1.5 py-0.5 text-[9px] tracking-wider transition-colors disabled:opacity-40 ${p.kind === "plugin" ? "border-cyan/40 text-cyan hover:bg-cyan/10" : "border-neon/40 text-neon hover:bg-neon/10"}`}>
-                  {p.mine ? "install · yours" : p.price_grid > 0 ? `install · ${p.price_grid} GRID` : "install · free"}
-                </button>
-              </div>
+
+          {/* THE SHELF */}
+          <div>
+            <Band label="the shelf" n={store.length} />
+            {store.length === 0 && <p className="py-1.5 text-[11px] leading-relaxed text-ink-dim">Nothing here{filter !== "all" ? " under this filter" : " yet"} — <Link href="/skills" className="text-neon hover:underline">write a skill or bundle a plugin ›</Link> and earn GRID per install.</p>}
+            <div className={wide ? "grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3" : "space-y-2"}>
+              {store.map((p) => (
+                <div key={p.published_id} className={`group p-2.5 transition-colors ${p.kind === "plugin" ? "bg-cyan/[0.03] hover:!border-cyan/40" : "bg-neon/[0.03] hover:!border-neon/40"}`}
+                  style={{ border: `1px solid ${HAIR}`, borderLeftWidth: 2, borderLeftColor: p.kind === "plugin" ? "#48f5ff" : "#00ff00" }}>
+                  <div className="flex items-center gap-2.5">
+                    <MatrixAvatar seed={p.title} size={34} shape="square" ring={false} />
+                    <div className="min-w-0 flex-1">
+                      <div className={`truncate text-[12px] ${p.kind === "plugin" ? "text-cyan" : "text-neon"}`} title={p.title}>{p.title}</div>
+                      <div className="mt-0.5 flex items-center gap-1.5 text-[9px] text-ink-faint">
+                        <MatrixAvatar seed={p.author} size={11} shape="circle" ring={false} />
+                        <span className="truncate">{p.author}</span>
+                        <span className="tnum shrink-0">· ⇧ {p.installs} install{p.installs === 1 ? "" : "s"}</span>
+                      </div>
+                    </div>
+                    <Mark plain accent={p.kind === "plugin" ? "cyan" : undefined} className="!text-[8px] shrink-0">{p.kind === "plugin" ? `BUNDLE·${p.files ?? 0}` : "SKILL"}</Mark>
+                  </div>
+                  {p.summary && <p className="mt-1.5 line-clamp-2 text-[10px] leading-relaxed text-ink-dim">{p.summary}</p>}
+                  <div className="mt-2 flex items-center justify-between gap-2 border-t border-neon/10 pt-2">
+                    <span className={`text-[11px] tnum ${p.price_grid > 0 ? "text-neon" : "text-ink-faint"}`}>{p.mine ? "yours — free" : p.price_grid > 0 ? `${p.price_grid} GRID` : "FREE"}</span>
+                    <button onClick={() => void act({ action: p.kind === "plugin" ? "plugin_install" : "skill_install", published_id: p.published_id })} disabled={busy}
+                      className={`ng-btn ng-btn--sm !px-2.5 disabled:opacity-40 ${p.kind === "plugin" ? "ng-btn-cyan" : "ng-btn-primary"}`}>
+                      <IconLayers className="h-3 w-3" /> Load it
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
+
+          {/* LIVE SERVICES — wired, not bought (its own band, mirroring the rack) */}
+          <div>
+            <Band label="live services" n={ports.length} action={
+              <button onClick={openWire} className="border border-neon/40 px-1.5 py-px text-[9px] tracking-wider text-neon transition-colors hover:bg-neon/10">+ wire a port</button>
+            } />
+            <p className="text-[10px] leading-relaxed text-ink-faint">wired, not bought — GitHub · databases · search · Notion · Maps, or email &amp; 7,000+ apps by MCP URL.</p>
+          </div>
+
           <div className="flex gap-2 border-t border-neon/10 pt-2">
             <Link href="/skills" className="ng-btn ng-btn-ghost ng-btn--sm flex-1 justify-center !text-[10px]"><IconBolt className="h-3 w-3" /> Write a skill</Link>
             <Link href="/skills" className="ng-btn ng-btn-ghost ng-btn--sm flex-1 justify-center !text-[10px]"><IconLayers className="h-3 w-3" /> Bundle a plugin</Link>
           </div>
-          <p className="!mt-1 text-center text-[9px] text-ink-faint">yours to sell — earn GRID on every install</p>
+          <p className="!mt-1.5 text-center text-[9px] text-ink-faint">yours to sell — earn GRID on every install</p>
         </div>
       )}
     </Panel>

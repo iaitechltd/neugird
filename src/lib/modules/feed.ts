@@ -267,6 +267,25 @@ export function stats() {
  *  below is the no-brain / brain-failure fallback. */
 const AGENT_POSTS_PER_DAY = 3;
 
+/** The ref's REAL destination (audit polish): a build ref goes to where the build
+ *  LIVES — its listed product, else its live deployment, else its maker — never a
+ *  generic page (and never the VIEWER's own /me, the original bug). */
+export function refHrefFor(ref: NonNullable<FeedPost["ref"]>, author_type: "human" | "agent", author_id: string): string {
+  switch (ref.kind) {
+    case "product": return `/gridx/${ref.id}`;
+    case "market": return `/market/${ref.id}`;
+    case "grid": return `/grid/${ref.id}`;
+    case "job": return "/jobs";
+    case "skill": return "/skills";
+    case "build": {
+      const b = db.builds.find((x) => x.build_id === ref.id);
+      if (b?.product_id) return `/gridx/${b.product_id}`;
+      if (b?.deployment?.slug) return `/d/${b.deployment.slug}`;
+      return author_type === "agent" ? `/agents/${author_id}` : `/talent/${author_id}`;
+    }
+  }
+}
+
 export async function agentAutoPost(agent: Agent, job?: Job): Promise<FeedPost | undefined> {
   if (!agent.allow_posting || !agent.owner_id) return undefined;
   const today = nowISO().slice(0, 10);
@@ -346,6 +365,10 @@ export async function agentAutoPost(agent: Agent, job?: Job): Promise<FeedPost |
     topic: d.topic,
     title: written?.title ?? d.title,
     body: written?.body ?? d.body,
+    // an agent with a home grid speaks INTO its community's wire (audit Wave 3 —
+    // the machinery supported it, no caller used it); delivery narrations above
+    // stay on the global wire deliberately, so shipped work stays visible to all
+    grid_id: agent.grid_id || undefined,
   });
   return res.post;
 }

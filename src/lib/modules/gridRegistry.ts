@@ -267,6 +267,32 @@ export function addSubGridMember(subgrid_id: string, admin_id: string, target_id
   return { ok: true };
 }
 
+/** Put an AGENT on the team — the hybrid human+agent membership the splits and
+ *  revenue distribution already honor (connectivity audit Wave 2: `agent_members`
+ *  had readers, payers, and validators, but no writer). Consent model: the agent's
+ *  OWNER must be the admin or already on the team — you enroll your own crew, or
+ *  a teammate's crew, never a stranger's. */
+export function addSubGridAgent(subgrid_id: string, admin_id: string, agent_id: string): { ok: boolean; reason?: string } {
+  const sub = getSubGrid(subgrid_id);
+  if (!sub) return { ok: false, reason: "not_found" };
+  if (!isSubAdmin(sub, admin_id)) return { ok: false, reason: "not_admin" };
+  const agent = db.agents.find((a) => a.agent_id === agent_id);
+  if (!agent) return { ok: false, reason: "no_agent" };
+  if ((sub.agent_members ?? []).includes(agent_id)) return { ok: false, reason: "already_member" };
+  if (agent.owner_id !== admin_id && !sub.members.includes(agent.owner_id)) return { ok: false, reason: "owner_not_on_team" };
+  sub.agent_members = [...(sub.agent_members ?? []), agent_id];
+  return { ok: true };
+}
+
+export function removeSubGridAgent(subgrid_id: string, admin_id: string, agent_id: string): { ok: boolean; reason?: string } {
+  const sub = getSubGrid(subgrid_id);
+  if (!sub) return { ok: false, reason: "not_found" };
+  if (!isSubAdmin(sub, admin_id)) return { ok: false, reason: "not_admin" };
+  if (!(sub.agent_members ?? []).includes(agent_id)) return { ok: false, reason: "not_member" };
+  sub.agent_members = (sub.agent_members ?? []).filter((a) => a !== agent_id);
+  return { ok: true };
+}
+
 export function setSubGridAccess(subgrid_id: string, admin_id: string, patch: { access?: SubGridAccess; min_reputation?: number; min_grid?: number }): { ok: boolean; reason?: string } {
   const sub = getSubGrid(subgrid_id);
   if (!sub) return { ok: false, reason: "not_found" };
@@ -351,6 +377,13 @@ export function subGridView(id: string, viewer?: string) {
   const invite_candidates = db.users
     .filter((u) => !memberSet.has(u.id) && (grid?.owner_id === u.id || u.joined_grids?.includes(subgrid.parent_grid_id)))
     .map((u) => ({ id: u.id, username: u.username }));
+  // agents an admin may enroll: crews owned by people already on the team (Wave 2 —
+  // hybrid teams; consent = you enroll your own or a teammate's agents)
+  const enrolledAgents = new Set(subgrid.agent_members ?? []);
+  const teamOwners = new Set([...subgrid.members, ...subgrid.admins]);
+  const agent_candidates = db.agents
+    .filter((a) => !enrolledAgents.has(a.agent_id) && teamOwners.has(a.owner_id))
+    .map((a) => ({ agent_id: a.agent_id, name: a.name, owner_id: a.owner_id }));
   return {
     subgrid,
     grid,
@@ -360,6 +393,7 @@ export function subGridView(id: string, viewer?: string) {
     splits,
     access: { access: subgrid.access ?? "open", min_reputation: subgrid.min_reputation ?? 0, min_grid: subgrid.min_grid ?? 0 },
     invite_candidates,
+    agent_candidates,
     viewer: viewer ? { id: viewer, is_member: subgrid.members.includes(viewer), is_admin: subgrid.admins.includes(viewer), can_join: canJoinSubGrid(id, viewer) } : null,
   };
 }

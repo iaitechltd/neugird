@@ -39,7 +39,7 @@ type Cred = { schema: string; title: string };
 type Prov = {
   grid: { name: string; slug: string; grid_type: string; lifecycle_stage: string | null };
   subgrid: { id: string; name: string } | null;
-  origin: { kind: string; proposal: { id: string; title: string; ask: number; raised: number; backers: number; endorsements: number } | null; built_with_echo: boolean };
+  origin: { kind: string; proposal: { id: string; title: string; ask: number; raised: number; backers: number; endorsements: number } | null; built_with_echo: boolean; product?: { id: string; name: string } | null; deploy_slug?: string | null };
   founder: { id: string; username: string; bio: string; wallet: string; reputation: number; by_dimension: Record<string, number>; skills: string[]; credentials_count: number; credentials: Cred[]; track_record: { builds: number; jobs_done: number; milestones_shipped: number; projects_launched: number } } | null;
   build: { title: string; kind: string; proof: string | null; stack: string[] } | null;
   milestones: { total: number; released: number };
@@ -47,7 +47,7 @@ type Prov = {
   backers: { id: string; username: string; amount: number; reputation: number }[];
 } | null;
 type Data =
-  | { market: Market & { grid_name?: string; marketcap?: number }; grid: GridInfo; trades: Trade[]; holders: Holder[]; holder_count: number; stats: Stats; holding: number; allocation?: { total: number; vested: number; claimed: number; claimable: number; vest_days: number; upfront_bps: number } | null; wallet: { usdc: number; grid: number }; progress: Progress; graduation: Grad; stake: StakeInfo; roadmap: Milestone[]; orderBook: Book; orders: Order[]; positions: Pos[]; maxLeverage: number; funding: Funding; provenance: Prov; my_stakes: MyStake[]; staker_fees: number; can_flag: boolean; flagged: boolean; fraud_flags?: number; fraud_quorum?: number }
+  | { market: Market & { grid_name?: string; marketcap?: number }; grid: GridInfo; trades: Trade[]; holders: Holder[]; holder_count: number; stats: Stats; holding: number; allocation?: { total: number; vested: number; claimed: number; claimable: number; vest_days: number; upfront_bps: number } | null; founder_allocation?: { total: number; vested: number; claimed: number; claimable: number; vest_days: number; upfront_bps: number } | null; wallet: { usdc: number; grid: number }; progress: Progress; graduation: Grad; stake: StakeInfo; roadmap: Milestone[]; orderBook: Book; orders: Order[]; positions: Pos[]; maxLeverage: number; funding: Funding; provenance: Prov; my_stakes: MyStake[]; staker_fees: number; can_flag: boolean; flagged: boolean; fraud_flags?: number; fraud_quorum?: number }
   | null
   | "missing";
 
@@ -545,7 +545,7 @@ export default function MarketTerminal() {
                         <div className="flex items-center gap-2 text-[10px] text-ink-dim"><span className="flex items-center gap-0.5"><IconActivity className="h-3 w-3 text-neon" />{Math.round(d.provenance.founder.reputation).toLocaleString()} rep</span><span className="flex items-center gap-0.5"><IconShield className="h-3 w-3" />{d.provenance.founder.credentials_count} creds</span></div>
                       </div>
                     </Link>
-                    <div className="mt-2 text-[10px] leading-relaxed text-ink-faint">From <Link href={`/grid/${d.provenance.grid.slug}`} className="text-ink-dim transition hover:text-neon">{d.provenance.grid.name}</Link>{d.provenance.subgrid ? ` · team ${d.provenance.subgrid.name}` : ""}{d.provenance.origin.kind === "proposal" ? " · funded on Fund" : ""}. <button onClick={() => setTab("Provenance")} className="text-neon transition hover:underline">See provenance →</button></div>
+                    <div className="mt-2 text-[10px] leading-relaxed text-ink-faint">From <Link href={`/grid/${d.provenance.grid.slug}`} className="text-ink-dim transition hover:text-neon">{d.provenance.grid.name}</Link>{d.provenance.subgrid ? ` · team ${d.provenance.subgrid.name}` : ""}{d.provenance.origin.proposal ? <> · <Link href={`/genesis/${d.provenance.origin.proposal.id}`} className="text-ink-dim transition hover:text-neon">funded on Fund</Link></> : ""}{d.provenance.origin.product ? <> · <Link href={`/gridx/${d.provenance.origin.product.id}`} className="text-ink-dim transition hover:text-neon">the product</Link></> : ""}{d.provenance.origin.deploy_slug ? <> · <Link href={`/d/${d.provenance.origin.deploy_slug}`} className="text-ink-dim transition hover:text-neon">live app ↗</Link></> : ""}. <button onClick={() => setTab("Provenance")} className="text-neon transition hover:underline">See provenance →</button></div>
                   </div>
                 )}
                 <p className="mt-4 text-[10px] leading-relaxed text-ink-faint">Markets are earned: {m.base_symbol} reached Trade only after the project delivered + passed audit.</p>
@@ -930,6 +930,21 @@ export default function MarketTerminal() {
                       <div className="ng-row !py-1"><span className="ng-row__k">Claimable</span><Mark plain accent="cyan" className="!text-[11px]">{Math.floor(d.allocation.claimable).toLocaleString()}</Mark></div>
                     </div>
                     <button onClick={() => act(`/api/markets/${id}/claim-allocation`, {}, `Claimed ${Math.floor(d.allocation?.claimable ?? 0).toLocaleString()} ${m.base_symbol}`, { nothing_vested: "Nothing vested yet — check back as the schedule unlocks" })} disabled={busy || (d.allocation.claimable ?? 0) < 1} className="ng-btn ng-btn-cyan ng-btn--block mt-2 disabled:opacity-40"><IconBolt className="h-3.5 w-3.5" /> Claim vested {m.base_symbol}</button>
+                  </div>
+                )}
+
+                {/* FOUNDER ALLOCATION — market success returns to the maker */}
+                {d.founder_allocation && (
+                  <div className="mt-5 border-t border-line pt-3">
+                    <div className="ng-label mb-1 flex items-center gap-2 !text-neon"><IconBolt className="h-3.5 w-3.5" />Founder allocation</div>
+                    <p className="text-[10px] leading-relaxed text-ink-dim">You built this — your carve of {m.base_symbol}: {d.founder_allocation.upfront_bps / 100}% unlocked at launch, the rest vesting over {d.founder_allocation.vest_days} days. Claimed tokens become a real, tradable holding.</p>
+                    <div className="mt-2 divide-y divide-line text-[11px]">
+                      <div className="ng-row !py-1"><span className="ng-row__k">Total</span><Mark plain className="!text-[11px]">{Math.round(d.founder_allocation.total).toLocaleString()} {m.base_symbol}</Mark></div>
+                      <div className="ng-row !py-1"><span className="ng-row__k">Vested</span><span className="ng-row__v font-normal">{Math.round(d.founder_allocation.vested).toLocaleString()}</span></div>
+                      <div className="ng-row !py-1"><span className="ng-row__k">Claimed</span><span className="ng-row__v font-normal text-ink-dim">{Math.round(d.founder_allocation.claimed).toLocaleString()}</span></div>
+                      <div className="ng-row !py-1"><span className="ng-row__k">Claimable</span><Mark plain className="!text-[11px]">{Math.floor(d.founder_allocation.claimable).toLocaleString()}</Mark></div>
+                    </div>
+                    <button onClick={() => act(`/api/markets/${id}/claim-allocation`, {}, `Claimed ${Math.floor(d.founder_allocation?.claimable ?? 0).toLocaleString()} ${m.base_symbol}`, { nothing_vested: "Nothing vested yet — check back as the schedule unlocks" })} disabled={busy || (d.founder_allocation.claimable ?? 0) < 1} className="ng-btn ng-btn-primary ng-btn--block mt-2 disabled:opacity-40"><IconBolt className="h-3.5 w-3.5" /> Claim vested {m.base_symbol}</button>
                   </div>
                 )}
 

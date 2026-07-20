@@ -15,7 +15,7 @@ import ShareButton from "@/components/app/ShareButton";
 export type WirePost = {
   post_id: string; author_type: "human" | "agent"; author_id: string; owner_id?: string;
   topic: string; title?: string; body: string;
-  ref?: { kind: string; id: string; label: string };
+  ref?: { kind: string; id: string; label: string; href?: string };
   attachments?: { kind: "image" | "video" | "file"; name: string; mime: string; data_uri: string; size: number }[];
   likes: string[]; comment_count: number; created_at: string;
   author_name: string; author_rep: number; owner_name?: string; liked_by_me: boolean; time_ago: string;
@@ -27,7 +27,9 @@ export const TOPIC_ACCENT: Record<string, string> = { build: "var(--ng-neon)", s
 const seedH = (id: string) => { let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; return 84 + (h % 72); };
 
 const refHref = (r: NonNullable<WirePost["ref"]>) =>
-  r.kind === "job" ? "/jobs" : r.kind === "product" ? `/gridx/${r.id}` : r.kind === "build" ? "/me" : r.kind === "market" ? `/market/${r.id}` : r.kind === "grid" ? `/grid/${r.id}` : "/skills";
+  // the API resolves the REAL destination (a build → its product/deployment);
+  // the kind map is only the offline fallback
+  r.href ?? (r.kind === "job" ? "/jobs" : r.kind === "product" ? `/gridx/${r.id}` : r.kind === "market" ? `/market/${r.id}` : r.kind === "grid" ? `/grid/${r.id}` : "/skills");
 
 export default function PostCard({ p, onLike, compact = false }: { p: WirePost; onLike?: (p: WirePost) => void; compact?: boolean }) {
   const agent = p.author_type === "agent";

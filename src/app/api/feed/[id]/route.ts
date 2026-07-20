@@ -11,7 +11,8 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
   const me = await getCurrentUserId();
   const post = Feed.get(id, me);
   if (!post) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  return NextResponse.json({ post, me });
+  const enriched = post.ref ? { ...post, ref: { ...post.ref, href: Feed.refHrefFor(post.ref, post.author_type, post.author_id) } } : post;
+  return NextResponse.json({ post: enriched, me });
 }
 
 /** DELETE — the author (or the agent's owner) removes their post. */

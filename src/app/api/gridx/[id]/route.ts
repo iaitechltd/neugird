@@ -73,9 +73,22 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
   }));
   const owner_id = GridX.ownerOf(view.product);
   const owner = owner_id ? Users.getUser(owner_id) : undefined;
+  // the outside work that shipped it (audit polish) — jobs hired FOR this
+  // product's build, with their proof, shown on the public page
+  const buildId = db.builds.find((b) => b.product_id === id)?.build_id;
+  const shipped_work = buildId
+    ? db.jobs.filter((j) => j.build_id === buildId && (j.status === "paid" || j.status === "approved" || j.status === "submitted"))
+        .slice(0, 6)
+        .map((j) => ({
+          job_id: j.job_id, title: j.title, status: j.status, reward: j.reward_amount,
+          worker: j.assignee_type === "agent" ? (db.agents.find((a) => a.agent_id === j.assignee_id)?.name ?? "an agent") : (Users.getUser(j.assignee_id ?? "")?.username ?? "—"),
+          proof: j.proof?.payload && /^https?:\/\//.test(j.proof.payload) ? j.proof.payload : null,
+        }))
+    : [];
   return NextResponse.json({
     ...view,
     activity: activityFor(id),
+    shipped_work,
     reviews,
     owner: owner ? { id: owner.id, username: owner.username, reputation: Math.round(owner.reputation?.total ?? 0) } : null,
     me: {

@@ -23,8 +23,8 @@ import { PanelChart } from "@/components/app/terminal";
 import { Radar, Waffle, StepArea, Pie, LabeledBars, DivergingBars, Ring, SERIES, VIOLET } from "@/components/app/charts";
 
 type Profile = { id: string; username: string; wallet: string; bio: string; skills: string[]; pulse: number; reputation: number; by_dimension: Record<string, number>; grids: number; created_at: string; earned_usdc?: number; follows?: { followers: number; following: number }; is_following?: boolean };
-type JobRow = { job_id: string; title: string; reward: number; status: string; skills: string[] };
-type BuildRow = { build_id: string; title: string; kind: string; proof?: string; stack: string[]; status: string };
+type JobRow = { job_id: string; title: string; reward: number; status: string; skills: string[]; href?: string | null };
+type BuildRow = { build_id: string; title: string; kind: string; proof?: string; stack: string[]; status: string; href?: string | null };
 type PropRow = { proposal_id: string; title: string; status: string; ask: number; category: string };
 type AgentRow = { agent_id: string; name: string; rating: number; capabilities: string[] };
 type Cred = { attestation_id: string; schema: string; title: string; fields: Record<string, string | number>; proof_ref?: string; status: string; subject_wallet?: string; issued_at?: string };
@@ -192,8 +192,9 @@ export default function TalentProfile() {
             {view.is_me
               ? <p className="text-[11px] text-ink-dim">This is your public track record — everything here is earned from verified work.</p>
               : <p className="text-[11px] text-ink-dim">Message {p.username} to talk, pitch a deal, or hire — accepted hires become escrowed Jobs.</p>}
-            {!view.is_me && <Link href={`/messages?to=${p.id}`} className="ng-btn ng-btn-primary ng-btn--block ng-btn--sm mt-3"><IconMessage className="h-3.5 w-3.5" /> Message {p.username}</Link>}
-            <Link href="/jobs" className={`ng-btn ng-btn--block ng-btn--sm mt-2 ${view.is_me ? "ng-btn-primary" : ""}`}><IconBriefcase className="h-3.5 w-3.5" /> {view.is_me ? "Find work" : "Hire via Jobs"}</Link>
+            {!view.is_me && <Link href={`/messages?to=${p.id}&hire=`} className="ng-btn ng-btn-primary ng-btn--block ng-btn--sm mt-3"><IconBriefcase className="h-3.5 w-3.5" /> Hire {p.username} — escrowed offer</Link>}
+            {!view.is_me && <Link href={`/messages?to=${p.id}`} className="ng-btn ng-btn--block ng-btn--sm mt-2"><IconMessage className="h-3.5 w-3.5" /> Message {p.username}</Link>}
+            <Link href="/jobs" className={`ng-btn ng-btn--block ng-btn--sm mt-2 ${view.is_me ? "ng-btn-primary" : ""}`}><IconBriefcase className="h-3.5 w-3.5" /> {view.is_me ? "Find work" : "Post an open job instead"}</Link>
           </div>
         </OrbPanel>
 
@@ -281,15 +282,18 @@ export default function TalentProfile() {
             <div className="ng-label mb-3 flex items-center gap-2 !text-base !tracking-normal !text-neon"><IconShield className="h-4 w-4" />Proof of Build</div>
             {tr.builds.length === 0 ? <p className="text-[11px] text-ink-faint">No Echo builds witnessed yet.</p> : (
               <div className="grid grid-cols-1 gap-2.5 @2xl:grid-cols-2">
-                {tr.builds.map((b) => (
-                  <div key={b.build_id} className="ng-card p-3.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0"><div className="truncate text-[13px] font-semibold text-ink">{b.title}</div><div className="text-[10px] text-ink-dim">{b.stack.join(" · ")}</div></div>
-                      <Mark plain accent="cyan" className="!text-[9px] shrink-0">{b.kind}</Mark>
+                {tr.builds.map((b) => {
+                  const card = (
+                    <div className={`ng-card p-3.5 ${b.href ? "transition hover:!border-neon/40" : ""}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0"><div className="truncate text-[13px] font-semibold text-ink">{b.title}</div><div className="text-[10px] text-ink-dim">{b.stack.join(" · ")}</div></div>
+                        <Mark plain accent="cyan" className="!text-[9px] shrink-0">{b.kind}</Mark>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-[10px] text-ink-faint"><span className="flex items-center gap-1 text-neon"><IconCheck className="h-3 w-3" />{b.proof}</span><span>{b.href ? <span className="text-neon">open →</span> : b.status}</span></div>
                     </div>
-                    <div className="mt-2 flex items-center justify-between text-[10px] text-ink-faint"><span className="flex items-center gap-1 text-neon"><IconCheck className="h-3 w-3" />{b.proof}</span><span>{b.status}</span></div>
-                  </div>
-                ))}
+                  );
+                  return b.href ? <Link key={b.build_id} href={b.href}>{card}</Link> : <div key={b.build_id}>{card}</div>;
+                })}
               </div>
             )}
           </section>
@@ -304,7 +308,7 @@ export default function TalentProfile() {
                   {tr.jobs.map((j) => (
                     <div key={j.job_id} className="ng-card flex items-center justify-between gap-3 p-3.5">
                       <div className="min-w-0">
-                        <div className="truncate text-[13px] text-ink">{j.title}</div>
+                        {j.href ? <Link href={j.href} className="block truncate text-[13px] text-ink transition hover:text-neon hover:underline">{j.title}</Link> : <div className="truncate text-[13px] text-ink">{j.title}</div>}
                         {j.skills.length > 0 && <div className="mt-0.5 truncate text-[10px] text-ink-dim">{j.skills.join(" · ")}</div>}
                       </div>
                       <div className="shrink-0 text-right">

@@ -225,9 +225,12 @@ export default function VentureCockpit() {
               </div>
               <div className="mt-2 h-4 opacity-80"><VitalTrace seed={`fuel-${id}`} activity={runwayCycles === Infinity ? 1 : Math.min(1, runwayCycles / 12)} height={16} /></div>
             </div>
+            {!v?.is_owner && v?.venture?.ceo_agent_id && (
+              <Link href={`/messages?to=${v.venture.ceo_agent_id}&ctx=${encodeURIComponent(v.venture.name)}`} className="ng-btn ng-btn-ghost ng-btn--sm mt-2 w-full justify-center">✉ Message the company — its CEO answers</Link>
+            )}
             {v?.is_owner && (
               <div className="mt-2 flex gap-2">
-                <input value={fund} onChange={(e) => setFund(e.target.value.replace(/[^0-9]/g, ""))} placeholder="add GRID" className="min-w-0 flex-1 border border-line bg-black/40 px-2.5 py-2 text-[12px] text-neon tnum placeholder:font-normal placeholder:text-ink-faint outline-none focus:border-neon/50" />
+                <input value={fund} onChange={(e) => setFund(e.target.value.replace(/[^0-9]/g, ""))} placeholder="add GRID" className="ng-input min-w-0 flex-1 !py-2 text-[12px] !text-neon tnum" />
                 <button disabled={!fund || busyAny} onClick={() => { act("fund", { amount: Number(fund) }); setFund(""); }} className="ng-btn ng-btn-ghost ng-btn--sm shrink-0"><IconWallet className="h-3.5 w-3.5" /> Fuel</button>
               </div>
             )}

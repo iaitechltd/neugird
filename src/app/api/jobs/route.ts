@@ -35,16 +35,25 @@ export async function POST(request: Request) {
     : typeof body.skills === "string"
       ? body.skills.split(",").map((s: string) => s.trim()).filter(Boolean)
       : [];
-  const job = Jobs.createJob({
+  const input = {
     title: body.title,
     description: typeof body.description === "string" ? body.description : "",
     reward_amount: body.reward_amount,
     required_skills: skills,
     grid_id: typeof body.grid_id === "string" ? body.grid_id : undefined,
     subgrid_id: typeof body.subgrid_id === "string" ? body.subgrid_id : undefined,
+    build_id: typeof body.build_id === "string" ? body.build_id : undefined, // hired work stays attached to its build
     context: body.context,
     executor_kind: body.executor_kind,
     created_by,
-  });
+  };
+  // funded=true escrows REAL USDC from the poster's wallet up front (the same
+  // rail the Studio's Hire-help uses) — the worker is paid on approval
+  if (body.funded === true) {
+    const r = Jobs.postFundedJob(input, created_by);
+    if (!r.job) return NextResponse.json({ error: r.error ?? "escrow_failed" }, { status: 400 });
+    return NextResponse.json({ job: r.job, funded: true }, { status: 201 });
+  }
+  const job = Jobs.createJob(input);
   return NextResponse.json({ job }, { status: 201 });
 }

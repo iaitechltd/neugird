@@ -37,7 +37,10 @@ export function reputationOf(user_id: string): number {
  *  not pitch decks. The board CTA only appears once both hold. */
 export function canPropose(user_id: string): boolean {
   const hasBuild = db.builds.some((b) => b.owner_id === user_id);
-  return hasBuild && reputationOf(user_id) >= PROPOSE_REPUTATION_MIN;
+  // the gate reads the RIGHT dimension (audit Wave 3): a builder's raise needs
+  // BUILDER merit — trader/backer rep alone can't open it anymore
+  const builderRep = db.users.find((u) => u.id === user_id)?.reputation?.by_dimension?.builder ?? 0;
+  return hasBuild && builderRep >= 25 && reputationOf(user_id) >= PROPOSE_REPUTATION_MIN;
 }
 
 /** When this raise's funding window ends (legacy proposals derive from created_at). */

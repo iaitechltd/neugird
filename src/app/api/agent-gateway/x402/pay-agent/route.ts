@@ -45,7 +45,7 @@ export async function POST(request: Request) {
   }
 
   // ── memory mode — settle immediately, credit the recipient ──
-  const { settlement, proof, error } = X402.payAgent(from.agent_id, to_id, amount, memo);
+  const { settlement, proof, error } = X402.payAgent(from.agent_id, to_id, amount, memo, typeof body?.job_id === "string" ? body.job_id : undefined);
   if (error) return NextResponse.json({ error }, { status: error === "over_spend_limit" ? 402 : 400 });
   return NextResponse.json({ paid: true, to: to_id, amount, proof, settlement });
 }

@@ -12,10 +12,14 @@ export const dynamic = "force-dynamic";
 export async function POST(_request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const uid = await getCurrentUserId();
-  const result = Markets.claimBackerAllocation(id, uid);
-  if (result.error) {
-    const status = result.error === "not_found" ? 404 : 400;
-    return NextResponse.json({ error: result.error }, { status });
+  // one door claims BOTH sides of the cap table — the caller's backer share and,
+  // if they are the maker, their founder carve
+  const backer = Markets.claimBackerAllocation(id, uid);
+  const founder = Markets.claimFounderAllocation(id, uid);
+  if (backer.error && founder.error) {
+    const err = backer.error === "not_found" ? "not_found" : founder.error === "nothing_vested" || backer.error === "nothing_vested" ? "nothing_vested" : backer.error;
+    return NextResponse.json({ error: err }, { status: err === "not_found" ? 404 : 400 });
   }
-  return NextResponse.json({ ...result, allocation: Markets.backerAllocation(id, uid) });
+  const claimed = (backer.claimed ?? 0) + (founder.claimed ?? 0);
+  return NextResponse.json({ claimed, allocation: Markets.backerAllocation(id, uid), founder_allocation: Markets.founderAllocation(id, uid) });
 }

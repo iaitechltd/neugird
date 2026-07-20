@@ -66,6 +66,10 @@ export function provenanceFor(grid_id: string) {
       kind: sf?.origin ?? "direct", // proposal | product | direct
       proposal: proposal ? { id: proposal.proposal_id, title: proposal.title, ask: proposal.ask_amount, raised, backers: backings.length, endorsements: proposal.endorsements?.length ?? 0 } : null,
       built_with_echo: !!build?.artifact?.built_with_echo,
+      // the market's ancestors, walkable (connectivity audit: you could descend
+      // product → market but never climb back)
+      product: (() => { const p = db.products.find((p) => p.grid_id === grid.grid_id); return p ? { id: p.product_id, name: p.name } : null; })(),
+      deploy_slug: build?.deployment?.slug ?? null,
     },
     founder: founder
       ? {

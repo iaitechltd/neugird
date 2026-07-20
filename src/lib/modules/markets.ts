@@ -30,6 +30,10 @@ const SEED_LIQUIDITY = 10_000;
  * `backer_allocation_bps` Param; the vesting shape is a module constant. */
 const BACKER_UPFRONT_BPS = 2000;
 const BACKER_VEST_DAYS = 60;
+// The founder vests LONGER than backers with a smaller unlock — alignment: the
+// maker's upside arrives as the project keeps delivering, not at the bell.
+const FOUNDER_UPFRONT_BPS = 1000;
+const FOUNDER_VEST_DAYS = 90;
 
 /* Stage gates (locked mechanism): real market cap (the Ascension Arc) + a real
  * liquidity floor + a community GRID stake (./staking). Earned, not bought. */
@@ -163,6 +167,14 @@ export function reviewAudit(audit_id: string, reviewer_id: string, pass: boolean
   if (pass && grid) {
     Pulse.recordEvent({ target_type: "grid", target_id: grid.grid_id, action_type: "campaign_completed", weight: 20, reason: "Security audit passed", verification_source: `reviewer:${reviewer_id}` });
   }
+  // the REVIEWER earns their advertised merit (audit Wave 3: verification work
+  // credited only the grid — the person who did the judging got nothing)
+  Pulse.recordEvent({
+    target_type: "user", target_id: reviewer_id, user_id: reviewer_id,
+    action_type: "campaign_completed", weight: 15,
+    reason: `Verified a security audit${grid ? ` for ${grid.name}` : ""} (${pass ? "passed" : "failed"})`,
+    verification_source: "audit:review", dimension: "reviewer",
+  });
   return { audit: a };
 }
 
@@ -193,13 +205,19 @@ export function launchToken(grid_id: string, user_id: string, symbol?: string): 
       b.vesting = { start_at: launchedAt, cliff_days: 0, duration_days: BACKER_VEST_DAYS, released: 0, total: alloc, upfront_bps: BACKER_UPFRONT_BPS };
     }
   }
-  const poolBase = INITIAL_SUPPLY - backerPool;
+  // FOUNDER ALLOCATION — the payoff side of building (connectivity audit 2026-07-20:
+  // without this, market success never reached the entrepreneur). A governable share
+  // is carved BEFORE the pool, vested longer than the backers'. No mint — the pool
+  // simply opens with the remainder, so supply conservation holds.
+  const founderPool = INITIAL_SUPPLY * (Params.get("founder_allocation_bps") / 10000);
+  const poolBase = INITIAL_SUPPLY - backerPool - founderPool;
 
   const market: Market = {
     market_id: newId("mkt"), token_id: token.token_id, grid_id, stage: "alpha",
     base_symbol: sym, quote_symbol: "USDC",
     base_reserve: poolBase, quote_reserve: SEED_LIQUIDITY, price: SEED_LIQUIDITY / poolBase,
     liquidity_usd: 2 * SEED_LIQUIDITY, holders: 0, volume: 0, status: "active", created_at: launchedAt,
+    ...(founderPool > 0 ? { founder_allocation: { user_id: grid.owner_id, vesting: { start_at: launchedAt, cliff_days: 0, duration_days: FOUNDER_VEST_DAYS, released: 0, total: founderPool, upfront_bps: FOUNDER_UPFRONT_BPS } } } : {}),
   };
   db.markets.push(market);
   grid.lifecycle_stage = "alpha";
@@ -260,6 +278,30 @@ export function claimBackerAllocation(market_id: string, user_id: string): { cla
   holding.base += claimTotal;
   m.holders = recountHolders(market_id);
   return { claimed: claimTotal, holding: holding.base };
+}
+
+/** The founder's vested carve on a market (null unless the caller IS the founder). */
+export function founderAllocation(market_id: string, user_id: string): BackerAllocation | null {
+  const m = getMarket(market_id);
+  const fa = m?.founder_allocation;
+  if (!m || !fa || fa.user_id !== user_id) return null;
+  const vested = vestedOf(fa.vesting);
+  return { total: fa.vesting.total, vested, claimed: fa.vesting.released ?? 0, claimable: Math.max(0, vested - (fa.vesting.released ?? 0)), vest_days: FOUNDER_VEST_DAYS, upfront_bps: FOUNDER_UPFRONT_BPS };
+}
+
+/** Claim the founder's vested-but-unclaimed tokens into a real, tradable holding. */
+export function claimFounderAllocation(market_id: string, user_id: string): { claimed?: number; holding?: number; error?: string } {
+  const m = getMarket(market_id);
+  const fa = m?.founder_allocation;
+  if (!m || !fa || fa.user_id !== user_id) return { error: "no_allocation" };
+  const due = vestedOf(fa.vesting) - (fa.vesting.released ?? 0);
+  if (due <= 1e-9) return { error: "nothing_vested" };
+  fa.vesting.released = (fa.vesting.released ?? 0) + due;
+  let holding = db.holdings.find((h) => h.market_id === market_id && h.user_id === user_id);
+  if (!holding) { holding = { market_id, user_id, base: 0 }; db.holdings.push(holding); }
+  holding.base += due;
+  m.holders = recountHolders(market_id);
+  return { claimed: due, holding: holding.base };
 }
 
 function recountHolders(market_id: string): number {

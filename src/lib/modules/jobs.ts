@@ -193,6 +193,7 @@ export interface CreateJobInput {
   grid_id?: string;
   subgrid_id?: string;
   campaign_id?: string;
+  build_id?: string; // attach the work to the build it serves
   title: string;
   description: string;
   required_skills?: string[];
@@ -210,6 +211,7 @@ export function createJob(input: CreateJobInput): Job {
     grid_id: input.grid_id,
     subgrid_id: input.subgrid_id,
     campaign_id: input.campaign_id,
+    build_id: input.build_id,
     title: input.title,
     description: input.description,
     required_skills: input.required_skills ?? [],

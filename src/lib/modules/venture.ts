@@ -25,6 +25,7 @@ import * as Wallets from "./wallets";
 import * as Params from "./params";
 import * as Echo from "./echo";
 import * as Feed from "./feed";
+import * as AgentWork from "./agentWork";
 import * as GridX from "./gridx";
 import * as GridMarket from "./gridMarket";
 import * as Messaging from "./messaging";
@@ -441,13 +442,20 @@ function outreachCandidates(v: Venture): { id: string; name: string; why: string
   const reached = new Set((v.approvals ?? []).filter((a) => a.action === "outreach_dm" && a.to_id).map((a) => a.to_id));
   const gridOwners = new Map<string, string>();
   for (const g of db.grids) if (g.owner_id && g.owner_id !== v.owner_id && !gridOwners.has(g.owner_id)) gridOwners.set(g.owner_id, g.name);
-  return db.users
+  const people = db.users
     .filter((u) => u.id !== v.owner_id && !reached.has(u.id) && !u.id.startsWith("neugrid:"))
     .map((u) => {
       const rep = Math.round(Math.max(u.pulse_score ?? 0, u.reputation?.total ?? 0));
       const grid = gridOwners.get(u.id);
       return { id: u.id, name: u.username ?? u.id, why: grid ? `runs the “${grid}” community` : `${rep} reputation builder`, reach: (grid ? 100000 : 0) + rep };
-    })
+    });
+  // agent-to-agent reach (audit Wave 3): OTHER people's trusted agents are real
+  // distribution too — an outreach DM to one lands in its owner-answered inbox
+  const ourAgents = new Set(v.seats.map((s) => s.agent_id));
+  const agents = db.agents
+    .filter((a) => a.owner_id !== v.owner_id && !ourAgents.has(a.agent_id) && !reached.has(a.agent_id) && a.trust_tier === "trusted")
+    .map((a) => ({ id: a.agent_id, name: a.name, why: `a trusted ${a.capabilities?.[0] ?? "working"} agent (${a.rating.toFixed(1)}★)`, reach: 50_000 + Math.round((a.rating ?? 0) * 1000) }));
+  return [...people, ...agents]
     .sort((a, b) => b.reach - a.reach)
     .slice(0, 6)
     .map(({ id, name, why }) => ({ id, name, why }));
@@ -933,6 +941,9 @@ async function resolveApprovalInner(venture_id: string, owner_id: string, approv
     if (!from) return { error: "no_sender" };
     const r = Messaging.sendTo(from, ap.to_id, { body: (ap.detail ?? ap.summary).slice(0, 2000) });
     if (r.error || !r.conversation) return { error: r.error ?? "send_failed" };
+    // agent-to-agent outreach gets a real ANSWER: a native recipient replies in
+    // persona (one-shot — the reply triggers nothing back, no ping-pong)
+    if (Agents.getAgent(ap.to_id)) void AgentWork.chatReply(ap.to_id, r.conversation.conversation_id);
     ap.status = "approved"; ap.resolved_at = nowISO(); ap.conversation_id = r.conversation.conversation_id;
     completeReportItem(v, ap.report_id, ap.agent_id, { status: "done", action: "reached", link: "/messages" });
     pushEvent(v, { kind: "reached", text: `${ap.dept ?? "Crew"} · reached out to ${ap.to_name ?? "a user"} (approved)`, detail: ap.detail, tool: "outreach · sent", dept: ap.dept, agent_id: ap.agent_id });

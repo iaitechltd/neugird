@@ -37,7 +37,7 @@ export default function HomePage() {
   const closed = (lOpen ? 0 : 1) + (rOpen ? 0 : 1);
 
   /* real state */
-  const [me, setMe] = useState<{ username?: string; pulse?: number; reputation?: { total?: number; by_dimension?: Record<string, number> } | null; joined_grids?: string[]; rep_series?: number[]; income?: { total?: number; series?: number[] }; starter?: { wallet_connected: boolean; claimed: boolean; eligible: boolean; needs_verification?: boolean; credit: number; amount: number; builds: number; show: boolean } } | null>(null);
+  const [me, setMe] = useState<{ username?: string; pulse?: number; reputation?: { total?: number; by_dimension?: Record<string, number> } | null; joined_grids?: string[]; rep_series?: number[]; income?: { total?: number; series?: number[] }; starter?: { wallet_connected: boolean; claimed: boolean; eligible: boolean; needs_verification?: boolean; credit: number; amount: number; builds: number; listed?: boolean; earning?: boolean; show: boolean } } | null>(null);
   const [claiming, setClaiming] = useState(false);
   async function claimStarter() {
     if (claiming) return;
@@ -260,8 +260,8 @@ export default function HomePage() {
           {me?.starter?.show && (
             <Rise>
             <div className="ng-panel border-neon/25 p-4">
-              <div className="ng-label mb-2 !text-neon">Start here — zero to your first proof-of-build</div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <div className="ng-label mb-2 !text-neon">The journey — zero to your first earn</div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 xl:grid-cols-5">
                 <div className={`ng-card p-3 text-[11px] ${me.starter.wallet_connected ? "" : "!border-cyan/40"}`}>
                   <div className={`font-semibold ${me.starter.wallet_connected ? "text-neon" : "text-cyan"}`}>{me.starter.wallet_connected ? "✓" : "1"} Connect your wallet</div>
                   <p className="mt-1 leading-relaxed text-ink-dim">{me.starter.wallet_connected ? "Connected — your signature is your identity." : "Top right → Connect wallet. Your signature is your identity."}</p>
@@ -278,10 +278,20 @@ export default function HomePage() {
                     <p className="mt-1 leading-relaxed text-ink-faint">Unlocks when your wallet is connected — one grant per wallet.</p>
                   )}
                 </div>
-                <div className={`ng-card p-3 text-[11px] ${me.starter.credit > 0 ? "!border-cyan/40" : ""}`}>
-                  <div className={`font-semibold ${me.starter.credit > 0 ? "text-cyan" : "text-ink-faint"}`}>3 Build something real</div>
-                  <p className="mt-1 leading-relaxed text-ink-dim">Tell Echo your idea — real code, live preview, a sealed proof-of-build with your name on it.</p>
-                  <Link href="/echo" className={`ng-btn ng-btn--sm mt-1.5 ${me.starter.credit > 0 ? "ng-btn-primary" : ""}`}>Open Echo →</Link>
+                <div className={`ng-card p-3 text-[11px] ${me.starter.credit > 0 && me.starter.builds === 0 ? "!border-cyan/40" : ""}`}>
+                  <div className={`font-semibold ${me.starter.builds > 0 ? "text-neon" : me.starter.credit > 0 ? "text-cyan" : "text-ink-faint"}`}>{me.starter.builds > 0 ? "✓" : "3"} Build something real</div>
+                  <p className="mt-1 leading-relaxed text-ink-dim">{me.starter.builds > 0 ? "Built — a sealed proof-of-build carries your name." : "Tell Echo your idea — real code, live preview, a sealed proof."}</p>
+                  {me.starter.builds === 0 && <Link href="/echo" className={`ng-btn ng-btn--sm mt-1.5 ${me.starter.credit > 0 ? "ng-btn-primary" : ""}`}>Open Echo →</Link>}
+                </div>
+                <div className={`ng-card p-3 text-[11px] ${me.starter.builds > 0 && !me.starter.listed ? "!border-cyan/40" : ""}`}>
+                  <div className={`font-semibold ${me.starter.listed ? "text-neon" : me.starter.builds > 0 ? "text-cyan" : "text-ink-faint"}`}>{me.starter.listed ? "✓" : "4"} Ship it to the world</div>
+                  <p className="mt-1 leading-relaxed text-ink-dim">{me.starter.listed ? "Live — your work is out there, earning provenance." : "List it on GridX or deploy it live — real users, real receipts."}</p>
+                  {me.starter.builds > 0 && !me.starter.listed && <Link href="/me" className="ng-btn ng-btn-cyan ng-btn--sm mt-1.5">Your builds →</Link>}
+                </div>
+                <div className={`ng-card p-3 text-[11px] ${me.starter.listed && !me.starter.earning ? "!border-cyan/40" : ""}`}>
+                  <div className={`font-semibold ${me.starter.earning ? "text-neon" : me.starter.listed ? "text-cyan" : "text-ink-faint"}`}>{me.starter.earning ? "✓" : "5"} First money in</div>
+                  <p className="mt-1 leading-relaxed text-ink-dim">{me.starter.earning ? "Earned — the economy took over from here." : "A sale, a delivered job, or a funded raise — pick your door."}</p>
+                  {!me.starter.earning && <span className="mt-1.5 flex gap-2"><Link href="/jobs" className="ng-btn ng-btn--sm">Take a job →</Link><Link href="/genesis/board" className="ng-btn ng-btn--sm">Raise →</Link></span>}
                 </div>
               </div>
             </div>

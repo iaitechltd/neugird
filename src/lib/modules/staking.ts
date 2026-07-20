@@ -79,6 +79,13 @@ export function distributeFees(grid_id: string, amount: number): number {
     const share = amount * (s.amount / total);
     s.fees_earned = (s.fees_earned ?? 0) + share;
     Wallets.creditUsdc(s.staker_id, share);
+    // a SETTLEMENT per credit (audit Wave 3): stake-to-earn was paying real USDC
+    // invisibly — settlement-derived income views never saw it
+    (db.settlements ??= []).push({
+      settlement_id: newId("setl"), payer_id: "neugrid:fees", payee: s.staker_id,
+      resource: `staking_fee:${s.market_id}`, amount: share, asset: "USDC", network: "solana",
+      scheme: "exact", proof: newId("rcpt"), status: "settled", created_at: nowISO(),
+    });
     distributed += share;
   }
   if (stakes[0]) void ChainStaking.fees(stakes[0].market_id, distributed); // chain mirror

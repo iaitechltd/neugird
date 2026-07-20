@@ -142,6 +142,20 @@ export default function EchoPage() {
   const [bPrompt, setBPrompt] = useState("");
   const [bBuilding, setBBuilding] = useState(false);
   const [bBuild, setBBuild] = useState<Build | null>(null);
+  // open-job door (audit polish): post a real USDC-escrowed job to the whole board
+  // from the builder — attached to the current build
+  const [ojOpen, setOjOpen] = useState(false);
+  const [oj, setOj] = useState({ title: "", desc: "", reward: "" });
+  const [ojBusy, setOjBusy] = useState(false);
+  const postOpenJob = async () => {
+    const reward = Number(oj.reward);
+    if (!oj.title.trim() || !oj.desc.trim() || !(reward > 0)) return;
+    setOjBusy(true);
+    const r = await fetch("/api/jobs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: oj.title.trim(), description: oj.desc.trim(), reward_amount: reward, funded: true, context: "talent_contract", executor_kind: "any", build_id: bBuild?.build_id }) }).then((x) => x.json()).catch(() => null);
+    setOjBusy(false);
+    if (r?.job) { notify(`Job posted — ${reward} USDC escrowed`); setOj({ title: "", desc: "", reward: "" }); setOjOpen(false); }
+    else notify(r?.error === "insufficient_usdc" ? "Not enough USDC to escrow the reward" : `⚠ ${r?.error ?? "posting failed"}`);
+  };
   const [bRevealed, setBRevealed] = useState(0);
   const [outTab, setOutTab] = useState<"preview" | "files">("preview");
   const [outFile, setOutFile] = useState(0);
@@ -1139,7 +1153,10 @@ export default function EchoPage() {
           )}
           {/* HUB right */}
           {mode === "select" && <>
-            {/* YOUR TOOLBOX — set up once here, flows into every workshop (Phase 6b+) */}
+            {/* YOUR TOOLBOX — FIRST in the rail, its own commanding section (founder
+                2026-07-20 v2: "it has to be on the right panel, but properly SEEN").
+                The brighter frame + the count give it the hierarchy; everything else
+                in the rail sits under it. */}
             <BuilderToolbox />
             <Card>
               <SecLabel icon={<IconShield className="h-3.5 w-3.5" />}>CAPABILITY MATRIX</SecLabel>
@@ -1197,30 +1214,52 @@ export default function EchoPage() {
                 {execs.agents.length > 0 && <>
                   <div className="ng-label mb-1.5 mt-1 flex items-center gap-2 !text-neon"><IconBot className="h-3.5 w-3.5" />AI AGENTS</div>
                   <div className="space-y-1.5">{execs.agents.map((a) => (
-                    <Link key={a.agent_id} href={`/agents/${a.agent_id}`} className="ng-card flex items-center gap-2.5 p-2.5 transition hover:!border-neon/40">
-                      <Av size={24} seed={a.name} />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 text-[12px] text-ink"><span className="truncate">{a.name}</span>{a.trust_tier === "trusted" && <IconShield className="h-3 w-3 shrink-0 text-neon" />}</div>
-                        <div className="truncate text-[10px] text-ink-dim">{a.capabilities.slice(0, 2).join(" · ") || "general"} · {a.verified_jobs} jobs</div>
-                      </div>
-                      <span className="flex shrink-0 items-center gap-0.5 text-[10px] text-neon"><IconStar className="h-3 w-3" />{a.rating.toFixed(1)}</span>
-                    </Link>
+                    <div key={a.agent_id} className="ng-card flex items-center gap-2.5 p-2.5 transition hover:!border-neon/40">
+                      <Link href={`/agents/${a.agent_id}`} className="flex min-w-0 flex-1 items-center gap-2.5">
+                        <Av size={24} seed={a.name} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 text-[12px] text-ink"><span className="truncate">{a.name}</span>{a.trust_tier === "trusted" && <IconShield className="h-3 w-3 shrink-0 text-neon" />}</div>
+                          <div className="truncate text-[10px] text-ink-dim">{a.capabilities.slice(0, 2).join(" · ") || "general"} · {a.verified_jobs} jobs</div>
+                        </div>
+                        <span className="flex shrink-0 items-center gap-0.5 text-[10px] text-neon"><IconStar className="h-3 w-3" />{a.rating.toFixed(1)}</span>
+                      </Link>
+                      <Link href={`/messages?to=${a.agent_id}&hire=Help finish my Echo build`} className="shrink-0 border border-neon/40 px-1.5 py-0.5 text-[9px] tracking-wider text-neon transition hover:bg-neon/10">hire ›</Link>
+                    </div>
                   ))}</div>
                 </>}
                 {execs.talent.length > 0 && <>
                   <div className="ng-label mb-1.5 mt-3 flex items-center gap-2 !text-neon"><IconUser className="h-3.5 w-3.5" />HUMANS</div>
                   <div className="space-y-1.5">{execs.talent.map((t) => (
-                    <Link key={t.id} href={`/talent/${t.id}`} className="ng-card flex items-center gap-2.5 p-2.5 transition hover:!border-neon/40">
-                      <Av size={24} seed={t.username} />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-[12px] text-ink">{t.username}</div>
-                        <div className="truncate text-[10px] text-ink-dim">{t.skills[0] ?? "contributor"} · {t.jobs_done} jobs</div>
-                      </div>
-                      <span className="flex shrink-0 items-center gap-0.5 text-[10px] text-neon"><IconStar className="h-3 w-3" />{t.reputation}</span>
-                    </Link>
+                    <div key={t.id} className="ng-card flex items-center gap-2.5 p-2.5 transition hover:!border-neon/40">
+                      <Link href={`/talent/${t.id}`} className="flex min-w-0 flex-1 items-center gap-2.5">
+                        <Av size={24} seed={t.username} />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[12px] text-ink">{t.username}</div>
+                          <div className="truncate text-[10px] text-ink-dim">{t.skills[0] ?? "contributor"} · {t.jobs_done} jobs</div>
+                        </div>
+                        <span className="flex shrink-0 items-center gap-0.5 text-[10px] text-neon"><IconStar className="h-3 w-3" />{t.reputation}</span>
+                      </Link>
+                      <Link href={`/messages?to=${t.id}&hire=Help finish my Echo build`} className="shrink-0 border border-neon/40 px-1.5 py-0.5 text-[9px] tracking-wider text-neon transition hover:bg-neon/10">hire ›</Link>
+                    </div>
                   ))}</div>
                 </>}
               </>}
+              <div className="mt-3 border-t border-line pt-2.5">
+                {!ojOpen ? (
+                  <button onClick={() => setOjOpen(true)} className="ng-btn ng-btn-ghost ng-btn--sm w-full justify-center !text-[11px]"><IconBriefcase className="h-3.5 w-3.5" /> Post an open job to the board</button>
+                ) : (
+                  <div className="space-y-1.5">
+                    <input value={oj.title} onChange={(e) => setOj((o) => ({ ...o, title: e.target.value }))} placeholder="what needs doing — e.g. design a logo" className="ng-input w-full !py-1.5 text-[11px]" />
+                    <input value={oj.desc} onChange={(e) => setOj((o) => ({ ...o, desc: e.target.value }))} placeholder="scope, in one or two lines" className="ng-input w-full !py-1.5 text-[11px]" />
+                    <div className="flex gap-1.5">
+                      <input value={oj.reward} onChange={(e) => setOj((o) => ({ ...o, reward: e.target.value.replace(/[^0-9.]/g, "") }))} inputMode="decimal" placeholder="reward USDC (escrowed now)" className="ng-input min-w-0 flex-1 !py-1.5 text-[11px]" />
+                      <button onClick={() => void postOpenJob()} disabled={ojBusy} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-40">Escrow &amp; post</button>
+                      <button onClick={() => setOjOpen(false)} className="ng-btn ng-btn-ghost ng-btn--sm shrink-0 !px-2">✕</button>
+                    </div>
+                    {bBuild && <p className="text-[9px] text-ink-faint">attached to &ldquo;{bBuild.title}&rdquo; — the delivery lands back on it</p>}
+                  </div>
+                )}
+              </div>
             </Card>
             <Card>
               <SecLabel icon={<IconShield className="h-3.5 w-3.5" />}>FAILURE &amp; SAFETY CONTROLS</SecLabel>

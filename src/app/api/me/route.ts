@@ -8,7 +8,8 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { demoMode, getCurrentUser, SESSION_COOKIE, userExists } from "@/lib/session";
-import { Wallets, Rewards, Pulse, Social, Onboarding } from "@/lib/modules";
+import { Wallets, Rewards, Pulse, Social, Onboarding, Markets } from "@/lib/modules";
+import { db } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,31 @@ export async function GET() {
       return s;
     })(),
     income: Social.incomeFor(user.id), // real money in — settlements + agent earnings
+    // THE EMPIRE (audit Wave 3) — the whole holding in ONE view: token wealth,
+    // claimable carves, staking income, company treasuries. incomeFor is money
+    // that MOVED; this is what you HOLD.
+    empire: (() => {
+      const uid = user.id;
+      const holdings = db.holdings.filter((h) => h.user_id === uid && h.base > 1e-9);
+      const holdings_usd = holdings.reduce((s, h) => s + h.base * (db.markets.find((m) => m.market_id === h.market_id)?.price ?? 0), 0);
+      let claimable_markets = 0;
+      for (const m of db.markets) {
+        if ((Markets.backerAllocation(m.market_id, uid)?.claimable ?? 0) >= 1 || (Markets.founderAllocation(m.market_id, uid)?.claimable ?? 0) >= 1) claimable_markets++;
+      }
+      const staking_fees_usd = db.listingStakes.filter((s) => s.staker_id === uid).reduce((a, s) => a + (s.fees_earned ?? 0), 0);
+      const myVentures = (db.ventures ?? []).filter((x) => x.owner_id === uid);
+      const venture_treasury_grid = myVentures.reduce((a, x) => a + Wallets.balances(x.treasury_id).grid, 0);
+      const open_raises = db.proposals.filter((p) => p.status === "open" && p.author_id === uid).length;
+      return {
+        holdings_usd: Math.round(holdings_usd * 100) / 100,
+        positions: holdings.length,
+        claimable_markets,
+        staking_fees_usd: Math.round(staking_fees_usd * 100) / 100,
+        ventures: myVentures.length,
+        venture_treasury_grid: Math.round(venture_treasury_grid),
+        open_raises,
+      };
+    })(),
     follows: Social.followCounts(user.id),
     starter: Onboarding.starterState(user.id), // the 3-step starter path (drives the /home strip)
   });

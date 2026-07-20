@@ -28,7 +28,7 @@ import { db } from "../store";
 import { newId, nowISO } from "../id";
 import { engineAvailable, engineBin, engineMode, runEngineBuild, type EngineEvent, type EngineRunOpts } from "../engine";
 import { runEngineBuildAcp } from "../engine/acp";
-import { engineRemote, runEngineBuildRemote } from "../engine/remote";
+import { runEngineBuildRemote } from "../engine/remote";
 import { ensureStopGateInstalled, armStopGate, disarmStopGate } from "../engine/stopGate";
 import * as Brain from "../brain";
 import * as Wallets from "./wallets";
@@ -694,8 +694,9 @@ export function hireHelp(workspace_id: string, owner_id: string, input: { title:
   if (!Number.isFinite(reward) || reward <= 0 || reward > 50_000) return { error: "bad_reward" };
   const build = ws.build_id ? db.builds.find((b) => b.build_id === ws.build_id) : undefined;
   const r = Jobs.postFundedJob({
-    context: "talent_contract", grid_id: build?.grid_id,
-    title, description, executor_kind: "any", reward_amount: reward, created_by: owner_id,
+    context: "talent_contract", grid_id: build?.grid_id, build_id: ws.build_id,
+    title, description: build ? `${description}\n\n[for the build "${build.title}" — delivered work lands back in its workshop]` : description,
+    executor_kind: "any", reward_amount: reward, created_by: owner_id,
   }, owner_id);
   if (!r.job) return { error: r.error ?? "job_failed" };
   (ws.hired ??= []).unshift({ job_id: r.job.job_id, title, at: nowISO() });
@@ -1008,7 +1009,9 @@ export function view(workspace_id: string, viewer_id: string) {
       eligibility: grid ? Markets.canLaunch(grid.grid_id) : null,
       hired: (ws.hired ?? []).map((h) => {
         const j = db.jobs.find((x) => x.job_id === h.job_id);
-        return { ...h, status: j?.status ?? "open", reward: j?.reward_amount ?? 0 };
+        // the delivered artifact comes home to the workshop it was hired for
+        const proof = j?.proof?.payload && /^https?:\/\//.test(j.proof.payload) ? j.proof.payload : null;
+        return { ...h, status: j?.status ?? "open", reward: j?.reward_amount ?? 0, proof };
       }),
     },
     engine_ready: engineAvailable(),

@@ -21,7 +21,7 @@ type MyAgent = { agent_id: string; name: string };
 type PostDetail = {
   post_id: string; author_type: "human" | "agent"; author_id: string; owner_id?: string;
   topic: string; title?: string; body: string;
-  ref?: { kind: string; id: string; label: string };
+  ref?: { kind: string; id: string; label: string; href?: string };
   attachments?: { kind: "image" | "video" | "file"; name: string; mime: string; data_uri: string; size: number }[];
   likes: string[]; created_at: string; time_ago: string;
   author_name: string; author_rep: number; owner_name?: string; liked_by_me: boolean; comment_count: number;
@@ -147,7 +147,7 @@ export default function PostDetail({ params }: { params: Promise<{ id: string }>
                     <a key={i} href={f.data_uri} download={f.name} className="mt-3 flex items-center gap-1.5 border border-line px-2.5 py-1.5 text-[11px] text-ink-dim transition hover:border-neon/40 hover:text-neon"><span className="text-neon/70">▣</span>{f.name}<span className="ml-auto text-ink-faint">{f.size > 1_000_000 ? `${(f.size / 1_000_000).toFixed(1)}MB` : `${Math.round(f.size / 1000)}KB`}</span></a>
                   ))}
                   {p.ref && (
-                    <Link href={p.ref.kind === "job" ? "/jobs" : p.ref.kind === "product" ? `/gridx/${p.ref.id}` : p.ref.kind === "build" ? "/me" : p.ref.kind === "market" ? `/market/${p.ref.id}` : p.ref.kind === "grid" ? `/grid/${p.ref.id}` : "/skills"} className="mt-3 inline-flex items-center gap-1.5 border border-line px-2.5 py-1.5 text-[11px] text-ink-dim transition hover:border-neon/40 hover:text-neon">
+                    <Link href={p.ref.href ?? (p.ref.kind === "job" ? "/jobs" : p.ref.kind === "product" ? `/gridx/${p.ref.id}` : p.ref.kind === "build" ? (p.author_type === "human" ? `/talent/${p.author_id}` : `/agents/${p.author_id}`) : p.ref.kind === "market" ? `/market/${p.ref.id}` : p.ref.kind === "grid" ? `/grid/${p.ref.id}` : "/skills")} className="mt-3 inline-flex items-center gap-1.5 border border-line px-2.5 py-1.5 text-[11px] text-ink-dim transition hover:border-neon/40 hover:text-neon">
                       <IconRocket className="h-3.5 w-3.5 text-neon/70" />{p.ref.kind} · {p.ref.label} →
                     </Link>
                   )}

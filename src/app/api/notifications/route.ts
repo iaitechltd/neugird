@@ -7,12 +7,12 @@
 
 import { NextResponse } from "next/server";
 import { db } from "@/lib/store";
-import { Messaging, Governance, Markets, Social } from "@/lib/modules";
+import { Messaging, Governance, Markets, Social, Disputes } from "@/lib/modules";
 import { getCurrentUserId } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-type Note = { kind: "message" | "review" | "applicants" | "governance" | "fill" | "position" | "market" | "social"; text: string; sub?: string; href: string };
+type Note = { kind: "message" | "review" | "applicants" | "governance" | "fill" | "position" | "market" | "social" | "funded" | "sale" | "dispute" | "comment" | "claimed"; text: string; sub?: string; href: string };
 
 const RECENT_MS = 48 * 3600 * 1000; // Trade event window — old fills/closes age out of the bell
 const recent = (iso?: string) => !!iso && Date.now() - Date.parse(iso) <= RECENT_MS;
@@ -79,12 +79,51 @@ export async function GET() {
     }
   }
 
+  // 9 · MONEY MOMENTS (connectivity audit Wave 1) — the journey's payoffs were silent:
+  // a founder was never told they got funded, sold, claimed, disputed, or answered.
+  // a — someone backed my raise
+  for (const b of db.backings.filter((b) => myGridIds.has(b.grid_id) && b.backer_id !== uid && !b.refunded && recent(b.created_at)).slice(0, 3)) {
+    notes.push({ kind: "funded", text: `${uname(b.backer_id)} backed your raise — $${Math.round(b.amount).toLocaleString()}`, sub: "conviction, escrowed", href: "/genesis/board" });
+  }
+  // b — my milestone moved (founder) · a milestone awaits backer votes on a raise I backed
+  const backedGrids = new Set(db.backings.filter((b) => b.backer_id === uid && !b.refunded).map((b) => b.grid_id));
+  for (const ms of db.milestones) {
+    if (!recent(ms.updated_at)) continue;
+    if (myGridIds.has(ms.grid_id) && (ms.status === "approved" || ms.status === "released")) {
+      notes.push({ kind: "funded", text: `Milestone ${ms.status} — $${Math.round(ms.amount).toLocaleString()} tranche`, sub: ms.title.slice(0, 60), href: "/genesis/board" });
+    } else if (backedGrids.has(ms.grid_id) && (ms.status === "submitted" || ms.status === "approving")) {
+      notes.push({ kind: "funded", text: "A milestone you backed needs your vote", sub: ms.title.slice(0, 60), href: "/genesis/board" });
+    }
+  }
+  // c — my product / skill sold (real USDC landed)
+  for (const s of db.settlements.filter((s) => s.payee === uid && s.status === "settled" && recent(s.created_at) && (s.resource.startsWith("product_purchase:") || s.resource.startsWith("skill"))).slice(0, 3)) {
+    const product = s.resource.startsWith("product_purchase:") ? db.products.find((p) => p.product_id === s.resource.slice("product_purchase:".length)) : undefined;
+    notes.push({ kind: "sale", text: `Sold — $${Math.round(s.amount).toLocaleString()} in`, sub: product ? product.name.slice(0, 60) : "a skill install", href: product ? `/gridx/${product.product_id}` : "/skills" });
+  }
+  // d — an open dispute awaits my evaluator vote (reputation-staked duty)
+  for (const dp of db.disputes.filter((dp) => dp.status === "open" && dp.raised_by !== uid && dp.against !== uid && !dp.votes.some((v) => v.evaluator_id === uid)).slice(0, 2)) {
+    const { ok } = Disputes.eligibleEvaluator(dp, uid);
+    if (ok) notes.push({ kind: "dispute", text: "A dispute needs your evaluator vote", sub: dp.reason.slice(0, 60), href: "/disputes" });
+  }
+  // e — someone answered a post of mine
+  const myPosts = db.feedPosts.filter((p) => p.author_type === "human" && p.author_id === uid);
+  for (const p of myPosts) {
+    for (const c of p.comments.filter((c) => c.author_id !== uid && recent(c.created_at)).slice(-2)) {
+      notes.push({ kind: "comment", text: `${c.author_type === "agent" ? (db.agents.find((a) => a.agent_id === c.author_id)?.name ?? "an agent") : uname(c.author_id)} replied to your post`, sub: c.body.slice(0, 60), href: `/post/${p.post_id}` });
+    }
+  }
+  // f — my job was claimed (work has started)
+  for (const j of db.jobs.filter((j) => j.created_by === uid && (j.status === "assigned" || j.status === "in_progress") && recent(j.updated_at)).slice(0, 2)) {
+    notes.push({ kind: "claimed", text: "Your job was claimed — work started", sub: j.title.slice(0, 60), href: "/jobs" });
+  }
+
   // 8 · open protocol votes (informational)
   const openGov = Governance.listProposals().filter((p) => p.status === "open").length;
   if (openGov > 0) notes.push({ kind: "governance", text: `${openGov} protocol proposal${openGov === 1 ? "" : "s"} open for voting`, href: "/governance" });
 
   // badge = actionable only (fills/closes are informational and would pin forever)
   const readyToGrad = notes.filter((n) => n.kind === "market" && n.text.includes("ready to graduate")).length;
-  const badge = convos.reduce((n, c) => n + c.unread, 0) + reviews.length + notes.filter((n) => n.kind === "applicants").length + readyToGrad;
+  const voteDuties = notes.filter((n) => n.kind === "dispute" || (n.kind === "funded" && n.text.includes("needs your vote"))).length;
+  const badge = convos.reduce((n, c) => n + c.unread, 0) + reviews.length + notes.filter((n) => n.kind === "applicants").length + readyToGrad + voteDuties;
   return NextResponse.json({ badge, notes: notes.slice(0, 12) });
 }

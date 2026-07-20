@@ -126,7 +126,7 @@ export function chargeAgent(payer_id: string, amount: number, resource: string):
 }
 
 /** Agent-to-agent payment (memory mode): pay `to` for a service, credited to the recipient. */
-export function payAgent(from_id: string, to_id: string, amount: number, memo?: string): { settlement?: Settlement; proof?: string; error?: string } {
+export function payAgent(from_id: string, to_id: string, amount: number, memo?: string, job_id?: string): { settlement?: Settlement; proof?: string; error?: string } {
   const from = Agents.getAgent(from_id);
   if (!from) return { error: "agent_not_found" };
   const to = Agents.getAgent(to_id);
@@ -139,10 +139,21 @@ export function payAgent(from_id: string, to_id: string, amount: number, memo?: 
   // recipient credit below mints USDC: every a2a payment inflated the ledger.
   if (!from.owner_id || !Wallets.debitUsdc(from.owner_id, amount)) return { error: "insufficient_usdc" };
 
+  // bind the payment to WORK when a job is named (audit polish: a2a was a rail
+  // with a free-text memo, never traceable to a deliverable) — the job must be
+  // real and one of the two agents must actually be on it
+  let jobRef = "";
+  if (job_id) {
+    const job = db.jobs.find((j) => j.job_id === job_id);
+    if (!job) return { error: "job_not_found" };
+    const involved = job.assignee_id === to_id || job.assignee_id === from_id || job.created_by === from.owner_id || job.created_by === to.owner_id;
+    if (!involved) return { error: "job_not_yours" };
+    jobRef = `:job:${job_id}`;
+  }
   const proof = proofToken(from_id, `a2a:${to_id}`, newId("n"));
   const settlement: Settlement = {
     settlement_id: newId("setl"), payer_id: from_id, payee: to_id,
-    resource: memo ? `agent_service:${memo}` : "agent_service",
+    resource: `${memo ? `agent_service:${memo}` : "agent_service"}${jobRef}`,
     amount, asset: ASSET, network: NETWORK, scheme: "exact", proof, status: "settled", created_at: nowISO(),
   };
   ledger().push(settlement);

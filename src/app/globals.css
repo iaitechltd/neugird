@@ -242,26 +242,47 @@ body {
   .ng-btn--block { width: 100%; }
 
   /* Inputs — underline style, no box. Bottom hairline lights up on focus. */
+  /* Inputs must READ as inputs (founder, 2026-07-20: "almost invisible — the user
+     can't see where to write"). A visible WELL: full hairline stroke + a faint
+     fill lift + a readable placeholder — still flat, still phosphor, no glow. */
   .ng-input {
     width: 100%;
     font-family: var(--font-mono), ui-monospace, monospace;
     font-size: 0.875rem;
-    padding: 0.5rem 0.15rem;
+    padding: 0.5rem 0.6rem;
     color: var(--ng-ink);
-    background: transparent;
-    border: 0;
-    border-bottom: 1px solid var(--ng-line);
+    background: rgba(0, 255, 0, 0.035);
+    border: 1px solid rgba(0, 255, 0, 0.3);
     border-radius: 0;
     outline: none;
-    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+    transition: border-color 0.18s ease, background 0.18s ease;
   }
-  .ng-input::placeholder { color: var(--ng-ink-faint); }
-  .ng-input:focus { border-bottom-color: var(--ng-neon); box-shadow: 0 1px 0 0 var(--ng-neon); }
+  .ng-input::placeholder { color: var(--ng-ink-dim); opacity: 0.8; }
+  /* FOCUS = THE BEAM (founder, 2026-07-20): a bright light travels the field's
+     border — the active input announces itself without glow or a second stroke.
+     Painted in the border ring itself: an opaque padding-box layer masks the
+     center, the conic sweep lives in the 1px border-box ring. */
+  .ng-input:focus {
+    border-color: transparent;
+    background:
+      linear-gradient(rgba(0, 255, 0, 0.055), rgba(0, 255, 0, 0.055)) padding-box,
+      linear-gradient(var(--ng-bg), var(--ng-bg)) padding-box,
+      conic-gradient(from var(--ng-beam),
+        rgba(0, 255, 0, 0.24) 0deg,
+        rgba(0, 255, 0, 0.24) 294deg,
+        rgba(125, 255, 171, 0.9) 326deg,
+        #eaffe9 342deg,
+        rgba(0, 255, 0, 0.24) 360deg) border-box;
+    animation: ng-beam-sweep 2.4s linear infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ng-input:focus { animation: none; border-color: var(--ng-neon); background: rgba(0, 255, 0, 0.055); }
+  }
   /* Boxed input only when explicitly wanted (e.g. a search field) */
   .ng-input--box {
     padding: 0.5rem 0.75rem;
-    background: rgba(2, 8, 5, 0.45);
-    border: 1px solid rgba(0, 255, 0, 0.08);
+    background: rgba(0, 255, 0, 0.035);
+    border: 1px solid rgba(0, 255, 0, 0.3);
     border-radius: var(--ng-radius);
   }
   .ng-input--box:focus { border-color: var(--ng-neon); box-shadow: none; }
@@ -376,13 +397,18 @@ body {
 .ng-btn:focus-visible,
 .ng-tab:focus-visible,
 .thl:focus-visible,
-.ng-input:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible,
 a:focus-visible {
   outline: 1px solid var(--ng-neon);
   outline-offset: 2px;
+}
+/* TEXT FIELDS opt OUT of the offset outline — their visible focus state is the
+   border BEAM above (outline + border read as a DOUBLE stroke — founder-rejected
+   2026-07-20). Buttons/tabs/links keep the outline (they have no border ring). */
+.ng-input:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
 }
 
 /* Mono helper for inline IDs / wallet addresses / data */
@@ -466,4 +492,16 @@ a:focus-visible {
 .ng-marquee:hover { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) {
   .ng-marquee { animation: none; }
+}
+
+/* THE BEAM — the traveling light on a focused input's border (see .ng-input:focus).
+   @property lets the conic angle interpolate; without support the ring renders
+   static (graceful) and reduced-motion gets a solid border instead. */
+@property --ng-beam {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes ng-beam-sweep {
+  to { --ng-beam: 360deg; }
 }

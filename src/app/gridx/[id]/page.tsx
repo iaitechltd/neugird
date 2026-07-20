@@ -32,6 +32,7 @@ type View = {
   market: { market_id: string; stage: string } | null; launch: { ok: boolean; reason?: string } | null;
   activity?: Activity;
   reviews: Review[];
+  shipped_work?: { job_id: string; title: string; status: string; reward: number; worker: string; proof: string | null }[];
   owner: { id: string; username: string; reputation: number } | null;
   me: { id: string; owned: boolean; purchased: boolean; can_review: boolean; review_block?: string };
 };
@@ -338,6 +339,24 @@ export default function GridXDetail() {
             </section>
           ) : (
             <div className="ng-card p-5 text-center text-[11px] text-ink-dim">This product predates live previews — no embedded demo available.</div>
+          )}
+
+          {/* THE OUTSIDE WORK THAT SHIPPED IT — hired jobs attached to this build */}
+          {(view.shipped_work?.length ?? 0) > 0 && (
+            <div className="ng-panel p-4">
+              <div className="ng-label mb-2 !text-ink-dim">Hired work on this product</div>
+              <div className="space-y-1.5">
+                {view.shipped_work!.map((w) => (
+                  <div key={w.job_id} className="flex items-center gap-2 text-[11px]">
+                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${w.status === "paid" || w.status === "verified" ? "bg-neon" : "bg-cyan"}`} />
+                    <span className="min-w-0 flex-1 truncate text-ink">{w.title}</span>
+                    <span className="shrink-0 text-[10px] text-ink-faint">by {w.worker} · ${Math.round(w.reward)}</span>
+                    {w.proof && <a href={w.proof} target="_blank" rel="noreferrer" className="shrink-0 text-[10px] text-neon hover:underline">the work ↗</a>}
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-[9px] text-ink-faint">every row is a real escrowed job hired for this build — outside help, on the record</p>
+            </div>
           )}
 
           {/* VERIFIED REVIEWS */}

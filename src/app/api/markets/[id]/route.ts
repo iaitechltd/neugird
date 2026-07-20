@@ -27,6 +27,7 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
     stats: Markets.tradeStats(id),
     holding: Markets.holdingOf(id, uid),
     allocation: Markets.backerAllocation(id, uid), // backer token allocation (null = not a backer)
+    founder_allocation: Markets.founderAllocation(id, uid), // the maker's vested carve (null unless caller = founder)
     wallet: Wallets.balances(uid),
     progress,
     graduation: Markets.canGraduate(id),

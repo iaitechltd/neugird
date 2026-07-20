@@ -277,7 +277,7 @@ export default function JobsPage() {
                   </div>
                   {/* the record — clean rows, trade-card style */}
                   <div className="mt-3 divide-y divide-line text-[11px]">
-                    <div className="ng-row !py-1.5"><span className="ng-row__k">Posted by</span><span className="ng-row__v truncate font-normal text-ink-dim">{job.created_by === mineId ? "you" : job.created_by}</span></div>
+                    <div className="ng-row !py-1.5"><span className="ng-row__k">Posted by</span><span className="ng-row__v truncate font-normal">{job.created_by === mineId ? <span className="text-ink-dim">you</span> : <Link href={`/talent/${job.created_by}`} className="text-ink-dim transition hover:text-neon hover:underline">{job.created_by}</Link>}</span></div>
                     <div className="ng-row !py-1.5"><span className="ng-row__k">Executor</span><span className="ng-row__v font-normal capitalize text-ink-dim">{(job.executor_kind ?? "either").replace(/_/g, " ")}</span></div>
                     {job.required_skills.length > 0 && <div className="ng-row !py-1.5"><span className="ng-row__k">Skills</span><span className="ng-row__v flex gap-1.5 font-normal">{job.required_skills.slice(0, 2).map((s) => <Tag key={s} className="!text-[9px]">{s}</Tag>)}{job.required_skills.length > 2 && <span className="text-[9px] text-ink-faint">+{job.required_skills.length - 2}</span>}</span></div>}
                   </div>

@@ -25,6 +25,12 @@ export const SCHEMAS: Record<AttestationSchemaKey, { name: string; dimension: st
   milestone_shipped: { name: "Milestone Shipped", dimension: "builder", blurb: "A funded milestone released by backers." },
   project_launched: { name: "Project Launched", dimension: "founder", blurb: "Passed the security-audit gate." },
   agent_trusted: { name: "Agent Trusted", dimension: "agent", blurb: "Earned the trusted tier on a verified track record." },
+  // threshold badges (audit Wave 3) — the dimensions that earned reputation but
+  // could never mint a portable credential
+  trusted_backer: { name: "Backer of Delivered Work", dimension: "backer", blurb: "Backed a raise whose milestones actually shipped." },
+  verified_trader: { name: "Verified Trader", dimension: "trader", blurb: "A real, sustained trading record on NeuGrid markets." },
+  top_creator: { name: "Top Creator", dimension: "creator", blurb: "A listed product with verified 4★+ reviews." },
+  trusted_reviewer: { name: "Trusted Reviewer", dimension: "reviewer", blurb: "Multiple security audits verified for the community." },
 };
 
 function store(): Attestation[] {
@@ -83,6 +89,30 @@ function desiredForUser(uid: string): Desired[] {
     const aud = auditFor(g.grid_id);
     if (aud?.status === "passed") out.push({ schema: "project_launched", source_ref: g.grid_id, title: g.name, proof_ref: aud.audit_id, wallet,
       fields: { stage: g.lifecycle_stage ?? "alpha", verifier: aud.reviewer_id ?? "—" } });
+  }
+
+  // — threshold badges: derived from the same verified state, reconciled like the rest —
+  const myBackings = db.backings.filter((b) => b.backer_id === uid && !b.refunded);
+  if (myBackings.some((b) => db.milestones.some((m) => m.grid_id === b.grid_id && m.status === "released"))) {
+    out.push({ schema: "trusted_backer", source_ref: `backer:${uid}`, title: "Backer of delivered work", wallet,
+      fields: { backings: myBackings.length, delivered: myBackings.filter((b) => db.milestones.some((m) => m.grid_id === b.grid_id && m.status === "released")).length } });
+  }
+  const myTrades = db.trades.filter((t) => t.user_id === uid);
+  if (myTrades.length >= 25) {
+    out.push({ schema: "verified_trader", source_ref: `trader:${uid}`, title: "Verified trader", wallet,
+      fields: { trades: myTrades.length, volume_usd: Math.round(myTrades.reduce((s, t) => s + (t.quote ?? 0), 0)) } });
+  }
+  const ownGrids = new Set(db.grids.filter((g) => g.owner_id === uid).map((g) => g.grid_id));
+  for (const p of db.products.filter((p) => ownGrids.has(p.grid_id))) {
+    const reviews = (db.productReviews ?? []).filter((r) => r.product_id === p.product_id);
+    const avg = reviews.length ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length : 0;
+    if (reviews.length >= 3 && avg >= 4) out.push({ schema: "top_creator", source_ref: p.product_id, title: p.name, wallet,
+      fields: { reviews: reviews.length, rating: Math.round(avg * 10) / 10 } });
+  }
+  const reviewedAudits = db.audits.filter((a) => a.reviewer_id === uid && a.reviewed_at).length;
+  if (reviewedAudits >= 2) {
+    out.push({ schema: "trusted_reviewer", source_ref: `reviewer:${uid}`, title: "Trusted reviewer", wallet,
+      fields: { audits: reviewedAudits } });
   }
   return out;
 }

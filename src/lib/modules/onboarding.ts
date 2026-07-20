@@ -68,10 +68,14 @@ export interface StarterState {
   needs_verification: boolean; // blocked ONLY by the PoH gate (→ /rewards to verify)
   credit: number; // unspent starter credit
   amount: number; // current grant size (governable)
-  builds: number; // owner's Echo builds — step 3 completes the path
-  show: boolean; // the /home strip renders only while the path is live
+  builds: number; // owner's Echo builds — step 3
+  listed: boolean; // step 4 — a build listed on GridX or deployed live
+  earning: boolean; // step 5 — first real money in (any settled payout: sale, job, milestone)
+  show: boolean; // the /home strip renders only while the journey is live
 }
-/** The 3-step starter path state — drives the /home STARTER PATH strip. */
+/** The 5-step journey state — drives the /home STARTER PATH strip. Extended past
+ *  build #1 (connectivity audit Wave 1): the path now hands off to list → earn
+ *  instead of vanishing the moment the first build ships. */
 export function starterState(user_id: string): StarterState {
   const user = db.users.find((u) => u.id === user_id);
   const wallet = user?.wallet_addresses?.[0];
@@ -84,7 +88,11 @@ export function starterState(user_id: string): StarterState {
   const otherwise_eligible = wallet_connected && !claimed && amount > 0 && !walletUsed(wallet as string);
   const needs_verification = otherwise_eligible && !gate_ok;
   const eligible = otherwise_eligible && gate_ok;
-  // live until the first build ships; after that the economy takes over
-  const show = builds === 0 && (eligible || needs_verification || credit > 0 || !wallet_connected);
-  return { wallet_connected, claimed, eligible, needs_verification, credit, amount, builds, show };
+  const myBuilds = db.builds.filter((b) => b.owner_id === user_id);
+  const listed = myBuilds.some((b) => b.product_id || b.deployment);
+  const earning = db.settlements.some((s) => s.payee === user_id && s.status === "settled");
+  // live until the WHOLE journey lands (build → list → first earn); done = the economy took over
+  const journeyDone = builds > 0 && listed && earning;
+  const show = !journeyDone && (eligible || needs_verification || credit > 0 || !wallet_connected || builds > 0);
+  return { wallet_connected, claimed, eligible, needs_verification, credit, amount, builds, listed, earning, show };
 }

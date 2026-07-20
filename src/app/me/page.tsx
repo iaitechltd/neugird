@@ -40,7 +40,7 @@ export default function MePage() {
   const [toast, setToast] = useState<string | null>(null);
   function notify(msg: string) { setToast(msg); window.clearTimeout((notify as unknown as { t?: number }).t); (notify as unknown as { t?: number }).t = window.setTimeout(() => setToast(null), 2400); }
 
-  const [me, setMe] = useState<{ demo?: boolean; username?: string; pulse?: number; reputation?: { total?: number; by_dimension?: Record<string, number> } | null; joined_grids?: string[]; skills?: string[]; balances?: { usdc: number; grid: number }; reward?: { accrued: number; sybil_adjusted: number; sybil_factor: number; claimed: number; rate: number; breakdown: { dimension: string; units: number; events: number }[]; vests_at_tge: boolean; tge?: { executed: boolean; at: string }; vesting?: { total: number; released: number; claimable: number; vested_pct: number; unlock_pct: number; cliff_days: number; duration_days: number; start_at: string } | null } | null; rep_events?: { action: string; weight: number; reason: string; at: string }[]; rep_series?: number[]; income?: { total: number; direct: number; agents_total: number; series: number[]; recent: { kind: string; amount: number; at: string }[] }; follows?: { followers: number; following: number } } | null>(null);
+  const [me, setMe] = useState<{ demo?: boolean; id?: string; username?: string; empire?: { holdings_usd: number; positions: number; claimable_markets: number; staking_fees_usd: number; ventures: number; venture_treasury_grid: number; open_raises: number }; pulse?: number; reputation?: { total?: number; by_dimension?: Record<string, number> } | null; joined_grids?: string[]; skills?: string[]; balances?: { usdc: number; grid: number }; reward?: { accrued: number; sybil_adjusted: number; sybil_factor: number; claimed: number; rate: number; breakdown: { dimension: string; units: number; events: number }[]; vests_at_tge: boolean; tge?: { executed: boolean; at: string }; vesting?: { total: number; released: number; claimable: number; vested_pct: number; unlock_pct: number; cliff_days: number; duration_days: number; start_at: string } | null } | null; rep_events?: { action: string; weight: number; reason: string; at: string }[]; rep_series?: number[]; income?: { total: number; direct: number; agents_total: number; series: number[]; recent: { kind: string; amount: number; at: string }[] }; follows?: { followers: number; following: number } } | null>(null);
   const [builds, setBuilds] = useState<Build[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -202,7 +202,7 @@ export default function MePage() {
             <div className="flex items-start gap-4">
               <MatrixAvatar seed={me?.username ?? "node"} size={72} shape="square" />
               <div className="min-w-0 flex-1">
-                <div className="ng-title flex items-center gap-2 text-xl font-bold text-neon text-glow"><Decrypt text={me?.username ?? "—"} /> <Verified /></div>
+                <div className="ng-title flex items-center gap-2 text-xl font-bold text-neon text-glow"><Decrypt text={me?.username ?? "—"} /> <Verified />{me?.id && <Link href={`/passport/${me.id}`} className="ml-1 text-[10px] font-normal tracking-wider text-ink-faint transition hover:text-neon" title="your machine-readable identity document">[ passport → ]</Link>}</div>
                 <div className="mt-0.5 flex items-center gap-2 text-[11px] text-ink-dim"><Tag>Builder</Tag><span className="flex items-center gap-1"><span className="ng-led" />Online</span></div>
                 {me?.skills && me.skills.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{me.skills.map((s) => <Tag key={s}>{s}</Tag>)}</div>}
                 <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-[12px] text-ink-dim">
@@ -346,6 +346,18 @@ export default function MePage() {
 
         {/* RIGHT */}
         <OrbPanel label="Signal" open={rOpen} onToggle={setROpen} widthClass="lg:w-[320px] xl:w-[340px]">
+          {/* THE EMPIRE — everything you HOLD, in one readout (income shows what moved;
+              this shows token wealth, claimables, staking income, company fuel) */}
+          {me?.empire && (
+            <Panel title="THE EMPIRE" icon={<IconCoins className="h-4 w-4" />} bodyClass="p-3.5">
+              <div className="ng-row !py-1.5"><span className="ng-row__k">Token holdings</span><Mark plain className="!text-[12px]">${me.empire.holdings_usd.toLocaleString()}</Mark></div>
+              <div className="ng-row !py-1.5"><span className="ng-row__k">Positions</span><span className="ng-row__v font-normal">{me.empire.positions}</span></div>
+              {me.empire.claimable_markets > 0 && <div className="ng-row !py-1.5"><span className="ng-row__k">Claimable carves</span><Link href="/markets" className="ng-row__v font-normal text-cyan hover:underline">{me.empire.claimable_markets} market{me.empire.claimable_markets === 1 ? "" : "s"} →</Link></div>}
+              {me.empire.staking_fees_usd > 0 && <div className="ng-row !py-1.5"><span className="ng-row__k">Staking income</span><span className="ng-row__v font-normal text-neon">${me.empire.staking_fees_usd.toLocaleString()}</span></div>}
+              {me.empire.ventures > 0 && <div className="ng-row !py-1.5"><span className="ng-row__k">Companies</span><Link href="/ventures" className="ng-row__v font-normal hover:text-neon">{me.empire.ventures} · {me.empire.venture_treasury_grid.toLocaleString()} GRID fuel →</Link></div>}
+              {me.empire.open_raises > 0 && <div className="ng-row !py-1.5"><span className="ng-row__k">Open raises</span><Link href="/genesis/board" className="ng-row__v font-normal hover:text-neon">{me.empire.open_raises} →</Link></div>}
+            </Panel>
+          )}
           <Panel scroll title="SIGNAL" icon={<IconShield className="h-4 w-4" />} action={<IconChevronDown className="h-4 w-4 text-ink-dim" />} bodyClass="p-3.5">
             <PanelChart title="Rep · momentum" read={`${rep} now`}>
               {repSeries.length > 1
