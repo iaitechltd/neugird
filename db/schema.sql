@@ -371,6 +371,7 @@ create table if not exists markets (
   fraud_flags   jsonb,      -- Verifier fraud reports; halt+slash at quorum
   onchain       jsonb,      -- T1 AMM mirror: {pool, base_mint, program, cluster, txs[]}
   founder_allocation jsonb,  -- the founder's vested token carve {user_id, vesting}
+  dividends     jsonb,      -- revenue share: {acc_per_token, accrued, claimed} — sales stream to holders
   created_at    timestamptz not null default now()
 );
 
@@ -378,6 +379,7 @@ create table if not exists markets (
 create table if not exists holdings (
   market_id text    not null references markets(market_id) on delete cascade,
   user_id   text    not null references users(id) on delete cascade,
+  div_debt      numeric,    -- dividend accounting debt (masterchef)
   base      numeric not null default 0,
   primary key (market_id, user_id)
 );

@@ -78,7 +78,7 @@ export interface DB {
   milestoneApprovals: { milestone_id: string; backer_id: string; support?: boolean }[]; // backer milestone votes (support=false ⇒ against)
   tokens: Token[];
   markets: Market[];
-  holdings: { market_id: string; user_id: string; base: number }[];
+  holdings: { market_id: string; user_id: string; base: number; div_debt?: number }[]; // div_debt = dividend accounting (masterchef-style; see markets.ts revenue share)
   trades: { market_id: string; user_id: string; side: "buy" | "sell"; base: number; quote: number; price: number; at: string }[];
   audits: Audit[];
   builds: Build[]; // Echo build engine — witnessed builds (proof of build)

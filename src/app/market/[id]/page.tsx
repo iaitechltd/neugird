@@ -47,7 +47,7 @@ type Prov = {
   backers: { id: string; username: string; amount: number; reputation: number }[];
 } | null;
 type Data =
-  | { market: Market & { grid_name?: string; marketcap?: number }; grid: GridInfo; trades: Trade[]; holders: Holder[]; holder_count: number; stats: Stats; holding: number; allocation?: { total: number; vested: number; claimed: number; claimable: number; vest_days: number; upfront_bps: number } | null; founder_allocation?: { total: number; vested: number; claimed: number; claimable: number; vest_days: number; upfront_bps: number } | null; wallet: { usdc: number; grid: number }; progress: Progress; graduation: Grad; stake: StakeInfo; roadmap: Milestone[]; orderBook: Book; orders: Order[]; positions: Pos[]; maxLeverage: number; funding: Funding; provenance: Prov; my_stakes: MyStake[]; staker_fees: number; can_flag: boolean; flagged: boolean; fraud_flags?: number; fraud_quorum?: number }
+  | { market: Market & { grid_name?: string; marketcap?: number }; grid: GridInfo; trades: Trade[]; holders: Holder[]; holder_count: number; stats: Stats; holding: number; allocation?: { total: number; vested: number; claimed: number; claimable: number; vest_days: number; upfront_bps: number } | null; founder_allocation?: { total: number; vested: number; claimed: number; claimable: number; vest_days: number; upfront_bps: number } | null; dividends?: { accrued: number; claimed: number; my_claimable: number; share_bps: number } | null; wallet: { usdc: number; grid: number }; progress: Progress; graduation: Grad; stake: StakeInfo; roadmap: Milestone[]; orderBook: Book; orders: Order[]; positions: Pos[]; maxLeverage: number; funding: Funding; provenance: Prov; my_stakes: MyStake[]; staker_fees: number; can_flag: boolean; flagged: boolean; fraud_flags?: number; fraud_quorum?: number }
   | null
   | "missing";
 
@@ -930,6 +930,20 @@ export default function MarketTerminal() {
                       <div className="ng-row !py-1"><span className="ng-row__k">Claimable</span><Mark plain accent="cyan" className="!text-[11px]">{Math.floor(d.allocation.claimable).toLocaleString()}</Mark></div>
                     </div>
                     <button onClick={() => act(`/api/markets/${id}/claim-allocation`, {}, `Claimed ${Math.floor(d.allocation?.claimable ?? 0).toLocaleString()} ${m.base_symbol}`, { nothing_vested: "Nothing vested yet — check back as the schedule unlocks" })} disabled={busy || (d.allocation.claimable ?? 0) < 1} className="ng-btn ng-btn-cyan ng-btn--block mt-2 disabled:opacity-40"><IconBolt className="h-3.5 w-3.5" /> Claim vested {m.base_symbol}</button>
+                  </div>
+                )}
+
+                {/* INCOME SHARE — the revenue-share pivot: this token pays from real sales */}
+                {d.dividends && (
+                  <div className="mt-5 border-t border-line pt-3">
+                    <div className="ng-label mb-1 flex items-center gap-2 !text-neon"><IconCoins className="h-3.5 w-3.5" />Income share</div>
+                    <p className="text-[10px] leading-relaxed text-ink-dim">{d.dividends.share_bps / 100}% of every real sale of this project&apos;s product streams to {m.base_symbol} holders. Not a bet — a piece of the income.</p>
+                    <div className="mt-2 divide-y divide-line text-[11px]">
+                      <div className="ng-row !py-1"><span className="ng-row__k">Streamed to holders</span><Mark plain className="!text-[11px]">${d.dividends.accrued.toLocaleString()}</Mark></div>
+                      <div className="ng-row !py-1"><span className="ng-row__k">Claimed so far</span><span className="ng-row__v font-normal text-ink-dim">${d.dividends.claimed.toLocaleString()}</span></div>
+                      <div className="ng-row !py-1"><span className="ng-row__k">Your claimable</span><Mark plain className="!text-[11px]">${d.dividends.my_claimable.toLocaleString()}</Mark></div>
+                    </div>
+                    <button onClick={() => act(`/api/markets/${id}/claim-dividends`, {}, `Claimed $${d.dividends?.my_claimable.toLocaleString()} of sales income`, { nothing_accrued: "Nothing accrued yet — income streams in as the product sells", not_a_holder: "Hold the token to earn its income share" })} disabled={busy || (d.dividends.my_claimable ?? 0) < 0.01} className="ng-btn ng-btn-primary ng-btn--block mt-2 disabled:opacity-40"><IconCoins className="h-3.5 w-3.5" /> Claim sales income</button>
                   </div>
                 )}
 

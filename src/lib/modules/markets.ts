@@ -19,7 +19,7 @@ import * as Params from "./params";
 import * as GridMarket from "./gridMarket";
 import * as Rewards from "./rewards";
 import { Amm as ChainAmm } from "../chain";
-import type { Audit, Backing, LimitOrder, Market, MarketStage, Token, Vesting } from "../types";
+import type { Audit, Backing, LimitOrder, Market, MarketStage, Settlement, Token, Vesting } from "../types";
 
 const INITIAL_SUPPLY = 1_000_000;
 const SEED_LIQUIDITY = 10_000;
@@ -273,9 +273,7 @@ export function claimBackerAllocation(market_id: string, user_id: string): { cla
     if (due > 1e-9) { v.released = (v.released ?? 0) + due; claimTotal += due; }
   }
   if (claimTotal <= 1e-9) return { error: "nothing_vested" };
-  let holding = db.holdings.find((h) => h.market_id === market_id && h.user_id === user_id);
-  if (!holding) { holding = { market_id, user_id, base: 0 }; db.holdings.push(holding); }
-  holding.base += claimTotal;
+  const holding = adjustHolding(market_id, user_id, claimTotal);
   m.holders = recountHolders(market_id);
   return { claimed: claimTotal, holding: holding.base };
 }
@@ -297,11 +295,67 @@ export function claimFounderAllocation(market_id: string, user_id: string): { cl
   const due = vestedOf(fa.vesting) - (fa.vesting.released ?? 0);
   if (due <= 1e-9) return { error: "nothing_vested" };
   fa.vesting.released = (fa.vesting.released ?? 0) + due;
-  let holding = db.holdings.find((h) => h.market_id === market_id && h.user_id === user_id);
-  if (!holding) { holding = { market_id, user_id, base: 0 }; db.holdings.push(holding); }
-  holding.base += due;
+  const holding = adjustHolding(market_id, user_id, due);
   m.holders = recountHolders(market_id);
   return { claimed: due, holding: holding.base };
+}
+
+/* ---- REVENUE SHARE — real sales stream to token holders (the 2026-07-20 pivot:
+ * "buying the token = owning a piece of the product's income", not a bet on hype).
+ * Masterchef-style accumulator: O(1) per sale, exact per holder across trades —
+ * every holding mutation MUST go through adjustHolding so the debt stays true. */
+function heldSupply(market_id: string): number {
+  return db.holdings.filter((h) => h.market_id === market_id && h.base > 1e-9).reduce((s, h) => s + h.base, 0);
+}
+/** Central holding mutation — updates dividend debt with the base so newcomers
+ *  can't claim history and sellers keep what accrued while they held. */
+function adjustHolding(market_id: string, user_id: string, delta: number) {
+  let h = db.holdings.find((x) => x.market_id === market_id && x.user_id === user_id);
+  if (!h) { h = { market_id, user_id, base: 0 }; db.holdings.push(h); }
+  const acc = db.markets.find((m) => m.market_id === market_id)?.dividends?.acc_per_token ?? 0;
+  h.base += delta;
+  h.div_debt = (h.div_debt ?? 0) + delta * acc;
+  return h;
+}
+/** Accrue a sale's holder-share into the market's dividend pool. Returns the
+ *  amount actually accrued (0 when nobody holds — the owner keeps it all). */
+export function accrueDividend(market_id: string, amount: number): number {
+  const m = getMarket(market_id);
+  if (!m || !(amount > 0)) return 0;
+  const held = heldSupply(market_id);
+  if (held <= 1e-9) return 0;
+  const d = (m.dividends ??= { acc_per_token: 0, accrued: 0, claimed: 0 });
+  d.acc_per_token += amount / held;
+  d.accrued = Math.round((d.accrued + amount) * 100) / 100;
+  return amount;
+}
+/** A holder's income-share position on a market. */
+export function dividendView(market_id: string, user_id: string): { accrued: number; claimed: number; my_claimable: number; share_bps: number } | null {
+  const m = getMarket(market_id);
+  if (!m?.dividends) return null;
+  const h = db.holdings.find((x) => x.market_id === market_id && x.user_id === user_id);
+  const claimable = h ? Math.max(0, h.base * m.dividends.acc_per_token - (h.div_debt ?? 0)) : 0;
+  return { accrued: m.dividends.accrued, claimed: m.dividends.claimed, my_claimable: Math.floor(claimable * 100) / 100, share_bps: Params.get("token_revenue_share_bps") };
+}
+/** Claim every USDC of sales-share this holder has earned — real money, conserved
+ *  (the pool wallet was credited at sale time). */
+export function claimDividends(market_id: string, user_id: string): { claimed?: number; error?: string } {
+  const m = getMarket(market_id);
+  if (!m?.dividends) return { error: "no_dividends" };
+  const h = db.holdings.find((x) => x.market_id === market_id && x.user_id === user_id);
+  if (!h) return { error: "not_a_holder" };
+  const due = Math.floor(Math.max(0, h.base * m.dividends.acc_per_token - (h.div_debt ?? 0)) * 100) / 100;
+  if (due < 0.01) return { error: "nothing_accrued" };
+  if (!Wallets.debitUsdc(`neugrid:div:${market_id}`, due)) return { error: "pool_short" };
+  Wallets.creditUsdc(user_id, due);
+  h.div_debt = h.base * m.dividends.acc_per_token;
+  m.dividends.claimed = Math.round((m.dividends.claimed + due) * 100) / 100;
+  (db.settlements ??= []).push({
+    settlement_id: newId("setl"), payer_id: `neugrid:div:${market_id}`, payee: user_id,
+    resource: `dividend:${market_id}`, amount: due, asset: "USDC", network: "solana",
+    scheme: "exact", proof: newId("rcpt"), status: "settled", created_at: nowISO(),
+  } as Settlement);
+  return { claimed: due };
 }
 
 function recountHolders(market_id: string): number {
@@ -328,7 +382,7 @@ type SwapResult = { filled?: number; fee?: number; fee_in?: "usdc" | "grid"; fee
 function executeSwap(m: Market, user_id: string, side: "buy" | "sell", amount: number): SwapResult {
   const base = m.base_reserve ?? 0, quote = m.quote_reserve ?? 0;
   const k = base * quote;
-  let holding = db.holdings.find((h) => h.market_id === m.market_id && h.user_id === user_id);
+  const holding = db.holdings.find((h) => h.market_id === m.market_id && h.user_id === user_id);
 
   if (side === "buy") {
     // amount = USDC in (gross). Protocol fee in USDC — OR in GRID at a discount.
@@ -342,8 +396,7 @@ function executeSwap(m: Market, user_id: string, side: "buy" | "sell", amount: n
     const baseOut = base - k / newQuote;
     m.quote_reserve = newQuote;
     m.base_reserve = k / newQuote;
-    if (!holding) { holding = { market_id: m.market_id, user_id, base: 0 }; db.holdings.push(holding); }
-    holding.base += baseOut;
+    adjustHolding(m.market_id, user_id, baseOut);
     m.volume = (m.volume ?? 0) + amount;
     m.price = m.quote_reserve / m.base_reserve;
     m.holders = recountHolders(m.market_id);
@@ -362,7 +415,7 @@ function executeSwap(m: Market, user_id: string, side: "buy" | "sell", amount: n
   const net = gridFee ? quoteOut : quoteOut - feeUsdc; // GRID-paid → full USDC out to the seller
   m.base_reserve = newBase;
   m.quote_reserve = k / newBase;
-  holding.base -= amount;
+  adjustHolding(m.market_id, user_id, -amount);
   Wallets.creditUsdc(user_id, net);
   if (!gridFee) Wallets.creditUsdc(Wallets.TREASURY, feeUsdc - Staking.distributeFees(m.grid_id, (feeUsdc * Staking.STAKER_FEE_SHARE_BPS) / 10000));
   m.volume = (m.volume ?? 0) + quoteOut;
@@ -655,7 +708,7 @@ function fillCrossedOrders(market_id: string): void {
         if (!(release > FILL_DUST)) continue;
         let holding = db.holdings.find((h) => h.market_id === m.market_id && h.user_id === o.user_id);
         if (!holding) { holding = { market_id: m.market_id, user_id: o.user_id, base: 0 }; db.holdings.push(holding); }
-        holding.base += release; // hand the escrowed tokens back for the swap to consume
+        adjustHolding(m.market_id, o.user_id, release); // hand the escrowed tokens back for the swap to consume
         const r = executeSwap(m, o.user_id, "sell", release);
         if (r.error) { holding.base -= release; continue; }
         o.escrow_base -= release;

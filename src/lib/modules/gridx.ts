@@ -143,9 +143,25 @@ export function purchase(product_id: string, buyer_id: string): { product?: Prod
   if (price > 0) {
     if (!Wallets.debitUsdc(buyer_id, price)) return { error: "insufficient_usdc" };
     const fee = Math.round(price * Params.get("gridx_fee_bps")) / 10_000;
-    Wallets.creditUsdc(owner, price - fee);
+    let ownerNet = price - fee;
+    // REVENUE SHARE (the 2026-07-20 pivot): when this product's project has a
+    // token, a governable slice of every sale streams to its HOLDERS — the token
+    // is a piece of the product's real income, not a bet on hype. The founder
+    // holds a vested carve, so builders share their own upside. No holders yet
+    // → the owner keeps it all (accrue returns 0).
+    const market = db.markets.find((m) => m.grid_id === product.grid_id);
+    if (market) {
+      const want = Math.round(ownerNet * Params.get("token_revenue_share_bps")) / 10_000;
+      const shared = want > 0.009 ? Markets.accrueDividend(market.market_id, Math.round(want * 100) / 100) : 0;
+      if (shared > 0) {
+        ownerNet = Math.round((ownerNet - shared) * 100) / 100;
+        Wallets.creditUsdc(`neugrid:div:${market.market_id}`, shared);
+        recordReceipt(buyer_id, `neugrid:div:${market.market_id}`, `dividend_accrual:${market.market_id}`, shared);
+      }
+    }
+    Wallets.creditUsdc(owner, ownerNet);
     if (fee > 0) Wallets.creditUsdc(TREASURY, fee);
-    recordReceipt(buyer_id, owner, `product_purchase:${product_id}`, price - fee);
+    recordReceipt(buyer_id, owner, `product_purchase:${product_id}`, ownerNet);
     if (fee > 0) recordReceipt(buyer_id, TREASURY, `product_fee:${product_id}`, fee);
   }
   pushEvent(product_id, buyer_id, "purchase");

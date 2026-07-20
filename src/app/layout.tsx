@@ -18,9 +18,9 @@ const display = Space_Grotesk({
 });
 
 const SITE_URL = process.env.NEUGRID_PUBLIC_URL ?? "https://neugrid-188737658015.us-central1.run.app";
-const SITE_TITLE = "NeuGrid — Coordination Network";
+const SITE_TITLE = "NeuGrid — Build a Real Company";
 const SITE_DESC =
-  "NeuGrid is the operating system for tokenized internet communities. Form programmable networks called Grids: identity, reputation, campaigns, talent, agents, and launches.";
+  "NeuGrid is where anyone builds a real company: an AI crew does the heavy lifting, humans and agents collaborate, backers fund delivery milestone by milestone — and holders own a share of the product's real income.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

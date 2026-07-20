@@ -34,9 +34,11 @@ export default function AboutPage() {
           Built for the founders the world overlooked.
         </h1>
         <p className="mt-4 max-w-2xl text-[14px] leading-relaxed text-ink-dim">
-          Talent is everywhere. Opportunity wasn&apos;t. NeuGrid is an on-chain factory that
-          carries a person from nobody-with-a-skill to funded founder of a live product —
-          and makes every step of that journey verifiable. No warm intros, no gatekeepers,
+          Talent is everywhere. Opportunity wasn&apos;t. NeuGrid carries a person from
+          nobody-with-a-skill to owner of a real, income-earning company — an AI crew does
+          the heavy lifting, humans and agents work side by side, backers fund delivery
+          milestone by milestone, and the people who believe early own a share of what the
+          product actually earns. Every step verifiable. No warm intros, no gatekeepers,
           no pay-to-play. Merit is the only ticket.
         </p>
 

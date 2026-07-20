@@ -29,33 +29,33 @@ const SEAM = 1.0; // seconds before a clip's end that the crossfade to its fresh
 const SCENES: SceneDef[] = [
   {
     img: "/landing/scene-1.jpg", video: "/landing/scene-1.mp4",
-    titleLines: [{ t: "NeuGrid:", accent: true }, { t: "The Programmable Economy Layer" }, { t: "for Internet Communities" }],
-    subtitle: "From idea to community, talent, campaigns, funding, agents, and tokenized launch, NeuGrid gives anyone the full path to build, grow, and scale their own digital economy.",
+    titleLines: [{ t: "NeuGrid:", accent: true }, { t: "Where Anyone Builds" }, { t: "a Real Company" }],
+    subtitle: "An AI crew does the heavy lifting. Humans and agents work side by side. Backers fund delivery, not promises — and the builder owns the upside.",
   },
   {
     img: "/landing/scene-2.jpg", video: "/landing/scene-2.mp4",
-    titleLines: [{ t: "Where communities" }, { t: "become economies.", accent: true }],
-    subtitle: "Powered by Solana and ICP, NeuGrid lets communities form, coordinate, earn Pulse, launch SubGrids, activate talent, and evolve into on-chain economies.",
+    titleLines: [{ t: "Where builders" }, { t: "become owners.", accent: true }],
+    subtitle: "Form a team of people and AI agents, ship a real product, and share in what it earns — ownership written down, split by contribution.",
   },
   {
     img: "/landing/scene-3.jpg", video: "/landing/scene-3.mp4",
     titleLines: [{ t: "Where work" }, { t: "becomes worth.", accent: true }],
-    subtitle: "Every build, hire, and contribution earns Pulse — the on-chain reputation that turns proof-of-work into real ownership. Earned, never bought.",
+    subtitle: "Every build, hire, and delivery earns Pulse — a track record that turns proven work into real ownership. Earned, never bought.",
   },
   {
     img: "/landing/scene-4.jpg", video: "/landing/scene-4.mp4",
-    titleLines: [{ t: "From spark" }, { t: "to full scale.", accent: true }],
-    subtitle: "A community forms a Grid, spins up SubGrids, and activates talent and agents — then evolves into a living, self-sustaining on-chain economy.",
+    titleLines: [{ t: "From an idea" }, { t: "to income.", accent: true }],
+    subtitle: "Describe it, and your crew builds it. Hire help, get funded milestone by milestone, ship it, sell it — a business that pays you, not a pitch deck.",
   },
   {
     img: "/landing/scene-5.jpg", video: "/landing/scene-5.mp4",
-    titleLines: [{ t: "Composable. Verifiable." }, { t: "Yours.", accent: true }],
-    subtitle: "Grids, credentials, markets, and agents interlock as programmable building blocks — settled on Solana and ICP, owned by the people who build them.",
+    titleLines: [{ t: "Proof. Not promises." }, { t: "Yours.", accent: true }],
+    subtitle: "Every step is on the record — the code, the deliveries, the sales. Buyers and backers see receipts, not claims. And the record belongs to you.",
   },
   {
     img: "/landing/what-you-can-do.jpg", video: "/landing/what-you-can-do.mp4",
     titleLines: [{ t: "One platform." }, { t: "The full path.", accent: true }],
-    subtitle: "From a spark of an idea to a tokenized, self-running economy — every step happens here, and every step is earned.",
+    subtitle: "Idea → build → team → funding → customers → income you can share. Every step happens here, and every step is earned.",
   },
   {
     img: "/landing/why-neugrid-exists.jpg", video: "/landing/why-neugrid-exists.mp4",

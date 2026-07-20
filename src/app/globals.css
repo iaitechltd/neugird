@@ -505,3 +505,32 @@ textarea:focus-visible {
 @keyframes ng-beam-sweep {
   to { --ng-beam: 360deg; }
 }
+
+/* THE BACKER PLATE — iAI.tech's seat on every footer. LIGHT ONLY (founder):
+   no stroke, no fill, no box — just a comet of light orbiting an invisible ring.
+   Technique: a masked ::before keeps ONLY the 1px ring of the conic visible, so
+   the page texture runs uninterrupted beneath the plate. */
+.ng-backer-plate { position: relative; }
+.ng-backer-plate::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px; /* the ring's thickness */
+  background: conic-gradient(from var(--ng-beam),
+    transparent 0deg,
+    transparent 296deg,
+    rgba(125, 255, 171, 0.8) 330deg,
+    #d9ffe4 344deg,
+    transparent 352deg,
+    transparent 360deg);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: ng-beam-sweep 6s linear infinite;
+  pointer-events: none;
+}
+.ng-backer-plate:hover::before { animation-duration: 2.2s; }
+@media (prefers-reduced-motion: reduce) {
+  .ng-backer-plate::before { display: none; }
+}

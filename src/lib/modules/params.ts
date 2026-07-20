@@ -11,7 +11,7 @@
 
 import { db } from "../store";
 
-export type ParamKey = "tradex_fee_bps" | "echo_build_cost_grid" | "grid_market_fee_bps" | "gov_quorum_grid" | "grid_fee_discount_bps" | "campaign_ghost_days" | "hire_autorelease_days" | "echo_revision_cost_grid" | "echo_ask_cost_grid" | "echo_deploy_cost_grid" | "fraud_flag_quorum" | "agent_perf_fee_bps" | "genesis_raise_days" | "genesis_stall_days" | "gridx_fee_bps" | "affiliate_fee_share_bps" | "backer_allocation_bps" | "founder_allocation_bps" | "starter_credit_grid" | "dispute_quorum" | "dispute_window_days" | "skill_market_fee_bps" | "starter_gate_tier" | "rewards_gate_tier" | "max_trade_impact_bps" | "perp_oi_cap_bps" | "buyback_bps" | "season_days" | "venture_cycle_cost_grid" | "venture_revenue_share_bps" | "venture_bounty_grid" | "trade_reward_bps" | "post_reward_pulse" | "emission_epoch_days" | "emission_epoch_bps" | "gov_quorum_bps" | "studio_run_cost_grid";
+export type ParamKey = "tradex_fee_bps" | "echo_build_cost_grid" | "grid_market_fee_bps" | "gov_quorum_grid" | "grid_fee_discount_bps" | "campaign_ghost_days" | "hire_autorelease_days" | "echo_revision_cost_grid" | "echo_ask_cost_grid" | "echo_deploy_cost_grid" | "fraud_flag_quorum" | "agent_perf_fee_bps" | "genesis_raise_days" | "genesis_stall_days" | "gridx_fee_bps" | "affiliate_fee_share_bps" | "backer_allocation_bps" | "founder_allocation_bps" | "token_revenue_share_bps" | "starter_credit_grid" | "dispute_quorum" | "dispute_window_days" | "skill_market_fee_bps" | "starter_gate_tier" | "rewards_gate_tier" | "max_trade_impact_bps" | "perp_oi_cap_bps" | "buyback_bps" | "season_days" | "venture_cycle_cost_grid" | "venture_revenue_share_bps" | "venture_bounty_grid" | "trade_reward_bps" | "post_reward_pulse" | "emission_epoch_days" | "emission_epoch_bps" | "gov_quorum_bps" | "studio_run_cost_grid";
 
 export type ParamUnit = "bps" | "grid" | "days" | "count";
 
@@ -35,6 +35,7 @@ export const DEFAULTS: Record<ParamKey, number> = {
   affiliate_fee_share_bps: 1000, // referrers' share of their referrals' protocol fees (10%, first 12mo)
   backer_allocation_bps: 2000, // share of a project token reserved for its Fund backers at Alpha launch (20%)
   founder_allocation_bps: 1000, // share of a project token vested to the FOUNDER at launch (10%) — market success returns to its maker
+  token_revenue_share_bps: 2000, // slice of every product sale streamed to the project's TOKEN HOLDERS (20%) — the token = a piece of real income
   starter_credit_grid: 500, // one-time Echo compute credit granted on first wallet connect (= one build)
   dispute_quorum: 3, // distinct reputation-staked evaluators required to resolve a delivery dispute
   dispute_window_days: 3, // a rejected escrowed job's worker may contest for this long before the rejection finalizes
@@ -76,6 +77,7 @@ export const META: Record<ParamKey, { label: string; unit: ParamUnit; min: numbe
   affiliate_fee_share_bps: { label: "Affiliate fee share", unit: "bps", min: 0, max: 5_000 }, // ≤50%
   backer_allocation_bps: { label: "Backer token share", unit: "bps", min: 0, max: 3_000 }, // ≤30% — the pool keeps the float
   founder_allocation_bps: { label: "Founder token share", unit: "bps", min: 0, max: 2_000 }, // ≤20% — vested, longer than backers
+  token_revenue_share_bps: { label: "Sales → token holders", unit: "bps", min: 0, max: 5_000 }, // ≤50% — the owner keeps the rest
   starter_credit_grid: { label: "Starter Echo credit", unit: "grid", min: 0, max: 5_000 }, // 0 = governance killed the grant
   dispute_quorum: { label: "Dispute panel quorum", unit: "count", min: 2, max: 9 },
   dispute_window_days: { label: "Dispute window", unit: "days", min: 1, max: 30 },

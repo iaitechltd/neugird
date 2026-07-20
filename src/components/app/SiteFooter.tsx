@@ -90,8 +90,9 @@ export default function SiteFooter() {
               <span className="ng-title text-[16px] font-bold tracking-tight text-neon">NeuGrid</span>
             </Link>
             <p className="mt-3 max-w-xs text-[12px] leading-relaxed text-ink-dim">
-              The on-chain factory for entrepreneurs — from first skill to funded founder,
-              every step verifiable. Merit is the only ticket. Earned, not bought.
+              Where anyone builds a real company — an AI crew, human collaborators,
+              milestone funding, and income you can share. Every step on the record.
+              Merit is the only ticket. Earned, not bought.
             </p>
             <p className="mt-4 inline-flex items-center gap-2 border border-amber/30 px-2 py-1 font-mono text-[10px] text-amber">
               TEST NETWORK · balances carry no real value
@@ -127,20 +128,24 @@ export default function SiteFooter() {
             <span className="block sm:inline">Settled on Solana · logic on ICP · reputation soulbound</span>
           </div>
 
-          {/* Backed by iAI.tech — the company behind NeuGrid */}
+          {/* THE BACKER PLATE — iAI.tech, the company behind NeuGrid (founder,
+              2026-07-20: "my company name… make it visible, with power"). A powered
+              plate: eyebrow + a commanding wordmark, the MARK on the RIGHT, and a
+              slow light orbiting the border — the same living-current language as
+              the platform's focus beam. */}
           <a
             href="https://iai.tech"
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Backed by iAI.tech"
-            className="group inline-flex shrink-0 items-center gap-2.5"
+            className="group ng-backer-plate relative inline-flex shrink-0 items-center gap-3 px-3.5 py-2"
           >
-            <span className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-ink-faint">Backed by</span>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/iai-tech-logo.png" alt="iAI.tech" className="h-[26px] w-auto shrink-0 translate-y-[0.5px] opacity-90 transition group-hover:opacity-100" />
-            <span className="ng-title text-[15px] font-bold leading-none tracking-tight text-ink transition-colors group-hover:text-neon">
+            <span className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-ink-faint transition-colors group-hover:text-ink-dim">Backed by</span>
+            <span className="ng-title text-[17px] font-bold leading-none tracking-tight text-ink transition-colors group-hover:text-neon">
               iAI<span className="text-ink-dim transition-colors group-hover:text-neon">.tech</span>
             </span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/iai-tech-logo.png" alt="iAI.tech" className="h-[34px] w-auto shrink-0 opacity-95 transition group-hover:opacity-100" />
           </a>
         </div>
       </div>

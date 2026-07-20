@@ -846,6 +846,10 @@ export interface Market {
   /** The FOUNDER's vested token carve (governable founder_allocation_bps) — market
    *  success returns to the maker. Mirrors the backer vesting shape; claim lands in holdings. */
   founder_allocation?: { user_id: string; vesting: Vesting };
+  /** REVENUE SHARE (the 2026-07-20 pivot): real product sales stream to token
+   *  holders — masterchef accumulator, claims in USDC. Buying the token = owning
+   *  a piece of the product's actual income. */
+  dividends?: { acc_per_token: number; accrued: number; claimed: number };
   created_at: ISODate;
 }
 
