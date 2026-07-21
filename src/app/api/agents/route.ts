@@ -37,9 +37,13 @@ export async function POST(request: Request) {
     spend_limit_per_job: typeof body.spend_limit_per_job === "number" ? body.spend_limit_per_job : undefined,
     grid_id: typeof body.grid_id === "string" ? body.grid_id : undefined,
   });
-  // persona at create-time — same owner-gated path as /api/agents/[id]/persona
+  // persona at create-time — same owner-gated path as /api/agents/[id]/persona.
+  // No persona given → the casting desk writes one, so every agent is BORN with
+  // a voice (falls back to a deterministic template when the brain is out).
   if (body.persona && typeof body.persona === "object" && !Array.isArray(body.persona) && Object.keys(body.persona).length) {
     AgentWork.setPersona(agent.agent_id, owner_id, body.persona);
+  } else {
+    await AgentWork.draftPersona(agent.agent_id, owner_id);
   }
-  return NextResponse.json({ agent }, { status: 201 });
+  return NextResponse.json({ agent: Agents.getAgent(agent.agent_id) ?? agent }, { status: 201 });
 }

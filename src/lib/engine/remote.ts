@@ -75,6 +75,9 @@ export async function runEngineBuildRemote(opts: EngineRunOpts, mode: "acp" | "h
   // the runner enforces the real timeouts; ours is a safety net over the wire
   const ctl = new AbortController();
   const wire = setTimeout(() => ctl.abort(), (opts.timeout_ms ?? 600_000) + 60_000);
+  // the owner's STOP aborts the wire and ends the run client-side; the runner's own
+  // timeouts reap the engine on the VM (best-effort v1 — the money refunds regardless)
+  if (opts.on_start) { try { opts.on_start(() => ctl.abort()); } catch { /* observer errors never break the run */ } }
 
   let res: Response;
   try {

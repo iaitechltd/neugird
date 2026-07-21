@@ -494,6 +494,30 @@ textarea:focus-visible {
   .ng-marquee { animation: none; }
 }
 
+/* THE STAGE (Studio build theater) — the crew-at-work organism's motion:
+   chips IGNITE as the engine's sealed actions land, the canvas carries a slow
+   scan sweep while a build is live, the active phase node breathes. Pure CSS
+   (runs even in hidden tabs — the rAF gotcha never bites), reduced-motion safe. */
+@keyframes ng-ignite {
+  from { opacity: 0; transform: translateY(5px); }
+  60% { opacity: 1; }
+  to { opacity: 1; transform: none; }
+}
+.ng-ignite { animation: ng-ignite 0.45s ease-out both; }
+@keyframes ng-scan-y {
+  0% { top: -12%; }
+  100% { top: 112%; }
+}
+.ng-scan-y { animation: ng-scan-y 2.8s linear infinite; }
+@keyframes ng-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.ng-breathe { animation: ng-breathe 1.5s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .ng-ignite, .ng-scan-y, .ng-breathe { animation: none; }
+}
+
 /* THE BEAM — the traveling light on a focused input's border (see .ng-input:focus).
    @property lets the conic angle interpolate; without support the ring renders
    static (graceful) and reduced-motion gets a solid border instead. */

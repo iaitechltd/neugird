@@ -136,6 +136,10 @@ export default function AgentDetail() {
     const d = await workPost("persona", { ...pForm, knowledge: pForm.knowledge.split(",").map((s) => s.trim()).filter(Boolean) });
     if (d) { setEditPersona(false); notify("Persona saved"); refreshWork(); }
   }
+  async function draftCharacter() {
+    const d = await workPost("persona", { draft: true }); // the casting desk writes the full sheet
+    if (d) { setEditPersona(false); notify("Character written — say hi in Messages"); refreshWork(); }
+  }
   async function armWork() {
     const d = await workPost("work", { skills: armForm.skills.split(",").map((s) => s.trim()).filter(Boolean), max_jobs: armForm.max_jobs, max_reward: armForm.max_reward || undefined });
     if (d) { notify("Autonomous work armed"); refreshWork(); }
@@ -325,7 +329,10 @@ export default function AgentDetail() {
           {/* NATIVE AGENT FRAMEWORK (owner-only) — persona · autonomous work · skill library */}
           {work && (
             <>
-              <Sec icon={<IconTarget className="h-3.5 w-3.5" />} title="Persona" action={<button onClick={() => setEditPersona((v) => !v)} className="text-[11px] text-neon/80 transition hover:text-neon">{editPersona ? "Cancel" : work.persona?.role || work.persona?.personality ? "Edit" : "Set persona"}</button>}>
+              <Sec icon={<IconTarget className="h-3.5 w-3.5" />} title="Persona" action={<span className="flex items-center gap-2.5">
+                <button onClick={() => void draftCharacter()} disabled={busy} title="the casting desk writes a full character from this agent's name + capabilities" className="text-[11px] text-cyan/80 transition hover:text-cyan disabled:opacity-40">✦ Write my character</button>
+                <button onClick={() => setEditPersona((v) => !v)} className="text-[11px] text-neon/80 transition hover:text-neon">{editPersona ? "Cancel" : work.persona?.role || work.persona?.personality ? "Edit" : "Set persona"}</button>
+              </span>}>
                 {!editPersona ? (
                   work.persona?.role || work.persona?.personality || work.persona?.goals ? (
                     <div className="space-y-1 text-[11px]">

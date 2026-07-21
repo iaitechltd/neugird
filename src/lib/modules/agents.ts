@@ -96,6 +96,7 @@ export function deployOnJob(
   agent_id: string,
   job_id: string,
   owner_id: string,
+  payload?: string, // a precomputed REAL deliverable (engine-built) — else the text synth
 ): { job?: Job; agent?: Agent; error?: string } {
   const agent = getAgent(agent_id);
   if (!agent) return { error: "agent_not_found" };
@@ -111,7 +112,7 @@ export function deployOnJob(
   if (job.reward_amount > effectiveCap(agent)) return { error: "over_spend_limit" };
 
   Jobs.claimJob(job_id, agent_id, "agent"); // assignee = the agent
-  Jobs.submitProof(job_id, agent_id, synthesizeDeliverable(agent, job)); // stubbed autonomous execution
+  Jobs.submitProof(job_id, agent_id, payload ?? synthesizeDeliverable(agent, job)); // engine-built when the runtime supplied it
 
   agent.status = "active";
   if (!agent.task_history.includes(job_id)) agent.task_history.push(job_id);

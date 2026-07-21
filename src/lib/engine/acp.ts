@@ -151,6 +151,10 @@ export async function runEngineBuildAcp(opts: EngineRunOpts): Promise<EngineResu
     };
 
     const timer = setTimeout(() => { timedOut = true; finishFromState("engine_timeout"); }, opts.timeout_ms ?? 600_000);
+    if (opts.on_start) {
+      try { opts.on_start(() => finishFromState("stopped_by_owner")); } // rides the full teardown: cancel → group kill → straggler sweep
+      catch { /* observer errors never break the run */ }
+    }
 
     function finishFromState(error?: string, promptResult?: Record<string, unknown>) {
       const after = snapshot(opts.workdir);

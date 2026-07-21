@@ -34,6 +34,12 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     return NextResponse.json({ ...r, view: Studio.view(id, uid) });
   }
 
+  if (action === "stop") {
+    const r = Studio.stopRun(id, uid);
+    if (r.error) return NextResponse.json(r, { status: r.error === "not_found" ? 404 : 400 });
+    return NextResponse.json({ ...r, view: Studio.view(id, uid) });
+  }
+
   if (action === "rules") {
     const r = Studio.setRules(id, uid, String(body?.rules ?? ""));
     if (r.error) return NextResponse.json(r, { status: r.error === "not_found" ? 404 : 400 });

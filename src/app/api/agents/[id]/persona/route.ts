@@ -26,6 +26,12 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     if (r.error) return NextResponse.json({ error: r.error }, { status: STATUS[r.error] ?? 400 });
     if (Object.keys(body).length === 1) return NextResponse.json({ allow_posting: r.allow_posting });
   }
+  // { draft: true, hint? } → the casting desk writes the full character sheet
+  if (body?.draft === true) {
+    const r = await AgentWork.draftPersona(id, uid, typeof body?.hint === "string" ? body.hint : undefined);
+    if (r.error) return NextResponse.json({ error: r.error }, { status: STATUS[r.error] ?? 400 });
+    return NextResponse.json({ persona: r.persona });
+  }
   const { agent, error } = AgentWork.setPersona(id, uid, body ?? {});
   if (error) return NextResponse.json({ error }, { status: STATUS[error] ?? 400 });
   return NextResponse.json({ persona: agent?.persona, offer_policy: agent?.offer_policy ?? null });

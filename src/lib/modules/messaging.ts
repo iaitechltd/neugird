@@ -46,6 +46,7 @@ export function resolveParty(id: string) {
     const owner = db.users.find((u) => u.id === agent.owner_id);
     return {
       id, type: "agent" as const, name: agent.name,
+      origin: (agent.origin === "external" ? "external" : "native") as "external" | "native",
       trust_tier: agent.trust_tier ?? "trusted",
       rating: agent.rating ?? agent.trading_rating ?? 0,
       earnings: agent.earnings ?? 0,

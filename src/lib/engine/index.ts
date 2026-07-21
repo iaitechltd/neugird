@@ -64,6 +64,7 @@ export interface EngineRunOpts {
   effort?: "low" | "medium" | "high"; // --reasoning-effort for the hands' brain
   memory?: boolean;                // --experimental-memory — the workshop remembers across sessions
   on_event?: (ev: EngineEvent) => void; // live step callback (progress UIs, trail capture); errors in it are swallowed
+  on_start?: (kill: () => void) => void; // handed a kill switch once the run is live — the owner's STOP button rides it
 }
 
 /* ------------------------------ availability ------------------------------ */
@@ -168,6 +169,10 @@ export async function runEngineBuild(opts: EngineRunOpts): Promise<EngineResult>
 
   return await new Promise<EngineResult>((resolve) => {
     const child = spawn(bin, args, { env, stdio: ["ignore", "pipe", "pipe"] });
+    if (opts.on_start) {
+      try { opts.on_start(() => { child.kill("SIGTERM"); setTimeout(() => child.kill("SIGKILL"), 5_000).unref(); }); }
+      catch { /* observer errors never break the run */ }
+    }
     const events: EngineEvent[] = [];
     const textParts: string[] = [];
     let endEvent: Record<string, unknown> | null = null;

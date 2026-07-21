@@ -26,7 +26,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { db } from "../store";
 import { newId, nowISO } from "../id";
-import { engineAvailable, engineBin, engineMode, runEngineBuild, type EngineEvent, type EngineRunOpts } from "../engine";
+import { engineAvailable, engineBin, engineMode, runEngineBuild, type EngineEvent, type EngineResult, type EngineRunOpts } from "../engine";
 import { runEngineBuildAcp } from "../engine/acp";
 import { runEngineBuildRemote } from "../engine/remote";
 import { ensureStopGateInstalled, armStopGate, disarmStopGate } from "../engine/stopGate";
@@ -53,6 +53,8 @@ const TEXT_EXT = new Set([".html", ".css", ".js", ".mjs", ".ts", ".tsx", ".jsx",
 const SKIP_DIRS = new Set([".git", ".grok", "node_modules", ".next", "target"]);
 
 const runsInFlight = new Set<string>(); // per-workspace mutex — one engine run at a time
+const runKillers = new Map<string, () => void>(); // the live kill switch per building workspace (the STOP button)
+const stopRequested = new Set<string>(); // the owner asked to stop — the failure path words it as a stop, not a crash
 const draftsInFlight = new Set<string>(); // per-workspace mutex — one launch-asset draft at a time
 
 function workroot(): string {
@@ -193,7 +195,7 @@ function mountSkills(ws: StudioWorkspace): void {
 const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "skill";
 
 /** Collect the project's text files from the workdir (capped, jailed, binaries skipped). */
-function collectFiles(dir: string): BuildFile[] {
+export function collectFiles(dir: string): BuildFile[] {
   const out: BuildFile[] = [];
   let bytes = 0;
   const walk = (d: string) => {
@@ -219,7 +221,7 @@ function collectFiles(dir: string): BuildFile[] {
 
 /** Bundle the multi-file app into ONE standalone page (the preview/deploy rail's
  *  contract) — local css/js inlined into the root index.html. Same code, bundled. */
-function standalone(files: BuildFile[]): string | null {
+export function standalone(files: BuildFile[]): string | null {
   const index = files.find((f) => f.path === "index.html");
   if (!index) return null;
   const byPath = new Map(files.map((f) => [f.path, f.content]));
@@ -266,9 +268,9 @@ export function runCostFor(quality: RunQuality): number {
  *  config.toml model (passed to the binary per run); chief/chatter are API model ids. */
 export function studioBrains(): { chief: string; hands: string; chatter: string } {
   return {
-    chief: process.env.NEUGRID_STUDIO_BRAIN_CHIEF || "claude-fable-5",
+    chief: process.env.NEUGRID_STUDIO_BRAIN_CHIEF || "grok-4.5", // ALL-GROK (founder, 2026-07-21)
     hands: process.env.NEUGRID_STUDIO_BRAIN_HANDS || process.env.NEUGRID_ENGINE_MODEL || "neugrid-claude",
-    chatter: process.env.NEUGRID_STUDIO_BRAIN_CHATTER || "claude-haiku-4-5-20251001",
+    chatter: process.env.NEUGRID_STUDIO_BRAIN_CHATTER || "grok-4.5", // ALL-GROK
   };
 }
 
@@ -393,6 +395,7 @@ async function executeRun(workspace_id: string, owner_id: string, ask: string, c
       memory: !!ws.memory_enabled,
       max_turns: quality === "best3" ? 60 : 40, // three racing candidates need headroom
       timeout_ms: quality === "standard" ? 15 * 60_000 : 25 * 60_000,
+      on_start: (kill: () => void) => runKillers.set(ws.workspace_id, kill),
       on_event: (ev: EngineEvent) => {
         if (ev.type === "text" && typeof ev.data === "string" && ev.data) {
           if (useAcp) {
@@ -416,12 +419,19 @@ async function executeRun(workspace_id: string, owner_id: string, ask: string, c
     const runner = local
       ? (useAcp ? runEngineBuildAcp : runEngineBuild)
       : (o: EngineRunOpts) => runEngineBuildRemote(o, useAcp ? "acp" : "headless");
-    // resume the warm engine session when we have one (local headless only); a dead handle gets one fresh retry
-    let res = await runner(ws.engine_session_id && !useAcp && local ? { ...opts, resume_session: ws.engine_session_id } : opts);
-    if (!res.ok && ws.engine_session_id && !useAcp && local && res.files_changed.length === 0) {
-      pushTrail(ws, "run", "stale engine session — retrying fresh");
-      res = await runEngineBuild(opts);
+    // the owner may have hit STOP while the chief was still briefing — never start the engine
+    let res: EngineResult;
+    if (stopRequested.has(ws.workspace_id)) {
+      res = { ok: false, error: "stopped_by_owner", text: "", files_changed: [], duration_ms: 0, exit_code: null, events: [] };
+    } else {
+      // resume the warm engine session when we have one (local headless only); a dead handle gets one fresh retry
+      res = await runner(ws.engine_session_id && !useAcp && local ? { ...opts, resume_session: ws.engine_session_id } : opts);
+      if (!res.ok && !stopRequested.has(ws.workspace_id) && ws.engine_session_id && !useAcp && local && res.files_changed.length === 0) {
+        pushTrail(ws, "run", "stale engine session — retrying fresh");
+        res = await runEngineBuild(opts);
+      }
     }
+    runKillers.delete(ws.workspace_id);
     flushNarrate(); // seal any trailing narration
     if (quality === "gated") disarmStopGate(workdirOf(ws)); // the gate is per-run — leave the workspace clean
 
@@ -431,17 +441,21 @@ async function executeRun(workspace_id: string, owner_id: string, ask: string, c
     const files = produced ? collectFiles(workdirOf(ws)) : [];
 
     if (!produced || files.length === 0) {
-      // engine failed outright — the builder gets their GRID back (reclaim from treasury, echo's pattern)
+      const stopped = stopRequested.delete(ws.workspace_id) || res.error === "stopped_by_owner";
+      // engine failed (or the owner pulled the plug) — the builder gets their GRID back
       if (cost > 0 && Wallets.debitGrid(Wallets.TREASURY, cost)) Wallets.creditGrid(owner_id, cost);
       ws.spent_grid = round2(Math.max(0, ws.spent_grid - cost));
       ws.status = "idle";
       ws.progress = undefined;
-      pushTrail(ws, "error", `engine run failed: ${res.error ?? "no output"}`);
+      pushTrail(ws, stopped ? "run" : "error", stopped ? "run stopped by the owner — GRID refunded" : `engine run failed: ${res.error ?? "no output"}`);
       sealTrail(ws);
-      pushTurn(ws, { role: "engine", text: `The engine couldn't complete that run (${res.error ?? "no output"}). Your ${cost} GRID was refunded — try rephrasing the directive.`, error: res.error ?? "no_output", duration_s });
+      pushTurn(ws, stopped
+        ? { role: "engine", text: `Stopped. Your ${cost} GRID is back in your wallet — the workshop is ready for the next directive.`, error: "stopped", duration_s }
+        : { role: "engine", text: `The engine couldn't complete that run (${res.error ?? "no output"}). Your ${cost} GRID was refunded — try rephrasing the directive.`, error: res.error ?? "no_output", duration_s });
       ws.updated_at = nowISO();
       return;
     }
+    stopRequested.delete(ws.workspace_id); // a stop that lands after the ship is a no-op — the work is real
 
     // bundle the app for the preview/deploy rail (one standalone page, honestly inlined)
     const page = standalone(files);
@@ -568,7 +582,26 @@ async function executeRun(workspace_id: string, owner_id: string, ask: string, c
     }
   } finally {
     runsInFlight.delete(workspace_id);
+    runKillers.delete(workspace_id);
+    stopRequested.delete(workspace_id);
   }
+}
+
+/** The owner pulls the plug on a live run. The engine dies (or never starts, if the
+ *  chief was still briefing), the run resolves through the SAME failure path as an
+ *  engine_timeout — GRID refunds, the trail seals the stop, the workshop goes idle.
+ *  One state machine, no special cases. */
+export function stopRun(workspace_id: string, owner_id: string): { ok?: true; error?: string } {
+  const ws = get(workspace_id);
+  if (!ws) return { error: "not_found" };
+  if (ws.owner_id !== owner_id) return { error: "not_owner" };
+  if (ws.status !== "building") return { error: "not_building" };
+  stopRequested.add(workspace_id);
+  ws.progress = "stopping…";
+  ws.updated_at = nowISO();
+  const kill = runKillers.get(workspace_id);
+  if (kill) { try { kill(); } catch { /* already gone */ } }
+  return { ok: true };
 }
 
 /** The owner answers the chief's "revise" verdict: approve fires a normal PAID run

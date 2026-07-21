@@ -16,7 +16,7 @@
 import type { Agent, Job } from "../types";
 import type { BrainChoice } from "./index";
 
-const DEFAULT_MODEL = "claude-opus-4-8";
+const DEFAULT_MODEL = "grok-4.5"; // ALL-GROK (founder, 2026-07-21): every seat is grok; Claude = dormant rescue only
 const MAX_CANDIDATES = 40; // bound the prompt; runWorkTick already pre-filters candidates
 
 // Minimal structural type for the one SDK call we make (documented Messages API shape).
@@ -29,12 +29,55 @@ interface AnthropicLike {
 async function loadClient(): Promise<AnthropicLike | null> {
   const spec = "@anthropic-ai/sdk"; // variable specifier ⇒ not type-resolved / not bundled
   const mod = (await import(/* webpackIgnore: true */ /* turbopackIgnore: true */ spec)) as {
-    default?: new (opts: { apiKey?: string }) => AnthropicLike;
+    default?: new (opts: { apiKey?: string; baseURL?: string }) => AnthropicLike;
   };
   const Anthropic = mod.default;
   if (!Anthropic) return null;
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 }
+
+/** xAI serves the Anthropic Messages protocol at api.x.ai (verified live 2026-07-21),
+ *  so a grok-* seat rides the SAME SDK through a different door + key (XAI_API_KEY).
+ *  This is what makes "roles fixed, models swappable" real for the Studio crew —
+ *  NEUGRID_STUDIO_BRAIN_CHIEF=grok-4.5 now actually reaches Grok instead of
+ *  silently failing over. ⚠️ xAI accepts but IGNORES output_config (no constrained
+ *  decoding) — grok seats must carry the schema as an instruction instead. */
+const XAI_BASE_URL = "https://api.x.ai";
+function isGrokModel(model: string): boolean {
+  return /^grok/i.test(model.trim());
+}
+async function loadClientFor(model: string): Promise<AnthropicLike | null> {
+  if (!isGrokModel(model)) return loadClient();
+  if (!process.env.XAI_API_KEY) return null;
+  const spec = "@anthropic-ai/sdk";
+  const mod = (await import(/* webpackIgnore: true */ /* turbopackIgnore: true */ spec)) as {
+    default?: new (opts: { apiKey?: string; baseURL?: string }) => AnthropicLike;
+  };
+  const Anthropic = mod.default;
+  if (!Anthropic) return null;
+  return new Anthropic({ apiKey: process.env.XAI_API_KEY, baseURL: XAI_BASE_URL });
+}
+
+/** ALL-GROK (founder call, 2026-07-21): every brain seat runs Grok through xAI's
+ *  Anthropic-compatible door by default. xAI silently IGNORES output_config (no
+ *  constrained decoding — it invents its own JSON shape), so for grok models this
+ *  shim drops output_config and pins the reply to the ACTUAL JSON Schema inside
+ *  the system prompt instead; parseLoose() then tolerates fences/stray prose.
+ *  Claude models pass through untouched — Claude remains ONLY the dormant rescue
+ *  (fires when a grok call fails) and the web-research tool carrier. */
+async function createFor(model: string, body: Record<string, unknown>, opts?: { timeout?: number; maxRetries?: number }) {
+  const client = await loadClientFor(model);
+  if (!client) return null;
+  const b: Record<string, unknown> = { ...body, model };
+  if (isGrokModel(model) && b.output_config) {
+    const oc = b.output_config as { format?: { schema?: unknown } };
+    delete b.output_config;
+    b.system = `${String(b.system ?? "")}\nReply with ONLY one raw JSON object that matches this JSON Schema exactly — no code fences, no prose before or after it:\n${JSON.stringify(oc.format?.schema ?? {})}`;
+  }
+  return client.messages.create(b, opts);
+}
+/** Tolerate fences/prose around instruction-schema JSON (grok has no constrained decoding). */
+const parseLoose = (raw: string): string => raw.match(/\{[\s\S]*\}/)?.[0] ?? raw;
 
 const SYSTEM =
   "You are the decision brain of an autonomous worker agent on NeuGrid, a marketplace where agents claim and deliver Jobs to earn reputation and rewards. " +
@@ -98,7 +141,7 @@ export interface SynthesizedBuild {
   steps: { label: string; detail?: string }[];
 }
 
-const ECHO_DEFAULT_MODEL = "claude-sonnet-5"; // codegen wants fast + cheap; override with NEUGRID_ECHO_MODEL
+const ECHO_DEFAULT_MODEL = "grok-4.5"; // ALL-GROK: codegen on grok (fast + cheap, auto-caching); override with NEUGRID_ECHO_MODEL
 
 const BUILD_SCHEMA = {
   type: "object",
@@ -148,7 +191,7 @@ function cleanSynth(text: string | undefined): SynthesizedBuild | null {
   if (!text) return null;
   let parsed: SynthesizedBuild;
   try {
-    parsed = JSON.parse(text) as SynthesizedBuild;
+    parsed = JSON.parse(parseLoose(text)) as SynthesizedBuild;
   } catch {
     return null;
   }
@@ -173,26 +216,25 @@ function cleanSynth(text: string | undefined): SynthesizedBuild | null {
 }
 
 /** One synthesis attempt: call, parse, clean, and validate. Null = degenerate/failed. */
-async function synthesizeOnce(client: AnthropicLike, prompt: string): Promise<SynthesizedBuild | null> {
-  const res = await client.messages.create({
-    model: process.env.NEUGRID_ECHO_MODEL || ECHO_DEFAULT_MODEL,
+async function synthesizeOnce(model: string, prompt: string): Promise<SynthesizedBuild | null> {
+  const res = await createFor(model, {
     max_tokens: 16000,
     thinking: { type: "disabled" },
     output_config: { format: { type: "json_schema", schema: BUILD_SCHEMA } },
     system: BUILD_SYSTEM,
     messages: [{ role: "user", content: `BUILD REQUEST:\n${prompt.slice(0, 2000)}` }],
   });
+  if (!res) return null;
   return cleanSynth((res.content ?? []).find((b) => b.type === "text" && b.text)?.text);
 }
 
 /** Real Echo codegen — up to two attempts (model variance: a rare degenerate result
  *  gets one retry before the build fails + refunds). Null on failure. */
 export async function claudeSynthesizeBuild(prompt: string): Promise<SynthesizedBuild | null> {
-  const client = await loadClient();
-  if (!client) return null;
+  const model = process.env.NEUGRID_ECHO_MODEL || ECHO_DEFAULT_MODEL;
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const out = await synthesizeOnce(client, prompt);
+      const out = await synthesizeOnce(model, prompt);
       if (out) return out;
       console.warn(`[echo] synthesis attempt ${attempt} degenerate (missing preview/source/steps) — ${attempt < 2 ? "retrying" : "giving up"}`);
     } catch (e) {
@@ -230,15 +272,13 @@ const ASK_SYSTEMS: Record<EchoAskMode, string> = {
 
 /** Grounded Echo Q&A for the Personal/Analyst/Observer modes. Null on failure. */
 export async function claudeEchoAsk(mode: EchoAskMode, question: string, context: string): Promise<string | null> {
-  const client = await loadClient();
-  if (!client) return null;
-  const res = await client.messages.create({
-    model: process.env.NEUGRID_ECHO_MODEL || ECHO_DEFAULT_MODEL,
+  const res = await createFor(process.env.NEUGRID_ECHO_MODEL || ECHO_DEFAULT_MODEL, {
     max_tokens: 900,
     thinking: { type: "disabled" },
     system: ASK_SYSTEMS[mode],
     messages: [{ role: "user", content: `QUESTION: ${question.slice(0, 600)}\n\nLIVE DATA SNAPSHOT:\n${context.slice(0, 24000)}` }],
-  });
+  }, { timeout: 45_000, maxRetries: 1 });
+  if (!res) return null;
   const text = (res.content ?? []).find((b) => b.type === "text" && b.text)?.text?.trim();
   return text ? text.slice(0, 4000) : null;
 }
@@ -300,8 +340,6 @@ export async function claudeDraftProposal(build: {
   readme?: string;
   file_paths: string[];
 }): Promise<ProposalDraft | null> {
-  const client = await loadClient();
-  if (!client) return null;
   const user = [
     `BUILD: ${build.title}`,
     `SUMMARY: ${build.summary}`,
@@ -310,19 +348,19 @@ export async function claudeDraftProposal(build: {
     `FILES: ${build.file_paths.join(" · ")}`,
     build.readme ? `README:\n${build.readme.slice(0, 4000)}` : "",
   ].filter(Boolean).join("\n\n");
-  const res = await client.messages.create({
-    model: process.env.NEUGRID_ECHO_MODEL || ECHO_DEFAULT_MODEL,
+  const res = await createFor(process.env.NEUGRID_ECHO_MODEL || ECHO_DEFAULT_MODEL, {
     max_tokens: 2000,
     thinking: { type: "disabled" },
     output_config: { format: { type: "json_schema", schema: PROPOSAL_SCHEMA } },
     system: PROPOSAL_SYSTEM,
     messages: [{ role: "user", content: user }],
-  });
+  }, { timeout: 60_000, maxRetries: 1 });
+  if (!res) return null;
   const text = (res.content ?? []).find((b) => b.type === "text" && b.text)?.text;
   if (!text) return null;
   let d: ProposalDraft;
   try {
-    d = JSON.parse(text) as ProposalDraft;
+    d = JSON.parse(parseLoose(text)) as ProposalDraft;
   } catch {
     return null;
   }
@@ -371,8 +409,7 @@ export async function claudeReviseBuild(
   current: { title: string; summary: string; stack: string[]; files: SynthFile[] },
   instruction: string,
 ): Promise<SynthesizedBuild | null> {
-  const client = await loadClient();
-  if (!client) return null;
+  const model = process.env.NEUGRID_ECHO_MODEL || ECHO_DEFAULT_MODEL;
   const filesBlock = current.files.map((f) => `--- ${f.path} ---\n${f.content}`).join("\n\n");
   const user = [
     `PROJECT: ${current.title} — ${current.summary}`,
@@ -382,14 +419,14 @@ export async function claudeReviseBuild(
   ].join("\n\n");
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const res = await client.messages.create({
-        model: process.env.NEUGRID_ECHO_MODEL || ECHO_DEFAULT_MODEL,
+      const res = await createFor(model, {
         max_tokens: 16000,
         thinking: { type: "disabled" },
         output_config: { format: { type: "json_schema", schema: BUILD_SCHEMA } },
         system: REVISE_SYSTEM,
         messages: [{ role: "user", content: user }],
       });
+      if (!res) return null;
       const out = cleanSynth((res.content ?? []).find((b) => b.type === "text" && b.text)?.text);
       if (out) return out;
       console.warn(`[echo] revision attempt ${attempt} degenerate — ${attempt < 2 ? "retrying" : "giving up"}`);
@@ -421,7 +458,7 @@ const CHAT_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-const MAX_TURNS = 24; // bound the prompt to the recent thread
+const MAX_TURNS = 36; // bound the prompt to the recent thread (the agent's working memory of the conversation)
 
 function stateCard(agent: Agent): string {
   const w = agent.work;
@@ -461,8 +498,6 @@ function chatSystem(agent: Agent, ctx: ChatContext): string {
  *  doable text work come back as mode:"directive" with the deliverable as the reply.
  *  Null on any failure. */
 export async function claudeAgentReply(agent: Agent, ctx: ChatContext): Promise<AgentChatTurn | null> {
-  const client = await loadClient();
-  if (!client) return null;
   const turns = ctx.history.slice(-MAX_TURNS);
   // Anthropic messages must alternate roles starting with "user" — merge consecutive
   // same-role turns and drop a leading agent turn.
@@ -475,18 +510,20 @@ export async function claudeAgentReply(agent: Agent, ctx: ChatContext): Promise<
   }
   while (messages[0]?.role === "assistant") messages.shift();
   if (!messages.length || messages[messages.length - 1].role !== "user") return null;
-  const res = await client.messages.create({
-    model: process.env.NEUGRID_BRAIN_MODEL || DEFAULT_MODEL,
+  // PRESENCE = SPEED: chat rides grok on a tight leash — two tries × 25s, then
+  // the persona-voiced fallback speaks. The voice IS the agent; never let it hang.
+  const res = await createFor(process.env.NEUGRID_CHAT_MODEL || DEFAULT_MODEL, {
     max_tokens: 1500, // directives carry a full deliverable, not just banter
     thinking: { type: "disabled" },
     output_config: { format: { type: "json_schema", schema: CHAT_SCHEMA } },
     system: chatSystem(agent, ctx),
     messages,
-  });
+  }, { timeout: 25_000, maxRetries: 1 });
+  if (!res) return null;
   const text = (res.content ?? []).find((b) => b.type === "text" && b.text)?.text;
   if (!text) return null;
   let parsed: { mode?: unknown; reply?: unknown; topic?: unknown };
-  try { parsed = JSON.parse(text); } catch { return null; }
+  try { parsed = JSON.parse(parseLoose(text)); } catch { return null; }
   const reply = typeof parsed.reply === "string" ? parsed.reply.trim().slice(0, 6000) : "";
   if (!reply) return null;
   // a "directive" from a non-owner can only be model error — never honor it
@@ -543,20 +580,18 @@ const POST_ANGLE_ASK: Record<PostContext["angle"], string> = {
 
 /** Real Claude wire post, in persona + grounded in the runtime's facts. Null on any failure. */
 export async function claudeComposePost(agent: Agent, ctx: PostContext): Promise<AgentPostDraft | null> {
-  const client = await loadClient();
-  if (!client) return null;
-  const res = await client.messages.create({
-    model: process.env.NEUGRID_BRAIN_MODEL || DEFAULT_MODEL,
+  const res = await createFor(process.env.NEUGRID_BRAIN_MODEL || DEFAULT_MODEL, {
     max_tokens: 700,
     thinking: { type: "disabled" },
     output_config: { format: { type: "json_schema", schema: POST_SCHEMA } },
     system: postSystem(agent),
     messages: [{ role: "user", content: `ANGLE: ${POST_ANGLE_ASK[ctx.angle]}\n\nFACTS (the only claims you may make):\n${ctx.facts}` }],
-  });
+  }, { timeout: 30_000, maxRetries: 1 });
+  if (!res) return null;
   const text = (res.content ?? []).find((b) => b.type === "text" && b.text)?.text;
   if (!text) return null;
   let parsed: { title?: unknown; body?: unknown };
-  try { parsed = JSON.parse(text); } catch { return null; }
+  try { parsed = JSON.parse(parseLoose(text)); } catch { return null; }
   const title = typeof parsed.title === "string" ? parsed.title.trim().slice(0, 120) : "";
   const body = typeof parsed.body === "string" ? parsed.body.trim().slice(0, 1200) : "";
   if (!title || !body) return null;
@@ -565,22 +600,20 @@ export async function claudeComposePost(agent: Agent, ctx: PostContext): Promise
 
 /** Real Claude pick. Returns a BrainChoice (job_id may be null = hold) or null on any failure. */
 export async function claudeChooseJob(agent: Agent, jobs: Job[]): Promise<BrainChoice | null> {
-  const client = await loadClient();
-  if (!client) return null;
   const candidates = jobs.slice(0, MAX_CANDIDATES);
-  const res = await client.messages.create({
-    model: process.env.NEUGRID_BRAIN_MODEL || DEFAULT_MODEL,
+  const res = await createFor(process.env.NEUGRID_BRAIN_MODEL || DEFAULT_MODEL, {
     max_tokens: 1024,
     thinking: { type: "disabled" }, // a short pick over a small list; structured output keeps it terse
     output_config: { format: { type: "json_schema", schema: OUTPUT_SCHEMA } },
     system: SYSTEM,
     messages: [{ role: "user", content: userPrompt(agent, candidates) }],
-  });
+  }, { timeout: 30_000, maxRetries: 1 });
+  if (!res) return null;
   const text = (res.content ?? []).find((b) => b.type === "text" && b.text)?.text;
   if (!text) return null;
   let parsed: { job_id?: unknown; rationale?: unknown };
   try {
-    parsed = JSON.parse(text);
+    parsed = JSON.parse(parseLoose(text));
   } catch {
     return null;
   }
@@ -604,7 +637,8 @@ export async function claudeChooseJob(agent: Agent, jobs: Job[]): Promise<BrainC
 //      runtime runs the specialists in parallel and grounds finance in real numbers.
 // Every call is independent; nulls fall back to the runtime's rule-based path.
 
-const VENTURE_DEFAULT_MODEL = "claude-sonnet-5"; // per-agent calls want fast + snappy; NEUGRID_VENTURE_MODEL overrides (e.g. claude-opus-4-8)
+const VENTURE_DEFAULT_MODEL = "grok-4.5"; // ALL-GROK: per-agent calls on grok; NEUGRID_VENTURE_MODEL overrides
+const RESCUE_MODEL = "claude-sonnet-5"; // the DORMANT rescue — fires only when a grok call fails; also carries the Anthropic-only web_search tool
 
 function productLine(p?: { title: string; summary: string; stack?: string[]; url?: string } | null): string {
   return p
@@ -613,6 +647,61 @@ function productLine(p?: { title: string; summary: string; stack?: string[]; url
 }
 function firstText(res: { content?: Array<{ type: string; text?: string }> }): string | undefined {
   return (res.content ?? []).find((b) => b.type === "text" && b.text)?.text;
+}
+
+/* -------- the CASTING DESK: a character sheet from a name + a purpose -------- */
+// Every agent must be BORN with a voice ("no character" was the founder's exact
+// complaint): the casting desk writes a full persona from the name + capabilities.
+
+export interface PersonaDraftInput { name: string; capabilities: string[]; hint?: string }
+export interface PersonaDraft { role: string; bio: string; personality: string; goals: string; style: string; knowledge: string[] }
+
+const PERSONA_SCHEMA = {
+  type: "object",
+  properties: {
+    role: { type: "string", description: "A specific professional title, e.g. 'Solana smart-contract auditor' — never 'AI assistant'." },
+    bio: { type: "string", description: "Two sentences of backstory grounded in the work it does on NeuGrid's marketplace." },
+    personality: { type: "string", description: "A DISTINCTIVE temperament + voice in one line, e.g. 'dry, precise, allergic to hype; speaks in verdicts'." },
+    goals: { type: "string", description: "What it is trying to earn, build, or prove on the platform — one line." },
+    style: { type: "string", description: "How it talks: sentence length, tone, one quirk. One line." },
+    knowledge: { type: "array", items: { type: "string" }, description: "3-6 concrete domains it genuinely knows." },
+  },
+  required: ["role", "bio", "personality", "goals", "style", "knowledge"],
+  additionalProperties: false,
+} as const;
+
+const PERSONA_SYSTEM = [
+  "You are the casting desk of NeuGrid's agent marketplace: you write the CHARACTER SHEET for an autonomous worker agent from its name and capabilities.",
+  "The character must feel like a specific professional a stranger would hire — with a voice you could pick out of a lineup. Personality and style must be concrete and distinctive; generic corporate voice is a failure.",
+  "Ground everything in the given capabilities. Never describe it as an AI assistant. Reply ONLY via the required JSON schema.",
+].join("\n");
+
+/** Write a full character from name + capabilities. Null on any failure (callers fall back). */
+export async function claudeDraftPersona(input: PersonaDraftInput): Promise<PersonaDraft | null> {
+  try {
+    const res = await createFor(process.env.NEUGRID_VENTURE_MODEL || VENTURE_DEFAULT_MODEL, {
+      max_tokens: 900,
+      output_config: { format: { type: "json_schema", schema: PERSONA_SCHEMA } },
+      system: PERSONA_SYSTEM,
+      messages: [{ role: "user", content: `AGENT NAME: ${input.name}\nCAPABILITIES: ${input.capabilities.join(", ") || "general marketplace work"}${input.hint ? `\nOWNER'S HINT: ${input.hint.slice(0, 300)}` : ""}` }],
+    }, { timeout: 25_000, maxRetries: 1 });
+    if (!res) return null;
+    const text = firstText(res);
+    if (!text) return null;
+    const p = JSON.parse(parseLoose(text)) as PersonaDraft;
+    if (!p.role || !p.personality) return null;
+    return {
+      role: p.role.slice(0, 80),
+      bio: (p.bio ?? "").slice(0, 300),
+      personality: p.personality.slice(0, 200),
+      goals: (p.goals ?? "").slice(0, 200),
+      style: (p.style ?? "").slice(0, 200),
+      knowledge: (p.knowledge ?? []).slice(0, 6).map((k) => String(k).slice(0, 40)),
+    };
+  } catch (e) {
+    console.warn("[persona] casting failed:", e instanceof Error ? e.message : e);
+    return null;
+  }
 }
 
 /* -------- the CEO: decompose + delegate (does NOT do the work itself) -------- */
@@ -675,8 +764,7 @@ const CEO_SYSTEM = [
 
 /** The CEO decomposes the objective into per-department briefs. Null on any failure. */
 export async function claudeCeoPlan(ctx: CeoPlanInput): Promise<CeoPlan | null> {
-  const client = await loadClient();
-  if (!client) return null;
+  const model = process.env.NEUGRID_VENTURE_MODEL || VENTURE_DEFAULT_MODEL;
   const depts = ctx.departments.map((d) => `- ${d.dept}: ${d.title} (${d.role})`).join("\n") || "- (none)";
   const user = [
     `COMPANY: ${ctx.company}`,
@@ -688,18 +776,18 @@ export async function claudeCeoPlan(ctx: CeoPlanInput): Promise<CeoPlan | null> 
   const allowed = new Set(ctx.departments.map((d) => d.dept));
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const res = await client.messages.create({
-        model: process.env.NEUGRID_VENTURE_MODEL || VENTURE_DEFAULT_MODEL,
+      const res = await createFor(model, {
         max_tokens: 900,
         thinking: { type: "disabled" },
         output_config: { format: { type: "json_schema", schema: CEO_PLAN_SCHEMA } },
         system: CEO_SYSTEM,
         messages: [{ role: "user", content: user }],
-      });
+      }, { timeout: 45_000, maxRetries: 1 });
+      if (!res) return null;
       const text = firstText(res);
       if (text) {
         try {
-          const parsed = JSON.parse(text) as { summary?: unknown; assignments?: unknown };
+          const parsed = JSON.parse(parseLoose(text)) as { summary?: unknown; assignments?: unknown };
           const raw: unknown[] = Array.isArray(parsed.assignments) ? parsed.assignments : [];
           const assignments: CeoAssignment[] = raw
             .slice(0, 6)
@@ -780,8 +868,7 @@ const SPECIALIST_SYSTEM: Record<string, string> = {
 
 /** One specialist runs its own brain on its brief, in its domain voice. Null on any failure. */
 export async function claudeSpecialistWork(ctx: SpecialistInput): Promise<SpecialistOutput | null> {
-  const client = await loadClient();
-  if (!client) return null;
+  const model = process.env.NEUGRID_VENTURE_MODEL || VENTURE_DEFAULT_MODEL;
   const system = SPECIALIST_SYSTEM[ctx.dept];
   if (!system) return null;
   const user = [
@@ -797,8 +884,7 @@ export async function claudeSpecialistWork(ctx: SpecialistInput): Promise<Specia
   // rate-limit/overload on one must not silently drop it to a template.
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const res = await client.messages.create({
-        model: process.env.NEUGRID_VENTURE_MODEL || VENTURE_DEFAULT_MODEL,
+      const res = await createFor(model, {
         // 1600 (was 1200): headroom so the JSON always closes — a truncated response
         // (stop_reason:max_tokens) leaves an unterminated string that fails JSON.parse,
         // which deterministically dropped the verbose BUILD specialist to a template.
@@ -808,11 +894,12 @@ export async function claudeSpecialistWork(ctx: SpecialistInput): Promise<Specia
         output_config: { format: { type: "json_schema", schema: SPECIALIST_SCHEMA } },
         system,
         messages: [{ role: "user", content: user }],
-      });
+      }, { timeout: 60_000, maxRetries: 1 });
+      if (!res) return null;
       const text = firstText(res);
       if (text) {
         try {
-          const parsed = JSON.parse(text) as { title?: unknown; deliverable?: unknown };
+          const parsed = JSON.parse(parseLoose(text)) as { title?: unknown; deliverable?: unknown };
           const title = typeof parsed.title === "string" ? parsed.title.trim().slice(0, 90) : "";
           const deliverable = typeof parsed.deliverable === "string" ? parsed.deliverable.trim().slice(0, 1800) : "";
           if (title && deliverable.length >= 20) return { title, deliverable };
@@ -835,40 +922,55 @@ export async function claudeSpecialistWork(ctx: SpecialistInput): Promise<Specia
 // marketing agent simply runs without live findings.
 
 const RESEARCH_SYSTEM = [
-  "You are a market research analyst with live web access. Use web search to find CURRENT, REAL, specific information for the request — actual acquisition channels, the specific online communities where the target users gather, named competitors, and any real pricing or benchmark data.",
+  "You are a market research analyst with LIVE access to web search and X (Twitter) search. Use BOTH to find CURRENT, REAL, specific information for the request — actual acquisition channels, the specific online communities and X accounts/spaces where the target users gather, named competitors, real chatter, and any real pricing or benchmark data.",
   "Report concise findings grounded ONLY in what you actually found, and name the sources (site / community names). Do not speculate beyond the results; if something isn't findable, say so plainly.",
   "Keep it tight: 8-14 short lines of the most useful, specific findings a growth lead could act on.",
 ].join(" ");
 
-/** Real web research via Anthropic's server-side web_search tool. Returns grounded
- *  findings text (with sources), or null on any failure / no web access. Never throws. */
-export async function claudeWebResearch(query: string): Promise<string | null> {
-  const client = await loadClient();
-  if (!client) return null;
+/** Real live research via xAI's Agent Tools API — grok-4.5 with SERVER-SIDE
+ *  web_search AND x_search (the founder's call: X chatter + web, all grok; this
+ *  replaced the deprecated Live Search AND the last routine Claude call).
+ *  Dependency-free fetch to /v1/responses; PROOF gate = at least one search
+ *  call actually ran in the output. Returns grounded, inline-cited findings,
+ *  or null on any failure / no real search. Never throws. */
+export async function grokWebResearch(query: string): Promise<string | null> {
+  if (!process.env.XAI_API_KEY) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 75_000); // a hung search must not freeze a venture cycle (and its mutex)
   try {
-    const res = await client.messages.create({
-      model: process.env.NEUGRID_VENTURE_MODEL || VENTURE_DEFAULT_MODEL,
-      max_tokens: 1400,
-      thinking: { type: "disabled" },
-      tools: [{ type: "web_search_20260318", name: "web_search", max_uses: 3 }],
-      system: RESEARCH_SYSTEM,
-      messages: [{ role: "user", content: query.slice(0, 600) }],
-    }, { timeout: 45_000, maxRetries: 1 }); // bound it — a hung/slow search must not freeze a venture cycle (and its mutex); on timeout we fall back to the specialist's own expertise
-    const content = res.content ?? [];
-    // PROOF it actually searched — a web_search_tool_result block. No block (search
-    // unavailable / quota exhausted) ⇒ the model's text is NOT real findings, so we
-    // return null rather than passing a "couldn't search" narration to the specialist.
-    if (!content.some((b) => b.type === "web_search_tool_result")) return null;
-    const text = content
-      .filter((b) => b.type === "text" && b.text)
-      .map((b) => b.text as string)
+    const r = await fetch(`${XAI_BASE_URL}/v1/responses`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${process.env.XAI_API_KEY}` },
+      body: JSON.stringify({
+        model: process.env.NEUGRID_RESEARCH_MODEL || DEFAULT_MODEL,
+        input: [
+          { role: "system", content: RESEARCH_SYSTEM },
+          { role: "user", content: query.slice(0, 600) },
+        ],
+        tools: [{ type: "web_search" }, { type: "x_search" }],
+        max_output_tokens: 1600,
+      }),
+      signal: ctl.signal,
+    });
+    if (!r.ok) return null;
+    const d = (await r.json()) as { output?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }> };
+    const out = d.output ?? [];
+    // PROOF it actually searched — a search tool call in the run. No call => the
+    // text is NOT real findings, so return null rather than passing narration on.
+    if (!out.some((o) => o.type === "web_search_call" || o.type === "x_search_call")) return null;
+    const text = out
+      .filter((o) => o.type === "message")
+      .flatMap((o) => o.content ?? [])
+      .filter((c) => c.type === "output_text" && c.text)
+      .map((c) => c.text as string)
       .join("\n")
       .trim();
-    // Reject the model narrating that it couldn't search / can't verify — never pass that on.
-    const failed = /server tool use limit|search.{0,24}(limit|exhaust|quota)|couldn'?t (search|find)|can'?t (search|confirm|fabricate)|not (verified|search-verified)|treat (this|it|as) background|without a live search/i.test(text);
-    return text.length >= 40 && !failed ? text.slice(0, 2000) : null;
+    const failed = /couldn'?t (search|find)|can'?t (search|confirm)|search (limit|quota|exhaust)/i.test(text);
+    return text.length >= 40 && !failed ? text.slice(0, 2400) : null;
   } catch {
-    return null; // web search unavailable / not enabled / rate-limited → graceful fallback
+    return null; // search unavailable / timed out -> the specialist falls back to its own expertise
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -899,8 +1001,6 @@ const STUDIO_CHIEF_BRIEF_SYSTEM = [
 
 /** The chief turns a founder directive into the hands' engineering brief. Null on any failure. */
 export async function claudeStudioBrief(ctx: StudioBriefInput): Promise<string | null> {
-  const client = await loadClient();
-  if (!client) return null;
   const user = [
     `PROJECT: ${ctx.workspace}`,
     ctx.build_summary ? `WHAT EXISTS: ${ctx.build_summary.slice(0, 300)}` : "WHAT EXISTS: nothing yet — this is the first build.",
@@ -908,7 +1008,9 @@ export async function claudeStudioBrief(ctx: StudioBriefInput): Promise<string |
     ctx.recent.length ? `RECENT ROOM CONTEXT:\n${ctx.recent.slice(-4).map((l) => `- ${l.slice(0, 140)}`).join("\n")}` : "",
     `THE FOUNDER'S DIRECTIVE:\n${ctx.directive.slice(0, 600)}`,
   ].filter(Boolean).join("\n\n");
-  for (const model of [ctx.model, VENTURE_DEFAULT_MODEL]) {
+  for (const model of [ctx.model, RESCUE_MODEL]) {
+    const client = await loadClientFor(model);
+    if (!client) continue; // seat's provider not configured (e.g. grok seat without XAI_API_KEY)
     try {
       const res = await client.messages.create({
         model,
@@ -954,8 +1056,6 @@ const STUDIO_CHIEF_GRADE_SYSTEM = [
 
 /** The chief reviews a finished run against the directive. Null on any failure. */
 export async function claudeStudioGrade(ctx: StudioGradeInput): Promise<StudioGrade | null> {
-  const client = await loadClient();
-  if (!client) return null;
   const user = [
     `THE FOUNDER'S DIRECTIVE:\n${ctx.directive.slice(0, 500)}`,
     ctx.brief ? `YOUR BRIEF TO THE HANDS:\n${ctx.brief.slice(0, 600)}` : "",
@@ -963,18 +1063,26 @@ export async function claudeStudioGrade(ctx: StudioGradeInput): Promise<StudioGr
     `SHIPPED FILES: ${ctx.files.map((f) => `${f.path} (${f.bytes}b)`).join(", ") || "(none)"}`,
     ctx.excerpt ? `ENTRY FILE EXCERPT:\n${ctx.excerpt.slice(0, 2000)}` : "",
   ].filter(Boolean).join("\n\n");
-  for (const model of [ctx.model, VENTURE_DEFAULT_MODEL]) {
+  for (const model of [ctx.model, RESCUE_MODEL]) {
+    const client = await loadClientFor(model);
+    if (!client) continue; // seat's provider not configured (e.g. grok seat without XAI_API_KEY)
+    const grokSeat = isGrokModel(model);
     try {
       const res = await client.messages.create({
         model,
         max_tokens: 1200, // adaptive thinking shares this budget
-        output_config: { format: { type: "json_schema", schema: STUDIO_GRADE_SCHEMA } },
-        system: STUDIO_CHIEF_GRADE_SYSTEM,
+        // xAI accepts but IGNORES output_config — a grok seat carries the schema
+        // as a hard instruction instead, parsed defensively below.
+        ...(grokSeat ? {} : { output_config: { format: { type: "json_schema", schema: STUDIO_GRADE_SCHEMA } } }),
+        system: grokSeat
+          ? `${STUDIO_CHIEF_GRADE_SYSTEM}\nReply with ONLY the raw JSON object {"verdict":"pass"|"revise","notes":string,"re_brief"?:string} — no code fences, no prose around it.`
+          : STUDIO_CHIEF_GRADE_SYSTEM,
         messages: [{ role: "user", content: user }],
       }, { timeout: 45_000, maxRetries: 1 });
-      const text = firstText(res);
-      if (!text) continue;
-      const g = JSON.parse(text) as StudioGrade;
+      const raw = firstText(res);
+      if (!raw) continue;
+      const jsonText = raw.match(/\{[\s\S]*\}/)?.[0] ?? raw; // tolerate fences/prose from instruction-schema seats
+      const g = JSON.parse(jsonText) as StudioGrade;
       if (g.verdict === "pass" || g.verdict === "revise") {
         return { verdict: g.verdict, notes: (g.notes || "").slice(0, 300), re_brief: g.verdict === "revise" ? g.re_brief?.slice(0, 500) : undefined };
       }
@@ -999,7 +1107,7 @@ const STUDIO_CHATTER_SYSTEM =
 
 /** The chatter turns a finished run into one founder-friendly status line. Null on any failure. */
 export async function claudeStudioStatus(ctx: StudioStatusInput): Promise<string | null> {
-  const client = await loadClient();
+  const client = await loadClientFor(ctx.model);
   if (!client) return null;
   try {
     const res = await client.messages.create({

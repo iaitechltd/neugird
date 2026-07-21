@@ -51,3 +51,4 @@ next-env.d.ts
 
 # Echo Studio engine workdirs (re-materialized from the store)
 .studio-workspaces/
+.agent-workspaces/

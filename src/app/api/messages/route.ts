@@ -14,8 +14,15 @@ export async function GET() {
   const uid = await getCurrentUserId();
   // a small directory to start new conversations with — other users + agents
   const users = Users.listAll().filter((u) => u.id !== uid).map((u) => ({ id: u.id, name: u.username, type: "user" as const }));
-  // your OWN agents are listed too — they answer their DMs themselves (brain-driven)
-  const agents = Agents.listAgents().map((a) => ({ id: a.agent_id, name: a.owner_id === uid ? `${a.name} (yours)` : a.name, type: "agent" as const }));
+  // your OWN agents are listed too — native ones answer their DMs themselves
+  // (brain-driven); EXTERNAL shells only read via their gateway, so the UI must
+  // say so honestly (their silence read as "broken" to the founder).
+  const agents = Agents.listAgents().map((a) => ({
+    id: a.agent_id,
+    name: a.owner_id === uid ? `${a.name} (yours)` : a.name,
+    type: "agent" as const,
+    origin: (a.origin === "external" ? "external" : "native") as "external" | "native",
+  }));
   return NextResponse.json({ conversations: Messaging.listConversations(uid), me: uid, directory: [...users, ...agents] });
 }
 

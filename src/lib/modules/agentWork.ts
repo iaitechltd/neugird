@@ -10,6 +10,9 @@
  * skill_library are a portable format any brain consumes.
  */
 
+import { createHash } from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { db } from "../store";
 import { newId, nowISO } from "../id";
 import * as Agents from "./agents";
@@ -17,7 +20,11 @@ import * as Feed from "./feed";
 import * as Jobs from "./jobs";
 import * as Messaging from "./messaging";
 import * as Brain from "../brain";
-import type { Agent, AgentPersona, AgentWorkAction, Job, LearnedSkill } from "../types";
+import { engineAvailable, engineBin, engineMode, runEngineBuild, type EngineRunOpts } from "../engine";
+import { runEngineBuildAcp } from "../engine/acp";
+import { runEngineBuildRemote } from "../engine/remote";
+import { collectFiles, standalone } from "./studio";
+import type { Agent, AgentPersona, AgentWorkAction, Build, BuildFile, Job, LearnedSkill } from "../types";
 
 const LOG_MAX = 30;
 const SKILLS_MAX = 60;
@@ -174,6 +181,99 @@ function wonCampaignJob(agent: Agent): Job | undefined {
   return Jobs.listJobs({ context: "campaign_task", assignee_id: agent.agent_id, status: "in_progress" })[0];
 }
 
+/* ------------------------- REAL HANDS (B, 2026-07-21) ------------------------- */
+// A paid job stops being a paragraph: when the work is BUILDABLE and real money
+// is escrowed, the agent runs the SAME self-hosted engine the Studio uses in a
+// jailed workdir — code written, RUN, and fixed — then delivers a sealed Build
+// with a live preview the hirer can click. Text synthesis stays the fallback
+// for non-buildable work. NO builder reputation is minted here (the job's rep
+// flows through reviewJob's escrow-hardened path — no new mint, no new farm);
+// escrow-gating also bounds the free engine compute to jobs with money at stake.
+
+const BUILDABLE = /\b(build|app|apps|page|site|website|web|landing|tool|widget|dashboard|prototype|html|css|javascript|calculator|tracker|timer|game|form|component|demo|ui|interface|portfolio|generator|converter|editor|clone)\b/i;
+
+function engineEligible(job: Job): boolean {
+  if (process.env.NEUGRID_AGENT_ENGINE === "off") return false;
+  if (!engineAvailable()) return false;
+  if (!job.escrow_id) return false; // real money at stake bounds the compute door
+  return BUILDABLE.test(`${job.title} ${job.description ?? ""}`);
+}
+
+function agentProofOfFiles(owner: string, prompt: string, files: BuildFile[]): string {
+  const h = createHash("sha256");
+  h.update(owner).update("\0").update(prompt).update("\0");
+  for (const f of [...files].sort((a, b) => a.path.localeCompare(b.path))) h.update(f.path).update("\0").update(f.content).update("\0");
+  return `ngpob:sha256:${h.digest("hex").slice(0, 24)}`;
+}
+
+/** Run the engine on the job's brief in a jailed workdir → a sealed Build + a
+ *  clickable preview; returns the delivery payload (absolute preview URL first —
+ *  the platform's proof-link detectors key on that) or null → caller falls back
+ *  to text synthesis. Never throws. */
+export async function engineDeliver(agent: Agent, job: Job): Promise<{ payload: string; files: number; secs: number } | null> {
+  if (!engineEligible(job)) return null;
+  const dir = path.join(process.cwd(), ".agent-workspaces", job.job_id);
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.mkdirSync(dir, { recursive: true });
+    const instruction = [
+      "You are delivering PAID work for a client on NeuGrid's job marketplace.",
+      `THE JOB: ${job.title}`,
+      `THE BRIEF: ${(job.description ?? job.title).slice(0, 800)}`,
+      "Deliver a small, self-contained web app: an index.html (plus optional style.css / app.js) that works when opened directly from disk — no external requests, no build step, no frameworks. Make it genuinely work — run and test what you write, fix what breaks. When it works, stop.",
+    ].join("\n");
+    const t0 = Date.now();
+    const useAcp = engineMode() === "acp";
+    const local = engineBin() !== null;
+    const runner = local
+      ? (useAcp ? runEngineBuildAcp : runEngineBuild)
+      : (o: EngineRunOpts) => runEngineBuildRemote(o, useAcp ? "acp" : "headless");
+    const res = await runner({
+      workdir: dir, instruction,
+      model: process.env.NEUGRID_STUDIO_BRAIN_HANDS || process.env.NEUGRID_ENGINE_MODEL || undefined,
+      effort: "low", max_turns: 24, timeout_ms: 8 * 60_000,
+    });
+    const files = collectFiles(dir);
+    if ((!res.ok && files.length === 0) || files.length === 0) return null;
+    const page = standalone(files);
+    if (!page) return null; // the deliverable must be a viewable working app
+    const allFiles: BuildFile[] = [...files, { path: "preview/index.html", content: page }];
+    const at = nowISO();
+    const build_id = newId("build");
+    const proof = agentProofOfFiles(agent.owner_id, `${job.title}\n${job.description ?? ""}`, allFiles);
+    const secs = Math.round((Date.now() - t0) / 1000);
+    const b: Build = {
+      build_id,
+      owner_id: agent.owner_id,
+      title: job.title.slice(0, 60),
+      prompt: (job.description ?? job.title).slice(0, 400),
+      summary: (res.text?.trim() || `Delivered by ${agent.name} for a paid job.`).slice(0, 240),
+      stack: ["HTML5", "CSS3", "JavaScript"],
+      status: "built",
+      artifact: {
+        artifact_id: newId("art"),
+        kind: "frontend",
+        built_with_echo: true,
+        proof_of_build: proof,
+        files: allFiles,
+        preview_url: `/api/echo/builds/${build_id}/preview`,
+        deploy_target: "devnet",
+        created_at: at,
+      },
+      steps: [{ label: `${agent.name} · engine delivery`, detail: `write→run→fix for job ${job.job_id}, ${res.num_turns ?? "?"} turns`, at }],
+      version: 1,
+      created_at: at,
+    };
+    db.builds.unshift(b);
+    job.build_id = build_id; // the hired work lands on the job's record (Wave-2 link)
+    const base = (process.env.NEUGRID_PUBLIC_URL || "http://localhost:3000").replace(/\/$/, "");
+    const payload = `${base}/api/echo/builds/${build_id}/preview\n\nBuilt, run, and tested by ${agent.name} with the self-hosted engine — ${files.length} file(s) in ${secs}s. Proof of build: ${proof}. The link opens the working app.`;
+    return { payload, files: files.length, secs };
+  } catch {
+    return null; // any engine trouble → the text path still delivers
+  }
+}
+
 /* -------------------------------- the tick ------------------------------- */
 
 function pushLog(agent: Agent, a: Omit<AgentWorkAction, "at">): AgentWorkAction {
@@ -200,7 +300,8 @@ export async function runWorkTick(agent_id: string): Promise<{ action?: AgentWor
   const hired = db.jobs.find((j) => j.assignee_id === agent.agent_id && j.assignee_type === "agent" && j.status === "assigned" && j.context === "talent_contract");
   if (hired) {
     const applied = skillsFor(agent, hired).length;
-    const res = Agents.agentSubmit(agent.agent_id, hired.job_id, Agents.synthesizeDeliverable(agent, hired));
+    const built = await engineDeliver(agent, hired); // REAL HANDS first; text is the fallback
+    const res = Agents.agentSubmit(agent.agent_id, hired.job_id, built?.payload ?? Agents.synthesizeDeliverable(agent, hired));
     if (res.error) return { action: pushLog(agent, { kind: "hold", job_id: hired.job_id, job_title: hired.title, rationale: `blocked: ${res.error}`, ok: false }) };
     const touched = learnFrom(agent, hired);
     if (!agent.task_history.includes(hired.job_id)) agent.task_history.push(hired.job_id);
@@ -209,7 +310,7 @@ export async function runWorkTick(agent_id: string): Promise<{ action?: AgentWor
     return {
       action: pushLog(agent, {
         kind: "delivered", job_id: hired.job_id, job_title: hired.title, reward: hired.reward_amount,
-        rationale: `accepted hire — delivered to the hirer for review${touched ? " · learned/reinforced a skill" : ""}`, skills_applied: applied, ok: true,
+        rationale: `accepted hire — ${built ? `BUILT the working app with the engine (${built.files} files · ${built.secs}s) — ` : ""}delivered to the hirer for review${touched ? " · learned/reinforced a skill" : ""}`, skills_applied: applied, ok: true,
       }),
     };
   }
@@ -218,7 +319,8 @@ export async function runWorkTick(agent_id: string): Promise<{ action?: AgentWor
   const won = wonCampaignJob(agent);
   if (won) {
     const applied = skillsFor(agent, won).length;
-    const res = Agents.agentSubmit(agent.agent_id, won.job_id, Agents.synthesizeDeliverable(agent, won));
+    const builtWon = await engineDeliver(agent, won); // REAL HANDS first; text is the fallback
+    const res = Agents.agentSubmit(agent.agent_id, won.job_id, builtWon?.payload ?? Agents.synthesizeDeliverable(agent, won));
     if (res.error) return { action: pushLog(agent, { kind: "hold", job_id: won.job_id, job_title: won.title, rationale: `blocked: ${res.error}`, ok: false }) };
     const touched = learnFrom(agent, won);
     if (!agent.task_history.includes(won.job_id)) agent.task_history.push(won.job_id);
@@ -227,7 +329,7 @@ export async function runWorkTick(agent_id: string): Promise<{ action?: AgentWor
     return {
       action: pushLog(agent, {
         kind: "delivered", job_id: won.job_id, job_title: won.title, reward: won.reward_amount,
-        rationale: `won the campaign posting — delivered${touched ? " · learned/reinforced a skill" : ""}`, skills_applied: applied, ok: true,
+        rationale: `won the campaign posting — ${builtWon ? `BUILT the working app with the engine (${builtWon.files} files · ${builtWon.secs}s) — ` : ""}delivered${touched ? " · learned/reinforced a skill" : ""}`, skills_applied: applied, ok: true,
       }),
     };
   }
@@ -255,8 +357,10 @@ export async function runWorkTick(agent_id: string): Promise<{ action?: AgentWor
     };
   }
 
-  // 2b) Regular Job → claim + synthesize + submit now.
-  const res = Agents.deployOnJob(agent.agent_id, job.job_id, agent.owner_id);
+  // 2b) Regular Job → REAL HANDS build first (funded + buildable), then claim + submit.
+  //     (Building before the claim risks a rare claim-race; deployOnJob re-checks open.)
+  const builtJob = await engineDeliver(agent, job);
+  const res = Agents.deployOnJob(agent.agent_id, job.job_id, agent.owner_id, builtJob?.payload);
   if (res.error) return { action: pushLog(agent, { kind: "hold", job_id: job.job_id, job_title: job.title, rationale: `blocked: ${res.error}`, ok: false }) };
 
   const touched = learnFrom(agent, job); // grow the skill library (self-improvement)
@@ -265,7 +369,7 @@ export async function runWorkTick(agent_id: string): Promise<{ action?: AgentWor
   return {
     action: pushLog(agent, {
       kind: "delivered", job_id: job.job_id, job_title: job.title, reward: job.reward_amount,
-      rationale: `${choice.rationale}${touched ? " · learned/reinforced a skill" : ""}`, skills_applied: applied, ok: true,
+      rationale: `${choice.rationale}${builtJob ? ` · BUILT the working app with the engine (${builtJob.files} files · ${builtJob.secs}s)` : ""}${touched ? " · learned/reinforced a skill" : ""}`, skills_applied: applied, ok: true,
     }),
   };
 }
@@ -317,6 +421,29 @@ function fallbackChat(agent: Agent, isOwner: boolean): string {
 
 /** Read the thread, think, and answer as the agent. Awaited by the messages routes
  *  so the reply is already in the thread they return. Never throws. */
+/** The casting desk (born with a voice): draft a FULL character sheet from the
+ *  agent's name + capabilities — brain-written when active, a deterministic
+ *  template otherwise — and set it. The template guarantees no native agent
+ *  ever exists persona-less again ("no character" was the founder's complaint). */
+export async function draftPersona(agent_id: string, owner_id: string, hint?: string): Promise<{ persona?: Agent["persona"]; error?: string }> {
+  const agent = Agents.getAgent(agent_id);
+  if (!agent) return { error: "agent_not_found" };
+  if (agent.owner_id !== owner_id) return { error: "not_owner" };
+  if (agent.origin === "external") return { error: "external_agent" }; // its character lives in its own framework
+  const caps = agent.capabilities ?? [];
+  const drafted = await Brain.draftPersona({ name: agent.name, capabilities: caps, hint });
+  const persona = drafted ?? {
+    role: `${caps[0] ?? "general"} specialist`,
+    bio: `${agent.name} works NeuGrid's job board — claims work, delivers, and compounds a verifiable track record.`,
+    personality: "direct, reliable, allergic to filler; says what it will do, then does it",
+    goals: "earn a top-tier reputation one delivered job at a time",
+    style: "short sentences, concrete numbers, no hype",
+    knowledge: caps.slice(0, 6),
+  };
+  const r = setPersona(agent_id, owner_id, persona);
+  return r.error ? { error: r.error } : { persona: r.agent?.persona };
+}
+
 export async function chatReply(agent_id: string, conversation_id: string): Promise<{ replied: boolean }> {
   const agent = Agents.getAgent(agent_id);
   if (!agent) return { replied: false };

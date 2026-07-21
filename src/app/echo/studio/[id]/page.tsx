@@ -9,6 +9,7 @@
  */
 
 import { Fragment, use, useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion, useReducedMotion } from "motion/react";
 import NeuHeader from "@/components/app/NeuHeader";
 import OrbPanel from "@/components/app/OrbPanel";
@@ -22,6 +23,7 @@ import { PulseDot } from "@/components/app/venture-ui";
 const TRAIL_TYPES = ["narrate", "run", "files", "done", "error", "crew", "tool"] as const;
 const TRAIL_COLORS = ["#00ff00", "#48f5ff", "#8dff8d", "#c8ffc8", "#ff8b8b", "#2fd32f", "#ffb347"];
 const trailColor = (t: string) => TRAIL_COLORS[TRAIL_TYPES.indexOf(t as (typeof TRAIL_TYPES)[number])] ?? "#1e9c1e";
+const fmtElapsed = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
 type View = {
   workspace: { workspace_id: string; name: string; status: string; progress?: string; spent_grid: number; trail_sha?: string };
@@ -61,6 +63,60 @@ type View = {
 
 type RaiseDraft = { title: string; pitch: string; category: string; ask_usdc: number; milestones: { title: string; description: string; amount_usdc: number; days?: number }[] };
 
+/** CREW AT WORK — the live reasoning organism (give a directive → SEE the process):
+ *  a breathing CHIEF ▸ BUILD ▸ REVIEW ▸ SEAL phase rail, the engine's own narration
+ *  as the one live line, and the freshest sealed actions igniting in as chips as the
+ *  stream lands. Plain divs + CSS animation only — agentic screens carry no charts,
+ *  and CSS keeps it verifiable where rAF is paused. */
+function CrewAtWork({ v, briefing, reviewing, big, huge }: { v: View; briefing: boolean; reviewing: boolean; big?: boolean; huge?: boolean }) {
+  const building = v.workspace.status === "building";
+  const phase = briefing ? 0 : reviewing ? 2 : building ? 1 : 3;
+  const recent = v.trail.slice(-(huge ? 8 : big ? 9 : 5)).reverse();
+  return (
+    <div className={`pointer-events-none w-full ${huge ? "max-w-[700px]" : big ? "max-w-[620px]" : "max-w-[560px]"}`}>
+      <div className="flex items-center justify-center">
+        {(["CHIEF", "BUILD", "REVIEW", "SEAL"] as const).map((p, i) => (
+          <Fragment key={p}>
+            {i > 0 && <span className={`h-px ${huge ? "w-8 sm:w-14" : "w-5 sm:w-9"} ${phase >= i ? "bg-cyan/40" : "bg-neon/10"}`} />}
+            <span className={`border tracking-widest ${huge ? "px-3 py-1 text-[11px]" : "px-1.5 py-0.5 text-[9px]"} ${
+              building && phase === i ? "ng-breathe border-cyan/70 bg-cyan/10 text-cyan"
+              : phase > i ? "border-neon/50 bg-neon/[0.07] text-neon"
+              : "border-neon/15 text-ink-faint"}`}>{p}</span>
+          </Fragment>
+        ))}
+      </div>
+      <div className={`truncate text-center leading-relaxed text-cyan ${huge ? "mt-4 text-[15px]" : "mt-2.5 text-[12px]"}`}>
+        {v.workspace.progress || "the crew is working…"}<span className="animate-pulse">▌</span>
+      </div>
+      {recent.length > 0 && (huge ? (
+        <div className="mt-4 space-y-1.5">
+          {recent.map((e, i) => (
+            <div key={v.trail_len - i} className="ng-ignite flex items-center justify-center gap-1.5 text-[11px]">
+              <span className="h-1 w-1 shrink-0 rounded-full" style={{ background: trailColor(e.type) }} />
+              <span className={`max-w-[620px] truncate ${
+                e.type === "tool" ? "text-amber" : e.type === "error" ? "text-danger" : e.type === "run" ? "text-cyan" : "text-ink-dim"}`}>{e.summary}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-2.5 flex flex-wrap items-center justify-center gap-1.5">
+          {recent.map((e, i) => (
+            <span key={v.trail_len - i}
+              className={`ng-ignite inline-flex max-w-[200px] items-center gap-1 border bg-black/60 px-1.5 py-0.5 text-[9px] ${
+                e.type === "tool" ? "border-amber/40 text-amber"
+                : e.type === "error" ? "border-danger/40 text-danger"
+                : e.type === "run" ? "border-cyan/30 text-cyan"
+                : "border-neon/20 text-ink-dim"}`}>
+              <span className="h-1 w-1 shrink-0 rounded-full" style={{ background: trailColor(e.type) }} />
+              <span className="truncate">{e.summary}</span>
+            </span>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function StudioRoom({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [v, setV] = useState<View | null>(null);
@@ -83,6 +139,11 @@ export default function StudioRoom({ params }: { params: Promise<{ id: string }>
   const [connOpen, setConnOpen] = useState(false);
   const [conn, setConn] = useState({ kind: "remote", value: "", command: "", args: "", url: "", header: "" });
   const [checking, setChecking] = useState(false);
+  const [theater, setTheater] = useState(false); // ⛶ full-screen takeover (product + live build)
+  const [vp, setVp] = useState<"desktop" | "phone">("desktop"); // stage viewport
+  const [refreshN, setRefreshN] = useState(0); // ⟳ remounts the stage iframe
+  const [elapsed, setElapsed] = useState(0); // seconds since the curtain rose (client clock)
+  const buildStartRef = useRef(0);
   const feedRef = useRef<HTMLDivElement>(null);
   const prevVer = useRef(0);
   const reduce = useReducedMotion();
@@ -93,11 +154,17 @@ export default function StudioRoom({ params }: { params: Promise<{ id: string }>
   }, [id]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    const t = setInterval(load, v?.workspace.status === "building" ? 2500 : 6000);
+    const t = setInterval(load, v?.workspace.status === "building" ? 1500 : 6000);
     return () => clearInterval(t);
   }, [load, v?.workspace.status]);
   useEffect(() => { feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight }); }, [v?.turns.length, v?.workspace.progress]);
   useEffect(() => { if (toast) { const t = setTimeout(() => setToast(""), 3500); return () => clearTimeout(t); } }, [toast]);
+  useEffect(() => {
+    if (!theater) return;
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") setTheater(false); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [theater]);
   useEffect(() => {
     // D11 — the version-ship moment: flash when a NEW version lands (not on first load)
     const ver = v?.build?.version ?? 0;
@@ -190,6 +257,22 @@ export default function StudioRoom({ params }: { params: Promise<{ id: string }>
   };
 
   const building = v?.workspace.status === "building";
+  // THE CURTAIN — a starting build raises the full-screen theater; closing mid-build
+  // is respected (no re-open until the NEXT run). Adjust-during-render pattern —
+  // the hooks lint rejects synchronous setState inside effects.
+  const [wasBuilding, setWasBuilding] = useState(false);
+  if (building !== wasBuilding) {
+    setWasBuilding(building);
+    if (building) setTheater(true);
+    else setElapsed(0);
+  }
+  useEffect(() => {
+    if (!building) { buildStartRef.current = 0; return; }
+    if (!buildStartRef.current) buildStartRef.current = Date.now();
+    const t = setInterval(() => setElapsed(Math.round((Date.now() - buildStartRef.current) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, [building]);
+  const stopNow = () => { if (!busy) void act({ action: "stop" }).then((r) => { if (r?.ok) setToast("Stopped — your GRID is refunded"); }); };
   const engineTurns = (v?.turns ?? []).filter((t) => t.role === "engine" && t.duration_s);
   // real runs only — the workspace-open greeting is an engine turn but not a run;
   // an in-flight run is already debited, so it counts toward the spend meter
@@ -332,7 +415,6 @@ export default function StudioRoom({ params }: { params: Promise<{ id: string }>
                   {building ? "● ENGINE RUNNING" : v?.engine_ready ? "ENGINE READY" : "ENGINE OFFLINE"}
                 </Mark>
               </motion.span>
-              {v?.build?.preview_url && <a href={v.build.preview_url} target="_blank" className="ng-btn ng-btn-ghost ng-btn--sm"><IconCode className="h-3.5 w-3.5" /> Full view ↗</a>}
               {v?.build?.deployment && <a href={v.build.deployment.url} target="_blank" className="ng-btn ng-btn-ghost ng-btn--sm">live: /d/{v.build.deployment.slug} ↗</a>}
               {/* the money row — every button drives a REAL platform rail (Phase 4) */}
               <button onClick={() => setMoneyOpen(moneyOpen === "hire" ? null : "hire")} disabled={!v?.build}
@@ -473,36 +555,58 @@ export default function StudioRoom({ params }: { params: Promise<{ id: string }>
           </Rise>
 
           <Rise delay={0.08}>
-          <Panel title="LIVE PREVIEW" icon={<IconCode className="h-4 w-4" />} bodyClass="p-3.5"
-            action={<span className="pointer-events-auto flex items-center gap-2">
-              {shipped > 0 && (
-                <motion.span className="inline-flex" initial={reduce ? false : { opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}>
-                  <Mark plain accent="cyan" className="!text-[10px]">▲ shipped v{shipped}</Mark>
-                </motion.span>
-              )}
-              {v?.build && <Mark plain className="!text-[10px]">v{v.build.version}{building ? " · updating…" : ""}</Mark>}
-              {v?.build?.preview_url && <a href={v.build.preview_url} target="_blank" className="ng-btn ng-btn-ghost ng-btn--sm !px-2 !py-0.5 !text-[10px]">open full ↗</a>}
-            </span>}>
+          <Panel title="THE STAGE" icon={<IconCode className="h-4 w-4" />} bodyClass="p-2">
+            {/* the stage TOOLBAR — a real row INSIDE the pane (button clusters are too
+                tall for the on-border action slot; the canvas was covering them) */}
+            {v?.build && (
+              <div className="mb-2 flex flex-wrap items-center gap-1.5 border-b border-neon/10 px-1 pb-2 pt-0.5">
+                {shipped > 0 && (
+                  <motion.span className="inline-flex" initial={reduce ? false : { opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}>
+                    <Mark plain accent="cyan" className="!text-[10px]">▲ shipped v{shipped}</Mark>
+                  </motion.span>
+                )}
+                <Mark plain className="!text-[10px]">v{v.build.version}{building ? " · rebuilding…" : ""}</Mark>
+                {v.build.preview_url && (
+                  <span className="ml-auto flex flex-wrap items-center gap-1.5">
+                    <button onClick={() => setVp(vp === "desktop" ? "phone" : "desktop")}
+                      title={vp === "desktop" ? "check the phone skin — 390px viewport" : "back to the desktop viewport"}
+                      className={`ng-btn ng-btn-ghost ng-btn--sm !px-2 !py-0.5 !text-[10px] ${vp === "phone" ? "!text-neon" : ""}`}>{vp === "phone" ? "▭ desktop" : "▯ phone"}</button>
+                    <button onClick={() => setRefreshN((n) => n + 1)} title="reload the app on the stage"
+                      className="ng-btn ng-btn-ghost ng-btn--sm !px-2 !py-0.5 !text-[10px]">⟳ refresh</button>
+                    <button onClick={() => setTheater(true)} title="full-screen theater — check it properly, keep directing from inside"
+                      className="ng-btn ng-btn-cyan ng-btn--sm !px-2 !py-0.5 !text-[10px]">⛶ theater</button>
+                    <a href={v.build.preview_url} target="_blank" className="ng-btn ng-btn-ghost ng-btn--sm !px-2 !py-0.5 !text-[10px]">open full ↗</a>
+                  </span>
+                )}
+              </div>
+            )}
             {v?.build?.preview_url ? (
-              <motion.div key={v.build.version} initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}
-                className="transition-shadow duration-700"
-                style={shipped ? { boxShadow: "0 0 0 1px rgba(72,245,255,0.7), 0 0 26px rgba(72,245,255,0.22)" } : undefined}>
-                <iframe src={v.build.preview_url} sandbox="allow-scripts" title="live preview"
-                  className="h-[56vh] min-h-[380px] w-full border border-neon/15 bg-black" />
-              </motion.div>
+              <div className="relative">
+                <motion.div key={`${v.build.version}-${refreshN}-${vp}`} initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}
+                  className={`transition-shadow duration-700 ${vp === "phone" ? "mx-auto w-[390px] max-w-full" : ""}`}
+                  style={shipped ? { boxShadow: "0 0 0 1px rgba(72,245,255,0.7), 0 0 26px rgba(72,245,255,0.22)" } : undefined}>
+                  <iframe src={`${v.build.preview_url}?r=${refreshN}`} sandbox="allow-scripts" title="the stage — your live product"
+                    className={`h-[62vh] min-h-[420px] w-full bg-black ${vp === "phone" ? "border border-neon/30" : "border border-neon/15"}`} />
+                </motion.div>
+                {building && (
+                  <div className="pointer-events-none absolute inset-0 overflow-hidden border border-cyan/25 bg-black/55">
+                    <span className="ng-scan-y absolute left-0 h-px w-full bg-cyan/50" style={{ boxShadow: "0 0 14px rgba(72,245,255,0.5)" }} />
+                    <div className="absolute inset-x-0 bottom-0 flex justify-center p-4">
+                      <CrewAtWork v={v} briefing={briefing} reviewing={reviewing} />
+                    </div>
+                  </div>
+                )}
+              </div>
             ) : (
-              <div className="relative flex h-[260px] flex-col items-center justify-center gap-4 overflow-hidden border border-dashed border-neon/15">
+              <div className="relative flex h-[340px] flex-col items-center justify-center gap-3 overflow-hidden border border-dashed border-neon/15 p-4">
                 {building ? (
                   <>
-                    <span className="relative flex h-10 w-10 items-center justify-center">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan/20" />
-                      <span className="relative inline-flex h-4 w-4 animate-pulse rounded-full bg-cyan" />
-                    </span>
-                    <div className="max-w-[80%] text-center text-[12px] leading-relaxed text-cyan">{v?.workspace.progress || "the engine is building your first version…"}<span className="animate-pulse">▌</span></div>
-                    <div className="text-[10px] text-ink-faint">{v?.trail_len ?? 0} steps sealed · files appear in the PROJECT rail as they&apos;re written</div>
+                    <span className="ng-scan-y absolute left-0 h-px w-full bg-cyan/40" style={{ boxShadow: "0 0 12px rgba(72,245,255,0.4)" }} />
+                    <CrewAtWork v={v!} briefing={briefing} reviewing={reviewing} big />
+                    <div className="text-[10px] text-ink-faint">{v?.trail_len ?? 0} steps sealed · the app takes the stage the moment v1 ships</div>
                   </>
                 ) : (
-                  <div className="text-[12px] text-ink-dim">the preview appears after the first run</div>
+                  <div className="text-[12px] text-ink-dim">the stage is empty — give the crew its first directive below</div>
                 )}
               </div>
             )}
@@ -516,9 +620,13 @@ export default function StudioRoom({ params }: { params: Promise<{ id: string }>
               <input value={cmd} onChange={(e) => setCmd(e.target.value)} onKeyDown={(e) => e.key === "Enter" && run()}
                 placeholder={building ? "engine running — queue your next directive when it lands" : v?.files.length ? "tell the engine what to change…" : "tell the engine what to build…"}
                 disabled={building || !v?.engine_ready} className="ng-input w-full !border-0 !bg-transparent !py-1.5 disabled:opacity-50" />
-              <button onClick={run} disabled={busy || building || !v?.engine_ready} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-35">
-                <IconBolt className="h-3.5 w-3.5" /> Run · {v?.run_costs?.[quality] ?? v?.run_cost ?? "—"} GRID
-              </button>
+              {building ? (
+                <button onClick={stopNow} disabled={busy} className="ng-btn ng-btn-danger ng-btn--sm shrink-0 disabled:opacity-35">■ Stop</button>
+              ) : (
+                <button onClick={run} disabled={busy || !v?.engine_ready} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-35">
+                  <IconBolt className="h-3.5 w-3.5" /> Run · {v?.run_costs?.[quality] ?? v?.run_cost ?? "—"} GRID
+                </button>
+              )}
             </div>
             {/* the quality dial + effort knob — how hard the crew works this run (Phase 6a) */}
             <div className="mt-2.5 flex flex-wrap items-center gap-x-5 gap-y-1.5 border-t border-neon/10 pt-2">
@@ -861,6 +969,85 @@ export default function StudioRoom({ params }: { params: Promise<{ id: string }>
       </div>
 
       {toast && <div className="fixed bottom-24 left-1/2 z-[80] -translate-x-1/2 rounded border border-neon/40 bg-black/90 px-4 py-2.5 text-sm text-neon" style={{ boxShadow: "0 0 20px rgba(0,255,0,0.3)" }}>{toast}</div>}
+
+      {/* ⛶ THE THEATER — the full-screen takeover. It rises BY ITSELF when a run
+          starts (the curtain), shows the whole build as the show (first build) or
+          the product under the working scrim (rebuild), and stays up after the ship
+          so you keep directing full-screen. Portaled to <body> so it escapes the
+          zoomed page frame (fixed-inside-zoom breaks click hit-boxes) and covers
+          the keybar. ■ STOP kills the engine and refunds the run. */}
+      {theater && v && (v.build?.preview_url || building) && createPortal(
+        <div className="fixed inset-0 z-[75] flex flex-col bg-black font-mono">
+          <div className="flex flex-wrap items-center gap-2 border-b border-neon/20 px-3 py-2">
+            <span className="ng-label !mb-0 !text-[11px]">{v.workspace.name}</span>
+            {v.build && <Mark plain className="!text-[10px]">v{v.build.version}{building ? " · rebuilding…" : ""}</Mark>}
+            {building && (
+              <span className="flex items-center gap-3 text-[10px] text-ink-faint">
+                <span className="text-cyan">{fmtElapsed(elapsed)}</span>
+                <span>{v.trail_len} sealed</span>
+                {v.spent_usd > 0 && <span>${v.spent_usd.toFixed(2)}</span>}
+              </span>
+            )}
+            <span className="ml-auto flex items-center gap-1.5">
+              {building && (
+                <button onClick={stopNow} disabled={busy} className="ng-btn ng-btn-danger ng-btn--sm !px-2.5 !py-0.5 !text-[10px] disabled:opacity-35">■ STOP · refund</button>
+              )}
+              {v.build?.preview_url && (
+                <>
+                  <button onClick={() => setVp(vp === "desktop" ? "phone" : "desktop")}
+                    className={`ng-btn ng-btn-ghost ng-btn--sm !px-2 !py-0.5 !text-[10px] ${vp === "phone" ? "!text-neon" : ""}`}>{vp === "phone" ? "▭ desktop" : "▯ phone"}</button>
+                  <button onClick={() => setRefreshN((n) => n + 1)} className="ng-btn ng-btn-ghost ng-btn--sm !px-2 !py-0.5 !text-[10px]">⟳ refresh</button>
+                  <a href={v.build.preview_url} target="_blank" className="ng-btn ng-btn-ghost ng-btn--sm !px-2 !py-0.5 !text-[10px]">open full ↗</a>
+                </>
+              )}
+              <button onClick={() => setTheater(false)} className="ng-btn ng-btn-ghost ng-btn--sm !px-2 !py-0.5 !text-[10px]">✕ close · esc</button>
+            </span>
+          </div>
+          <div className="relative min-h-0 flex-1 p-3">
+            {v.build?.preview_url ? (
+              <>
+                <iframe key={`th-${v.build.version}-${refreshN}-${vp}`} src={`${v.build.preview_url}?r=${refreshN}`} sandbox="allow-scripts" title="theater — your live product"
+                  className={`h-full bg-black ${vp === "phone" ? "mx-auto block w-[390px] max-w-full border border-neon/30" : "w-full border border-neon/15"}`} />
+                {building && (
+                  <div className="pointer-events-none absolute inset-3 flex flex-col items-center justify-end overflow-hidden bg-black/60 pb-10">
+                    <span className="ng-scan-y absolute left-0 h-px w-full bg-cyan/50" style={{ boxShadow: "0 0 16px rgba(72,245,255,0.5)" }} />
+                    <CrewAtWork v={v} briefing={briefing} reviewing={reviewing} huge />
+                  </div>
+                )}
+              </>
+            ) : (
+              /* FIRST BUILD — the whole screen IS the show until v1 takes the stage */
+              <div className="relative flex h-full flex-col items-center justify-center overflow-hidden">
+                <span className="ng-scan-y absolute left-0 h-px w-full bg-cyan/40" style={{ boxShadow: "0 0 16px rgba(72,245,255,0.45)" }} />
+                <div className="mb-9 max-w-[860px] px-6 text-center">
+                  <div className="ng-tag mb-3 justify-center !text-[10px] !text-ink-faint">THE CREW IS BUILDING</div>
+                  <div className="ng-title text-2xl font-bold leading-snug text-neon sm:text-3xl">
+                    <Decrypt text={([...v.turns].reverse().find((t) => t.role === "you" || t.role === "chief")?.text ?? v.workspace.name).slice(0, 140)} />
+                  </div>
+                </div>
+                <CrewAtWork v={v} briefing={briefing} reviewing={reviewing} huge />
+                <div className="mt-9 text-[10px] text-ink-faint">{v.trail_len} steps sealed · the app takes this screen the moment v1 ships</div>
+              </div>
+            )}
+          </div>
+          <div className="border-t border-neon/20 px-3 py-2">
+            <div className="flex items-center gap-2">
+              <span className="text-cyan">&gt;</span>
+              <input value={cmd} onChange={(e) => setCmd(e.target.value)} onKeyDown={(e) => e.key === "Enter" && run()}
+                placeholder={building ? (v.workspace.progress || "the crew is working…") : "tell the crew what to change — the stage updates the moment it ships"}
+                disabled={building || !v.engine_ready} className="ng-input w-full !py-1.5 disabled:opacity-50" />
+              {building ? (
+                <button onClick={stopNow} disabled={busy} className="ng-btn ng-btn-danger ng-btn--sm shrink-0 disabled:opacity-35">■ Stop</button>
+              ) : (
+                <button onClick={run} disabled={busy || !v.engine_ready} className="ng-btn ng-btn-primary ng-btn--sm shrink-0 disabled:opacity-35">
+                  <IconBolt className="h-3.5 w-3.5" /> Run · {v.run_costs?.[quality] ?? v.run_cost} GRID
+                </button>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

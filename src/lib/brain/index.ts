@@ -11,9 +11,9 @@
  */
 
 import type { Agent, Job } from "../types";
-import { claudeChooseJob, claudeAgentReply, claudeSynthesizeBuild, claudeReviseBuild, claudeDraftProposal, claudeEchoAsk, claudeComposePost, claudeCeoPlan, claudeSpecialistWork, claudeWebResearch, claudeStudioBrief, claudeStudioGrade, claudeStudioStatus, type AgentChatTurn, type ChatContext, type SynthesizedBuild, type SynthFile, type ProposalDraft, type EchoAskMode, type PostContext, type AgentPostDraft, type CeoPlan, type CeoPlanInput, type SpecialistInput, type SpecialistOutput, type StudioBriefInput, type StudioGradeInput, type StudioGrade, type StudioStatusInput } from "./claude";
+import { claudeChooseJob, claudeAgentReply, claudeSynthesizeBuild, claudeReviseBuild, claudeDraftProposal, claudeEchoAsk, claudeComposePost, claudeCeoPlan, claudeSpecialistWork, grokWebResearch, claudeStudioBrief, claudeStudioGrade, claudeStudioStatus, claudeDraftPersona, type AgentChatTurn, type ChatContext, type SynthesizedBuild, type SynthFile, type ProposalDraft, type EchoAskMode, type PostContext, type AgentPostDraft, type CeoPlan, type CeoPlanInput, type SpecialistInput, type SpecialistOutput, type StudioBriefInput, type StudioGradeInput, type StudioGrade, type StudioStatusInput, type PersonaDraftInput, type PersonaDraft } from "./claude";
 
-export type { AgentChatTurn, ChatContext, ChatTurn, SynthesizedBuild, SynthFile, ProposalDraft, EchoAskMode, PostContext, AgentPostDraft, CeoPlan, CeoPlanInput, CeoAssignment, CeoActionKind, SpecialistInput, SpecialistOutput, StudioBriefInput, StudioGradeInput, StudioGrade, StudioStatusInput } from "./claude";
+export type { AgentChatTurn, ChatContext, ChatTurn, SynthesizedBuild, SynthFile, ProposalDraft, EchoAskMode, PostContext, AgentPostDraft, CeoPlan, CeoPlanInput, CeoAssignment, CeoActionKind, SpecialistInput, SpecialistOutput, StudioBriefInput, StudioGradeInput, StudioGrade, StudioStatusInput, PersonaDraftInput, PersonaDraft } from "./claude";
 
 export interface BrainChoice {
   /** A candidate Job's exact id, or null when the brain actively chooses to HOLD. */
@@ -152,6 +152,16 @@ export async function composePost(agent: Agent, ctx: PostContext): Promise<Agent
  * deliverable as the reply. `null` → no brain / call failed → the caller sends a
  * deterministic fallback reply instead. Never throws.
  */
+/** The casting desk: a full character sheet from name + capabilities. Null → caller's template. */
+export async function draftPersona(input: PersonaDraftInput): Promise<PersonaDraft | null> {
+  switch (activeBrain()) {
+    case "claude":
+      try { return await claudeDraftPersona(input); } catch { return null; }
+    default:
+      return null;
+  }
+}
+
 export async function replyAsAgent(agent: Agent, ctx: ChatContext): Promise<AgentChatTurn | null> {
   if (!ctx.history.length) return null;
   switch (activeBrain()) {
@@ -212,7 +222,7 @@ export async function webResearch(query: string): Promise<string | null> {
   switch (activeBrain()) {
     case "claude":
       try {
-        return await claudeWebResearch(query);
+        return await grokWebResearch(query);
       } catch {
         return null;
       }

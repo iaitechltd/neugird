@@ -15,7 +15,7 @@ import { Panel, Mark, Tag, DataRow, IconMessage, IconBot, IconUser, IconCoins, I
 import { CountUp } from "@/components/app/typefx";
 import { MatrixAvatar } from "@/components/app/MatrixAvatar";
 
-type Party = { id: string; type: "user" | "agent"; name: string; reputation?: number; rating?: number; trust_tier?: string; owner_name?: string; earnings?: number; jobs?: number; skills?: string[]; capabilities?: string[]; grids?: number; bio?: string; href: string };
+type Party = { id: string; type: "user" | "agent"; name: string; origin?: "native" | "external"; reputation?: number; rating?: number; trust_tier?: string; owner_name?: string; earnings?: number; jobs?: number; skills?: string[]; capabilities?: string[]; grids?: number; bio?: string; href: string };
 type Offer = { offer_kind: "deal" | "hire"; amount: number; asset?: string; terms: string; success_metric?: string; status: "pending" | "accepted" | "declined"; result_ref?: string; result_kind?: "job" | "agreement" };
 type Attachment = { name: string; mime: string; size: number; data_uri: string };
 type Transfer = { amount: number; asset: string; settlement_id: string; status: string };
@@ -25,7 +25,7 @@ type Ctx = { label: string; href?: string } | null;
 type DealRow = { id: string; kind: "deal" | "hire"; amount: number; asset?: string; terms: string; status: string };
 type Convo = { conversation_id: string; counterparty: Party; context: Ctx; last_text: string; last_ago: string; unread: number; pending_offer: boolean };
 type Thread = { conversation_id: string; counterparty: Party; context: Ctx; deals: DealRow[]; messages: Msg[] };
-type DirEntry = { id: string; name: string; type: "user" | "agent" };
+type DirEntry = { id: string; name: string; type: "user" | "agent"; origin?: "native" | "external" };
 
 const money = (n: number, asset?: string) => `${n.toLocaleString()}${asset ? ` ${asset}` : ""}`;
 /** "in 4d" / "in 6h" / "soon" — client-only (thread loads after mount, so no hydration issue). */
@@ -51,6 +51,7 @@ export default function MessagesPage() {
   const [attach, setAttach] = useState<Attachment | null>(null);
   const [attachErr, setAttachErr] = useState<string | null>(null);
   const [deliverFor, setDeliverFor] = useState<string | null>(null); // message_id whose delivery composer is open
+  const [pending, setPending] = useState<{ text: string; agent: string } | null>(null); // the honest wait: a native agent composes its reply server-side (3-6s)
   const [deliverNote, setDeliverNote] = useState<Record<string, string>>({});
   const fileRef = useRef<HTMLInputElement>(null);
   const [composing, setComposing] = useState(false);
@@ -111,7 +112,7 @@ export default function MessagesPage() {
   }, [activeId]);
 
   // auto-scroll to newest
-  useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [thread?.messages.length, activeId]);
+  useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [thread?.messages.length, activeId, pending]);
 
   const ATTACH_ACCEPT = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml,application/pdf,text/plain,text/csv,application/json,application/zip";
   function pickFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -135,6 +136,12 @@ export default function MessagesPage() {
     if (!isOffer && !isPay && !draft.trim() && !attach) return;
     setBusy(true);
     setPayErr(null);
+    // a NATIVE agent writes its reply before the request returns — show that wait
+    // honestly (your bubble + a composing line) instead of 3-6s of dead air
+    const cpNow = thread?.counterparty;
+    if (!isOffer && !isPay && cpNow?.type === "agent" && cpNow.origin !== "external") {
+      setPending({ text: draft.trim() || "📎 attachment", agent: cpNow.name });
+    }
     const payload = isOffer
       ? { kind: mode, body: draft.trim(), offer: { amount: Number(offer.amount) || 0, asset: offer.asset, terms: offer.terms.trim(), success_metric: mode === "deal" ? offer.success_metric.trim() : undefined } }
       : isPay
@@ -142,6 +149,7 @@ export default function MessagesPage() {
         : { kind: "text", body: draft.trim(), attachment: attach ?? undefined };
     const r = await fetch(`/api/messages/${activeId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).then((x) => x.json()).catch(() => null);
     setBusy(false);
+    setPending(null);
     if (r?.conversation_id) { setThread(r); setDraft(""); setAttach(null); setOffer({ amount: "", asset: "USDC", terms: "", success_metric: "" }); setPayAmount(""); setMode("text"); loadConvos(); }
     else if (isPay && r?.error) setPayErr(r.error === "insufficient_usdc" ? "Not enough USDC in your wallet." : "Transfer failed — check the amount.");
   }
@@ -207,7 +215,8 @@ export default function MessagesPage() {
                 <select value={newTo} onChange={(e) => setNewTo(e.target.value)} className="ng-input w-full !py-1.5 text-[12px]">
                   <option value="">Message who…</option>
                   <optgroup label="People">{directory.filter((d) => d.type === "user").map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</optgroup>
-                  <optgroup label="Agents">{directory.filter((d) => d.type === "agent").map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</optgroup>
+                  <optgroup label="Agents — answer here">{directory.filter((d) => d.type === "agent" && d.origin !== "external").map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</optgroup>
+                  <optgroup label="External shells — won't chat">{directory.filter((d) => d.type === "agent" && d.origin === "external").map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</optgroup>
                 </select>
                 <button onClick={startConversation} disabled={!newTo || busy} className="ng-btn ng-btn-primary ng-btn--sm ng-btn--block disabled:opacity-50"><IconPlus className="h-3.5 w-3.5" /> Start</button>
               </div>
@@ -247,7 +256,7 @@ export default function MessagesPage() {
               {/* counterparty header */}
               <div className="flex shrink-0 items-center gap-2.5 border-b border-line p-3">
                 <MatrixAvatar seed={cp.name} size={32} />
-                <div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><span className="truncate text-sm font-bold text-ink">{cp.name}</span><Tag accent={cp.type === "agent" ? "neon" : "amber"} className="!text-[8px]">{cp.type === "agent" ? <><IconBot className="h-2.5 w-2.5" />Agent</> : <><IconUser className="h-2.5 w-2.5" />Human</>}</Tag></div><div className="truncate text-[10px] text-ink-faint">{cp.type === "agent" ? `Agent of ${cp.owner_name} · ★ ${(cp.rating ?? 0).toFixed(1)}` : `${(cp.reputation ?? 0).toLocaleString()} rep`}</div></div>
+                <div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><span className="truncate text-sm font-bold text-ink">{cp.name}</span><Tag accent={cp.type === "agent" ? "neon" : "amber"} className="!text-[8px]">{cp.type === "agent" ? <><IconBot className="h-2.5 w-2.5" />Agent</> : <><IconUser className="h-2.5 w-2.5" />Human</>}</Tag>{cp.type === "agent" && (cp.origin === "external" ? <Tag accent="amber" className="!text-[8px]">external · via gateway</Tag> : <Tag className="!text-[8px]">answers here</Tag>)}</div><div className="truncate text-[10px] text-ink-faint">{cp.type === "agent" ? `Agent of ${cp.owner_name} · ★ ${(cp.rating ?? 0).toFixed(1)}` : `${(cp.reputation ?? 0).toLocaleString()} rep`}</div></div>
                 <Link href={cp.href} className="ng-btn ng-btn-ghost ng-btn--sm shrink-0">Profile</Link>
               </div>
 
@@ -361,6 +370,12 @@ export default function MessagesPage() {
                     </div>
                   </div>
                 ))}
+                {busy && pending && (
+                  <>
+                    <div className="flex justify-end"><div className="max-w-[82%]"><div className="rounded-lg bg-neon/15 px-3 py-2 text-ink opacity-70"><p className="whitespace-pre-wrap text-[12.5px] leading-snug">{pending.text}</p></div></div></div>
+                    <div className="flex justify-start"><div className="flex items-center gap-1.5 rounded-lg bg-line/40 px-3 py-2 text-[11px] text-ink-dim"><span className="ng-breathe text-neon">●</span>{pending.agent} is composing…</div></div>
+                  </>
+                )}
               </div>
 
               {/* composer */}
@@ -402,6 +417,9 @@ export default function MessagesPage() {
                   </div>
                 )}
                 {attachErr && <p className="mb-1.5 text-[10px] text-amber">{attachErr}</p>}
+                {cp?.type === "agent" && cp.origin === "external" && (
+                  <p className="mb-1.5 text-[10px] leading-relaxed text-amber/80">External shell — it reads this through its own framework&apos;s gateway and won&apos;t chat back here. Offers and hires still reach it.</p>
+                )}
                 <div className="flex items-center gap-1.5">
                   <input ref={fileRef} type="file" accept={ATTACH_ACCEPT} onChange={pickFile} className="hidden" />
                   {mode === "text" && (
